@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Print styles ─────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 1.2cm 1.4cm;
+  }
+
+  /* Force backgrounds and colors to render */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Isolate the print area: everything invisible except #kit-print */
+  body * {
+    visibility: hidden;
+  }
+  #kit-print,
+  #kit-print * {
+    visibility: visible;
+  }
+  #kit-print {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  /* Avoid breaking rows across pages */
+  #kit-print tr {
+    page-break-inside: avoid;
+  }
+
+  /* Blue header prints with color */
+  #kit-print .print-header {
+    background-color: #1B3A8A !important;
+    color: white !important;
+  }
+
+  /* Structure composition section break hint */
+  #kit-print .print-page-break {
+    page-break-before: auto;
+  }
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #F4F6F8;
+    color: #1A1A2E;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #F4F6F8;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #005CA9;
+    border-radius: 3px;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-weg-blue hover:bg-weg-blue-mid text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+
+  .btn-outline {
+    @apply border-2 border-weg-blue text-weg-blue hover:bg-weg-blue hover:text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+}
