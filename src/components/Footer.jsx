@@ -14,7 +14,7 @@ export default function Footer() {
           {/* Brand */}
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <img src="/Logo_ErnaniFF_branco sem fundo.PNG" alt="Ernaniff Representações" className="h-16 object-contain" />
+              <img src="/Logo_ErnaniFF_branco sem fundo.PNG" alt="Ernaniff Representações" className="w-48 h-auto object-contain" />
             </div>
             <p className="text-white/60 text-sm leading-relaxed">
               Escritório de representação comercial especializado em soluções de energia solar WEG para o Brasil.
