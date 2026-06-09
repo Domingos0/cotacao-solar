@@ -28,7 +28,7 @@ export default function LoginPage({ onGoToRegister }) {
     <div className="min-h-screen bg-weg-gray flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-sm p-8">
         <div className="flex flex-col items-center mb-6">
-          <img src="/logo.svg" alt="Ernaniff" className="h-12 mb-4" />
+          <img src="/Logo_OK_ErnaniFF_Horizontal.png" alt="Ernaniff" className="h-16 mb-4 object-contain" />
           <h2 className="text-xl font-bold text-gray-900">Acesso ao Sistema</h2>
           <p className="text-gray-400 text-sm mt-1">Ernaniff Representações — Solar</p>
         </div>
