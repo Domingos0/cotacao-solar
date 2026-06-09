@@ -52,7 +52,7 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
           {/* Logo */}
           <button onClick={() => onPageChange('catalog')}
             className="flex items-center gap-3 shrink-0 hover:opacity-90 transition-opacity">
-            <img src="/Logo_ErnaniFF_branco sem fundo.PNG" alt="Ernaniff Representações" className="h-10 object-contain" />
+            <img src="/Logo_ErnaniFF_branco sem fundo.PNG" alt="Ernaniff Representações" className="h-16 object-contain" />
           </button>
 
           {/* Search (catalog only) */}
