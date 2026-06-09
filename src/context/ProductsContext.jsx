@@ -45,29 +45,21 @@ function loadProducts() {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (!saved) return defaultProducts.map(normalizeProduct)
 
-    // Build lookup of official prices by SAP code
-    const officialPrices = {}
-    defaultProducts.forEach(p => {
-      if (p.preco != null) officialPrices[p.codigo] = { preco: r2(p.preco), precoFrete: r2(p.preco), ipi: p.ipi }
-    })
-
     const parsed = JSON.parse(saved)
-    const merged = parsed.map(p => {
-      const off = officialPrices[p.codigo]
-      const base = normalizeProduct({
-        ...p,
-        kitRole: p.kitRole !== undefined ? p.kitRole : assignKitRole(p),
-      })
-      // Apply official price if it differs (keeps localStorage data synced with price list)
-      if (off && (base.preco !== off.preco || base.precoFrete !== off.precoFrete)) {
-        return { ...base, preco: off.preco, precoFrete: off.precoFrete, ipi: off.ipi ?? base.ipi }
-      }
-      return base
-    })
+    const savedCodes = new Set(parsed.map(p => p.codigo))
 
-    // Save merged back to localStorage so subsequent reads are up to date
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
-    return merged
+    // Produtos salvos são autoritativos — preços editados pelo admin são preservados
+    const savedList = parsed.map(p => normalizeProduct({
+      ...p,
+      kitRole: p.kitRole !== undefined ? p.kitRole : assignKitRole(p),
+    }))
+
+    // Adiciona apenas produtos novos do defaultProducts que ainda não existem no salvo
+    const newProducts = defaultProducts
+      .filter(p => !savedCodes.has(p.codigo))
+      .map(normalizeProduct)
+
+    return [...savedList, ...newProducts]
   } catch {
     return defaultProducts.map(normalizeProduct)
   }
