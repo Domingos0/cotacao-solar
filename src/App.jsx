@@ -208,16 +208,7 @@ function PendingScreen({ onLogout, onRefresh }) {
 
 function AppContent() {
   const { session, loading, isAdmin, isAtivo, signOut, refreshProfile } = useAuth()
-  const [page, setPage] = useState('catalog')
   const [authPage, setAuthPage] = useState('login')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [loadedQuote, setLoadedQuote] = useState(null) // { quoteData, savedId }
-
-  const handleLoadQuote = ({ quoteData, savedId }) => {
-    setLoadedQuote({ quoteData, savedId })
-    setPage('kit')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
 
   if (loading) return <LoadingScreen />
 
@@ -227,6 +218,23 @@ function AppContent() {
   }
 
   if (!isAdmin && !isAtivo) return <PendingScreen onLogout={signOut} onRefresh={refreshProfile} />
+
+  // key=session.user.id: força remount completo de toda a UI quando o usuário muda
+  // garante estado 100% limpo — sem dados do usuário anterior
+  return <AuthenticatedApp key={session.user.id} />
+}
+
+function AuthenticatedApp() {
+  const { session, isAdmin, signOut } = useAuth()
+  const [page, setPage] = useState('catalog')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [loadedQuote, setLoadedQuote] = useState(null)
+
+  const handleLoadQuote = ({ quoteData, savedId }) => {
+    setLoadedQuote({ quoteData, savedId })
+    setPage('kit')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const handlePageChange = (p) => {
     if (p === 'kit') setLoadedQuote(null) // novo kit sempre começa do zero via nav

@@ -15,7 +15,13 @@ export function AuthProvider({ children }) {
       if (session?.user) fetchProfile(session.user.id, session.user.user_metadata)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        // Limpeza total — garante zero dados do usuário anterior nesta aba
+        setSession(null)
+        setProfile(null)
+        return
+      }
       setSession(session ?? null)
       if (session?.user) fetchProfile(session.user.id, session.user.user_metadata)
       else setProfile(null)
@@ -29,7 +35,6 @@ export function AuthProvider({ children }) {
     const userId = session?.user?.id
     if (!userId) return
 
-    // Limpa canal anterior
     if (channelRef.current) supabase.removeChannel(channelRef.current)
 
     const channel = supabase
@@ -56,7 +61,6 @@ export function AuthProvider({ children }) {
   })
 
   const fetchProfile = async (userId, userMeta) => {
-    // Usa supabaseAdmin para bypasvar RLS e sempre ler o status atualizado do banco
     try {
       const { data } = await supabaseAdmin
         .from('profiles')
@@ -65,7 +69,6 @@ export function AuthProvider({ children }) {
         .maybeSingle()
 
       if (data) {
-        // Merge: se o metadata tem role=admin mas o DB ainda não, prioriza admin
         const meta = userMeta || {}
         if (meta.role === 'admin' && data.role !== 'admin') {
           setProfile({ ...data, role: 'admin', status: 'ativo' })
@@ -74,11 +77,8 @@ export function AuthProvider({ children }) {
         }
         return
       }
-    } catch (_) {
-      // Falhou mesmo com admin — tenta anon como fallback
-    }
+    } catch (_) {}
 
-    // Fallback: tenta com cliente anon
     try {
       const { data } = await supabase
         .from('profiles')
@@ -88,7 +88,6 @@ export function AuthProvider({ children }) {
       if (data) { setProfile(data); return }
     } catch (_) {}
 
-    // Último recurso: JWT metadata
     const meta = userMeta || {}
     setProfile(metaToProfile(userId, meta))
   }
@@ -107,8 +106,10 @@ export function AuthProvider({ children }) {
     return { data, error }
   }
 
+  // scope: 'local' — limpa apenas ESTA aba, não invalida sessões em outros dispositivos/abas
   const signOut = async () => {
-    await supabase.auth.signOut()
+    setProfile(null)
+    await supabase.auth.signOut({ scope: 'local' })
   }
 
   const refreshProfile = () => {
@@ -117,7 +118,6 @@ export function AuthProvider({ children }) {
 
   const loading = session === undefined
 
-  // isAdmin: DB profile OU JWT metadata (garante acesso mesmo com RLS quebrado)
   const metaRole = session?.user?.user_metadata?.role
   const isAdmin = profile?.role === 'admin' || metaRole === 'admin'
   const isAtivo = profile?.status === 'ativo' || isAdmin
