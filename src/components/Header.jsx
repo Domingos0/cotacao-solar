@@ -47,12 +47,12 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-4">
+      <div className="max-w-7xl mx-auto px-4 py-3">
         <div className="flex items-center gap-3">
           {/* Logo */}
           <button onClick={() => onPageChange('catalog')}
             className="flex items-center gap-3 shrink-0 hover:opacity-90 transition-opacity">
-            <img src="/Logo_ErnaniFF_branco sem fundo.PNG" alt="Ernaniff Representações" className="w-52 h-auto object-contain" />
+            <img src="/Logo_ErnaniFF_branco sem fundo.PNG" alt="Ernaniff Representações" className="w-52 h-auto max-h-10 object-contain" />
           </button>
 
           {/* Search (catalog only) */}
