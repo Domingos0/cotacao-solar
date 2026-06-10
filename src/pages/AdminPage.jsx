@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import * as XLSX from 'xlsx'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
@@ -1930,7 +1930,7 @@ function QuoteManagement() {
                   const isExpanded = expandedId === q.id
                   const rev = kd.revisao || 0
                   return (
-                    <React.Fragment key={q.id}>
+                    <Fragment key={q.id}>
                       {/* ── Linha principal ── */}
                       <tr
                         onClick={() => setExpandedId(isExpanded ? null : q.id)}
@@ -2100,7 +2100,7 @@ function QuoteManagement() {
                           </td>
                         </tr>
                       )}
-                    </React.Fragment>
+                    </Fragment>
                   )
                 })}
               </tbody>
