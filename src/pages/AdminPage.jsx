@@ -17,6 +17,7 @@ import {
   Users, Package, LayoutList, Clock, CheckCircle2, XCircle,
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
+  Lock, UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
@@ -1023,42 +1024,51 @@ function FreteSection() {
 
 // ─── User Management ──────────────────────────────────────────────────────────
 function UserManagement() {
-  const [users, setUsers] = useState([])
+  const [users, setUsers]     = useState([])
+  const [emails, setEmails]   = useState({}) // id → email
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [subTab, setSubTab] = useState('pendentes') // 'pendentes' | 'todos'
+  const [error, setError]     = useState(null)
+  const [acting, setActing]   = useState({}) // id → 'ativo'|'recusado'|null
 
   const fetchUsers = async () => {
     setLoading(true)
     setError(null)
-    const { data, error } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) setError(error.message)
-    else setUsers(data || [])
+    const [profilesRes, authRes] = await Promise.all([
+      supabaseAdmin.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }),
+    ])
+    if (profilesRes.error) { setError(profilesRes.error.message); setLoading(false); return }
+    setUsers(profilesRes.data || [])
+    const map = {}
+    ;(authRes.data?.users || []).forEach(u => { map[u.id] = u.email })
+    setEmails(map)
     setLoading(false)
   }
 
   useEffect(() => { fetchUsers() }, [])
 
+  // Auto-refresh a cada 30s para detectar novas solicitações
+  useEffect(() => {
+    const id = setInterval(() => fetchUsers(), 30000)
+    return () => clearInterval(id)
+  }, [])
+
   const setStatus = async (id, status) => {
+    setActing(a => ({ ...a, [id]: status }))
     await supabaseAdmin.from('profiles').update({ status }).eq('id', id)
     setUsers(u => u.map(p => p.id === id ? { ...p, status } : p))
-
-    // Notifica cliente quando aprovado
     if (status === 'ativo') {
       try {
-        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(id)
         const profile = users.find(p => p.id === id) || {}
         notifyClienteApproved({
-          clienteNome: profile.nome || user?.email || '',
-          clienteEmail: user?.email || '',
+          clienteNome:  profile.nome || emails[id] || '',
+          clienteEmail: emails[id] || '',
           clientePhone: profile.telefone || '',
-          clienteWaKey: user?.user_metadata?.whatsapp_apikey || '',
+          clienteWaKey: '',
         })
       } catch (_) {}
     }
+    setActing(a => ({ ...a, [id]: null }))
   }
 
   const setRole = async (id, role) => {
@@ -1066,127 +1076,172 @@ function UserManagement() {
     setUsers(u => u.map(p => p.id === id ? { ...p, role } : p))
   }
 
-  const STATUS_BADGE = {
-    pendente:  'bg-yellow-100 text-yellow-700',
-    ativo:     'bg-green-100 text-green-700',
-    recusado:  'bg-red-100 text-red-700',
+  const pending  = users.filter(u => u.status === 'pendente')
+  const ativos   = users.filter(u => u.status === 'ativo')
+  const recusados = users.filter(u => u.status === 'recusado')
+
+  const fmtDate = d => d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+  const initials = nome => (nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+
+  // ── Card for pending request ──
+  const PendingCard = ({ user }) => {
+    const isBusy = acting[user.id]
+    return (
+      <div className="bg-white rounded-2xl border-2 border-yellow-200 shadow-sm p-5 space-y-4">
+        {/* Top: avatar + name */}
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-full bg-weg-blue flex items-center justify-center text-white font-bold text-sm shrink-0">
+            {initials(user.nome)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 text-base leading-tight">{user.nome || '—'}</p>
+            {user.empresa && (
+              <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
+                <Building2 size={12} className="text-gray-400" /> {user.empresa}
+              </p>
+            )}
+          </div>
+          <span className="text-xs bg-yellow-100 text-yellow-700 font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0">
+            <Clock size={11} /> Pendente
+          </span>
+        </div>
+
+        {/* Details */}
+        <div className="space-y-1.5 text-xs text-gray-600 bg-gray-50 rounded-xl p-3">
+          {emails[user.id] && (
+            <div className="flex items-center gap-2">
+              <AtSign size={12} className="text-gray-400 shrink-0" />
+              <span className="truncate">{emails[user.id]}</span>
+            </div>
+          )}
+          {user.telefone && (
+            <div className="flex items-center gap-2">
+              <Phone size={12} className="text-gray-400 shrink-0" />
+              <span>{user.telefone}</span>
+            </div>
+          )}
+          {user.cnpj && (
+            <div className="flex items-center gap-2">
+              <FileText size={12} className="text-gray-400 shrink-0" />
+              <span className="font-mono">{user.cnpj}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <CalendarDays size={12} className="text-gray-400 shrink-0" />
+            <span>Solicitado em {fmtDate(user.created_at)}</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setStatus(user.id, 'ativo')}
+            disabled={!!isBusy}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-colors"
+          >
+            {isBusy === 'ativo'
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : <><UserCheck size={15} /> Aprovar acesso</>}
+          </button>
+          <button
+            onClick={() => setStatus(user.id, 'recusado')}
+            disabled={!!isBusy}
+            className="flex-1 flex items-center justify-center gap-1.5 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-colors"
+          >
+            {isBusy === 'recusado'
+              ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+              : <><UserX size={15} /> Recusar</>}
+          </button>
+        </div>
+      </div>
+    )
   }
 
-  const UserRow = ({ user }) => (
-    <tr className="border-b border-gray-100 hover:bg-gray-50">
-      <td className="px-4 py-3">
-        <p className="font-medium text-gray-900 text-sm">{user.nome}</p>
-        <p className="text-xs text-gray-400">{user.empresa || '—'}</p>
-        {user.cnpj && <p className="text-xs font-mono text-gray-400">{user.cnpj}</p>}
-      </td>
-      <td className="px-4 py-3 text-xs text-gray-600">{user.telefone || '—'}</td>
-      <td className="px-4 py-3">
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[user.status]}`}>
-          {user.status}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <select
-          value={user.role}
-          onChange={e => setRole(user.id, e.target.value)}
-          className="text-xs border border-gray-200 rounded px-2 py-1"
-        >
-          <option value="cliente">cliente</option>
-          <option value="admin">admin</option>
-        </select>
-      </td>
-      <td className="px-4 py-3 text-xs text-gray-400">
-        {new Date(user.created_at).toLocaleDateString('pt-BR')}
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex gap-1">
-          {user.status !== 'ativo' && (
-            <button
-              onClick={() => setStatus(user.id, 'ativo')}
-              title="Aprovar"
-              className="p-1.5 rounded-lg bg-green-100 hover:bg-green-200 text-green-700"
-            >
-              <CheckCircle2 size={14} />
-            </button>
-          )}
-          {user.status !== 'recusado' && (
-            <button
-              onClick={() => setStatus(user.id, 'recusado')}
-              title="Recusar"
-              className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600"
-            >
-              <XCircle size={14} />
-            </button>
-          )}
-          {user.status !== 'pendente' && (
-            <button
-              onClick={() => setStatus(user.id, 'pendente')}
-              title="Colocar como pendente"
-              className="p-1.5 rounded-lg bg-yellow-100 hover:bg-yellow-200 text-yellow-700"
-            >
-              <Clock size={14} />
-            </button>
-          )}
-        </div>
-      </td>
-    </tr>
-  )
+  // ── Row for all-users table ──
+  const STATUS_BADGE = {
+    pendente:  { cls: 'bg-yellow-100 text-yellow-700', label: 'Pendente' },
+    ativo:     { cls: 'bg-green-100 text-green-700',   label: 'Ativo' },
+    recusado:  { cls: 'bg-red-100 text-red-600',       label: 'Recusado' },
+  }
 
-  const TableHead = () => (
-    <thead>
-      <tr className="bg-gray-50 border-b border-gray-200">
-        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Usuário / Empresa</th>
-        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Telefone</th>
-        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
-        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Perfil</th>
-        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Cadastro</th>
-        <th className="px-4 py-2.5 w-28 text-left text-xs font-semibold text-gray-500 uppercase">Ações</th>
+  const UserRow = ({ user }) => {
+    const st = STATUS_BADGE[user.status] || STATUS_BADGE.pendente
+    return (
+      <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-weg-blue/10 text-weg-blue flex items-center justify-center text-xs font-bold shrink-0">
+              {initials(user.nome)}
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 text-sm truncate">{user.nome || '—'}</p>
+              <p className="text-xs text-gray-400 truncate">{emails[user.id] || '—'}</p>
+            </div>
+          </div>
+        </td>
+        <td className="px-4 py-3 text-xs text-gray-500 hidden md:table-cell">
+          <p>{user.empresa || '—'}</p>
+          {user.cnpj && <p className="font-mono text-gray-400">{user.cnpj}</p>}
+        </td>
+        <td className="px-4 py-3 text-xs text-gray-500 hidden lg:table-cell">{user.telefone || '—'}</td>
+        <td className="px-4 py-3">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${st.cls}`}>
+            {st.label}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <select
+            value={user.role}
+            onChange={e => setRole(user.id, e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-weg-blue"
+          >
+            <option value="cliente">Cliente</option>
+            <option value="admin">Admin</option>
+          </select>
+        </td>
+        <td className="px-4 py-3 text-xs text-gray-400 hidden md:table-cell">
+          {new Date(user.created_at).toLocaleDateString('pt-BR')}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex gap-1">
+            {user.status !== 'ativo' && (
+              <button onClick={() => setStatus(user.id, 'ativo')} title="Aprovar"
+                className="p-1.5 rounded-lg bg-green-100 hover:bg-green-200 text-green-700">
+                <CheckCircle2 size={14} />
+              </button>
+            )}
+            {user.status !== 'recusado' && (
+              <button onClick={() => setStatus(user.id, 'recusado')} title="Recusar"
+                className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600">
+                <XCircle size={14} />
+              </button>
+            )}
+            {user.status !== 'pendente' && (
+              <button onClick={() => setStatus(user.id, 'pendente')} title="Marcar como pendente"
+                className="p-1.5 rounded-lg bg-yellow-100 hover:bg-yellow-200 text-yellow-700">
+                <Clock size={14} />
+              </button>
+            )}
+          </div>
+        </td>
       </tr>
-    </thead>
-  )
-
-  const pending = users.filter(u => u.status === 'pendente')
-  const displayed = subTab === 'pendentes' ? pending : users
+    )
+  }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-          <Users size={20} className="text-weg-blue" /> Gestão de Usuários
-        </h3>
-        <button onClick={fetchUsers} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+            <Users size={20} className="text-weg-blue" /> Gestão de Usuários
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {ativos.length} ativo{ativos.length !== 1 ? 's' : ''} · {pending.length} pendente{pending.length !== 1 ? 's' : ''} · atualiza automaticamente a cada 30s
+          </p>
+        </div>
+        <button onClick={fetchUsers} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors">
           <RefreshCw size={14} /> Atualizar
-        </button>
-      </div>
-
-      {/* Sub-tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        <button
-          onClick={() => setSubTab('pendentes')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            subTab === 'pendentes' ? 'bg-white text-yellow-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Clock size={14} />
-          Solicitações pendentes
-          {pending.length > 0 && (
-            <span className="bg-yellow-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-              {pending.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setSubTab('todos')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            subTab === 'todos' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Users size={14} />
-          Todos os usuários
-          <span className="bg-gray-300 text-gray-700 text-xs font-bold px-1.5 py-0.5 rounded-full">
-            {users.length}
-          </span>
         </button>
       </div>
 
@@ -1202,25 +1257,72 @@ function UserManagement() {
         </div>
       )}
 
-      {/* Table */}
       {!loading && !error && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          {displayed.length === 0 ? (
-            <div className="py-14 text-center">
-              {subTab === 'pendentes'
-                ? <><CheckCircle2 size={36} className="text-green-400 mx-auto mb-2" /><p className="text-gray-400 text-sm">Nenhuma solicitação pendente.</p></>
-                : <><Users size={36} className="text-gray-300 mx-auto mb-2" /><p className="text-gray-400 text-sm">Nenhum usuário cadastrado.</p></>
-              }
+        <>
+          {/* ── Novas Solicitações ── */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+                <Clock size={15} className="text-yellow-500" /> Novas Solicitações
+              </h4>
+              {pending.length > 0 && (
+                <span className="bg-yellow-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
+                  {pending.length}
+                </span>
+              )}
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <TableHead />
-                <tbody>{displayed.map(u => <UserRow key={u.id} user={u} />)}</tbody>
-              </table>
+
+            {pending.length === 0 ? (
+              <div className="bg-green-50 border border-green-200 rounded-2xl py-10 text-center">
+                <CheckCircle2 size={32} className="text-green-400 mx-auto mb-2" />
+                <p className="text-green-700 font-semibold text-sm">Nenhuma solicitação pendente</p>
+                <p className="text-green-500 text-xs mt-0.5">Todas as solicitações foram respondidas.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {pending.map(u => <PendingCard key={u.id} user={u} />)}
+              </div>
+            )}
+          </section>
+
+          {/* ── Todos os Usuários ── */}
+          <section>
+            <div className="flex items-center gap-3 mb-3">
+              <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+                <Users size={15} className="text-weg-blue" /> Todos os Usuários
+              </h4>
+              <div className="flex gap-2 text-xs">
+                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{ativos.length} ativos</span>
+                <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold">{recusados.length} recusados</span>
+              </div>
             </div>
-          )}
-        </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              {users.length === 0 ? (
+                <div className="py-14 text-center">
+                  <Users size={36} className="text-gray-200 mx-auto mb-2" />
+                  <p className="text-gray-400 text-sm">Nenhum usuário cadastrado.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Nome / E-mail</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">Empresa / CNPJ</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase hidden lg:table-cell">Telefone</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Perfil</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">Cadastro</th>
+                        <th className="px-4 py-2.5 w-28 text-left text-xs font-semibold text-gray-500 uppercase">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>{users.map(u => <UserRow key={u.id} user={u} />)}</tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        </>
       )}
     </div>
   )
@@ -1246,6 +1348,8 @@ function DashboardPanel({ onGoToTab }) {
       const byStatus = (s) => quotes.filter(q => q.status === s).length
       const totalReceita = quotes.reduce((sum, q) => sum + (q.total_final || 0), 0)
       const totalKwp = quotes.reduce((sum, q) => sum + (parseFloat(q.kwp) || 0), 0)
+      const fechados   = quotes.filter(q => ['fechado', 'implantado'].includes(q.status))
+      const perdidos   = quotes.filter(q => q.status === 'perdida')
 
       setStats({
         total: quotes.length,
@@ -1253,8 +1357,14 @@ function DashboardPanel({ onGoToTab }) {
         aguardando: byStatus('aguardando_desconto'),
         aprovada: byStatus('aprovada'),
         recusada: byStatus('recusada'),
+        fechado: byStatus('fechado'),
+        implantado: byStatus('implantado'),
+        perdida: byStatus('perdida'),
         receita: totalReceita,
         kwp: totalKwp,
+        valorFechados: fechados.reduce((s, q) => s + (q.total_final || 0), 0),
+        kwpFechados: fechados.reduce((s, q) => s + (parseFloat(q.kwp) || 0), 0),
+        valorPerdidos: perdidos.reduce((s, q) => s + (q.total_final || 0), 0),
         clientesAtivos: activeRes.count || 0,
         clientesPendentes: pendingRes.count || 0,
       })
@@ -1271,24 +1381,31 @@ function DashboardPanel({ onGoToTab }) {
   )
 
   const statCards = [
-    { label: 'Total de cotações', value: stats.total, icon: FileText, color: 'blue',   sub: `${stats.kwp.toFixed(1)} kWp total` },
-    { label: 'Valor em cotações', value: fmt(stats.receita), icon: DollarSign, color: 'green', sub: 'soma dos totais' },
-    { label: 'Descontos pendentes', value: stats.aguardando, icon: BadgePercent, color: 'yellow', sub: 'aguardando resposta', onClick: () => onGoToTab('cotacoes') },
-    { label: 'Clientes ativos', value: stats.clientesAtivos, icon: Users, color: 'indigo', sub: `${stats.clientesPendentes} aguardando aprovação`, onClick: stats.clientesPendentes > 0 ? () => onGoToTab('usuarios') : undefined },
+    { label: 'Total de cotações',    value: stats.total,                icon: FileText,    color: 'blue',   sub: `${stats.kwp.toFixed(1)} kWp total` },
+    { label: 'Valor em cotações',    value: fmt(stats.receita),         icon: DollarSign,  color: 'green',  sub: 'soma dos totais' },
+    { label: 'Descontos pendentes',  value: stats.aguardando,           icon: BadgePercent,color: 'yellow', sub: 'aguardando resposta', onClick: () => onGoToTab('cotacoes') },
+    { label: 'Clientes ativos',      value: stats.clientesAtivos,       icon: Users,       color: 'indigo', sub: `${stats.clientesPendentes} aguardando aprovação`, onClick: stats.clientesPendentes > 0 ? () => onGoToTab('usuarios') : undefined },
+    { label: 'Kits Fechados',        value: stats.fechado + stats.implantado, icon: Package, color: 'orange', sub: `${fmt(stats.valorFechados)} · ${stats.kwpFechados.toFixed(1)} kWp`, onClick: () => onGoToTab('kits_fechados') },
+    { label: 'Kits Perdidos',        value: stats.perdida,              icon: XCircle,     color: 'red',    sub: fmt(stats.valorPerdidos), onClick: stats.perdida > 0 ? () => onGoToTab('kits_fechados') : undefined },
   ]
 
   const colorMap = {
-    blue:   { card: 'bg-blue-50 border-blue-200',  icon: 'bg-weg-blue text-white',   val: 'text-weg-blue' },
-    green:  { card: 'bg-green-50 border-green-200', icon: 'bg-green-600 text-white',  val: 'text-green-700' },
-    yellow: { card: 'bg-yellow-50 border-yellow-200', icon: 'bg-yellow-500 text-white', val: 'text-yellow-700' },
-    indigo: { card: 'bg-indigo-50 border-indigo-200', icon: 'bg-indigo-600 text-white', val: 'text-indigo-700' },
+    blue:   { card: 'bg-blue-50 border-blue-200',     icon: 'bg-weg-blue text-white',    val: 'text-weg-blue' },
+    green:  { card: 'bg-green-50 border-green-200',   icon: 'bg-green-600 text-white',   val: 'text-green-700' },
+    yellow: { card: 'bg-yellow-50 border-yellow-200', icon: 'bg-yellow-500 text-white',  val: 'text-yellow-700' },
+    indigo: { card: 'bg-indigo-50 border-indigo-200', icon: 'bg-indigo-600 text-white',  val: 'text-indigo-700' },
+    orange: { card: 'bg-orange-50 border-orange-200', icon: 'bg-orange-500 text-white',  val: 'text-orange-600' },
+    red:    { card: 'bg-red-50 border-red-200',       icon: 'bg-red-500 text-white',     val: 'text-red-600' },
   }
 
   const STATUS_META = {
-    rascunho:            { label: 'Rascunhos',           cls: 'bg-gray-200',   text: 'text-gray-600', count: stats.rascunho },
-    aguardando_desconto: { label: 'Aguardando desconto', cls: 'bg-yellow-400', text: 'text-yellow-700', count: stats.aguardando },
-    aprovada:            { label: 'Desconto aprovado',   cls: 'bg-green-500',  text: 'text-green-700', count: stats.aprovada },
-    recusada:            { label: 'Recusado',            cls: 'bg-red-400',    text: 'text-red-600',  count: stats.recusada },
+    rascunho:            { label: 'Rascunhos',              cls: 'bg-gray-200',    text: 'text-gray-600',   count: stats.rascunho },
+    aguardando_desconto: { label: 'Aguardando desconto',    cls: 'bg-yellow-400',  text: 'text-yellow-700', count: stats.aguardando },
+    aprovada:            { label: 'Desconto aprovado',      cls: 'bg-green-500',   text: 'text-green-700',  count: stats.aprovada },
+    recusada:            { label: 'Recusado',               cls: 'bg-red-400',     text: 'text-red-600',    count: stats.recusada },
+    fechado:             { label: 'Kits fechados',          cls: 'bg-orange-400',  text: 'text-orange-600', count: stats.fechado },
+    implantado:          { label: 'Implantados',            cls: 'bg-emerald-500', text: 'text-emerald-700',count: stats.implantado },
+    perdida:             { label: 'Propostas perdidas',     cls: 'bg-red-300',     text: 'text-red-500',    count: stats.perdida },
   }
 
   return (
@@ -1299,7 +1416,7 @@ function DashboardPanel({ onGoToTab }) {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {statCards.map(c => {
           const cm = colorMap[c.color]
           const Icon = c.icon
@@ -1551,17 +1668,29 @@ function QuoteManagement() {
   const STATUS_COLOR = {
     rascunho:             'bg-gray-100 text-gray-600',
     enviada:              'bg-blue-100 text-blue-700',
+    em_analise:           'bg-blue-100 text-blue-700',
     aguardando_desconto:  'bg-yellow-100 text-yellow-700',
     aprovada:             'bg-green-100 text-green-700',
     recusada:             'bg-red-100 text-red-700',
+    fechado:              'bg-orange-100 text-orange-700',
+    implantado:           'bg-emerald-100 text-emerald-700',
+    perdida:              'bg-red-100 text-red-600',
   }
   const STATUS_LABEL = {
-    rascunho: 'Rascunho', enviada: 'Enviada',
+    rascunho: 'Rascunho', enviada: 'Em análise', em_analise: 'Em análise',
     aguardando_desconto: 'Aguardando desconto',
     aprovada: 'Aprovada', recusada: 'Recusada',
+    fechado: 'Aguard. Implantação', implantado: 'Implantado', perdida: 'Perdida',
+  }
+
+  const [confirmingImplantId, setConfirmingImplantId] = useState(null)
+  const handleConfirmImplantacao = async (quoteId) => {
+    await updateQuote(quoteId, { status: 'implantado' })
+    setConfirmingImplantId(null)
   }
 
   const pendingDiscount = quotes.filter(q => q.status === 'aguardando_desconto')
+  const pendingImplant  = quotes.filter(q => q.status === 'fechado')
   const filtered = filter === 'all' ? quotes : quotes.filter(q => q.status === filter)
 
   if (loading) return (
@@ -1570,8 +1699,135 @@ function QuoteManagement() {
     </div>
   )
 
+  const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  // ── Card de kit aguardando implantação ──
+  const ImplantCard = ({ q }) => {
+    const [confirming, setConfirming] = useState(false)
+    const [confirmingPerdida, setConfirmingPerdida] = useState(false)
+    const [busy, setBusy] = useState(false)
+    const kd = q.data || {}
+
+    const doImplantar = async () => {
+      setBusy(true)
+      await updateQuote(q.id, { status: 'implantado' })
+      setBusy(false)
+      setConfirming(false)
+    }
+
+    const doPerdida = async () => {
+      setBusy(true)
+      await updateQuote(q.id, { status: 'perdida' })
+      setBusy(false)
+      setConfirmingPerdida(false)
+    }
+
+    return (
+      <div className="bg-white rounded-2xl border-2 border-orange-200 shadow-sm p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {kd.numero_orcamento && (
+                <span className="text-xs font-mono font-bold text-weg-blue bg-weg-blue/10 px-2 py-0.5 rounded-full">
+                  {kd.numero_orcamento}{(kd.revisao || 0) > 0 ? ` · Rev.${kd.revisao}` : ''}
+                </span>
+              )}
+              <span className="text-xs bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Package size={10} /> Aguard. Implantação
+              </span>
+            </div>
+            <p className="font-bold text-gray-900 mt-1">{q.nome_projeto || `Kit ${q.kwp} kWp`}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="font-bold text-lg text-gray-900">{fmt(q.total_final)}</p>
+            <p className="text-xs text-gray-400">{q.kwp} kWp</p>
+          </div>
+        </div>
+
+        {/* Client info */}
+        <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-600 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Users size={12} className="text-gray-400 shrink-0" />
+            <span className="font-semibold">{q.profiles?.nome || '—'}</span>
+            {q.profiles?.empresa && <span className="text-gray-400">— {q.profiles.empresa}</span>}
+          </div>
+          {q.profiles?.telefone && (
+            <div className="flex items-center gap-2">
+              <Phone size={12} className="text-gray-400 shrink-0" />
+              <span>{q.profiles.telefone}</span>
+            </div>
+          )}
+          {q.profiles?.cnpj && (
+            <div className="flex items-center gap-2">
+              <FileText size={12} className="text-gray-400 shrink-0" />
+              <span className="font-mono">{q.profiles.cnpj}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <CalendarDays size={12} className="text-gray-400 shrink-0" />
+            <span>Fechado em {new Date(q.created_at).toLocaleDateString('pt-BR')}</span>
+          </div>
+          {q.frete_nome && (
+            <div className="flex items-center gap-2">
+              <Truck size={12} className="text-gray-400 shrink-0" />
+              <span className="truncate">{q.frete_nome}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Kit items summary */}
+        {kd.panel && (
+          <div className="text-xs text-gray-500 space-y-0.5 border-t border-gray-100 pt-3">
+            <p>☀️ <strong>{kd.panelQty}×</strong> {kd.panel.modelo || kd.panel.nome}</p>
+            {kd.inverter && <p>⚡ <strong>{kd.inverterQty || 1}×</strong> {kd.inverter.modelo || kd.inverter.nome}</p>}
+            {Array.isArray(kd.inverters) && kd.inverters.map((i, idx) => (
+              <p key={idx}>⚡ <strong>{i.qty}×</strong> {i.inverter?.modelo || i.inverter?.nome}</p>
+            ))}
+          </div>
+        )}
+
+        {/* Actions */}
+        {confirming ? (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm">
+            <p className="font-semibold text-emerald-800 mb-2">Confirmar implantação do kit?</p>
+            <div className="flex gap-2">
+              <button onClick={doImplantar} disabled={busy}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
+                {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Sim, confirmar</>}
+              </button>
+              <button onClick={() => setConfirming(false)} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+            </div>
+          </div>
+        ) : confirmingPerdida ? (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm">
+            <p className="font-semibold text-red-700 mb-2">Marcar como proposta perdida?</p>
+            <div className="flex gap-2">
+              <button onClick={doPerdida} disabled={busy}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
+                {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><XCircle size={14} /> Sim, marcar perdida</>}
+              </button>
+              <button onClick={() => setConfirmingPerdida(false)} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={() => setConfirming(true)}
+              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+              <CheckCircle2 size={16} /> Confirmar implantação
+            </button>
+            <button onClick={() => setConfirmingPerdida(true)}
+              className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
+              <XCircle size={15} />
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
           <LayoutList size={20} className="text-weg-blue" /> Cotações & Descontos
@@ -1583,8 +1839,11 @@ function QuoteManagement() {
             className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
           >
             <option value="aguardando_desconto">Descontos pendentes ({pendingDiscount.length})</option>
+            <option value="fechado">Aguardando implantação ({pendingImplant.length})</option>
             <option value="all">Todas ({quotes.length})</option>
             <option value="aprovada">Aprovadas</option>
+            <option value="implantado">Implantadas</option>
+            <option value="perdida">Perdidas</option>
             <option value="rascunho">Rascunhos</option>
           </select>
           <button onClick={fetchQuotes} className="flex items-center gap-1 text-sm text-gray-500 hover:text-weg-blue">
@@ -1593,15 +1852,31 @@ function QuoteManagement() {
         </div>
       </div>
 
+      {/* ── Kits aguardando implantação — cards proeminentes ── */}
+      {pendingImplant.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+              <Package size={15} className="text-orange-500" /> Kits para Implantação
+            </h4>
+            <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
+              {pendingImplant.length}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {pendingImplant.map(q => <ImplantCard key={q.id} q={q} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Descontos pendentes — banner */}
       {pendingDiscount.length > 0 && filter !== 'aguardando_desconto' && (
         <div
           className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex items-center gap-2 text-sm text-yellow-800 cursor-pointer hover:bg-yellow-100"
           onClick={() => setFilter('aguardando_desconto')}
         >
           <BadgePercent size={16} />
-          <span>
-            <strong>{pendingDiscount.length}</strong> solicitaç{pendingDiscount.length > 1 ? 'ões' : 'ão'} de desconto aguardando resposta
-          </span>
+          <span><strong>{pendingDiscount.length}</strong> solicitaç{pendingDiscount.length > 1 ? 'ões' : 'ão'} de desconto aguardando resposta</span>
           <span className="ml-auto text-yellow-600 underline text-xs">Ver agora</span>
         </div>
       )}
@@ -1615,13 +1890,23 @@ function QuoteManagement() {
           <div key={q.id} className="border-b border-gray-100 last:border-0">
             <div className="px-4 py-3 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  {q.data?.numero_orcamento && (
+                    <span className="text-xs font-bold text-weg-blue bg-weg-blue/10 px-2 py-0.5 rounded-full font-mono">
+                      {q.data.numero_orcamento}
+                    </span>
+                  )}
                   <span className="font-semibold text-gray-900 text-sm">
                     {q.nome_projeto || `Kit ${q.kwp} kWp`}
                   </span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[q.status]}`}>
                     {STATUS_LABEL[q.status] || q.status}
                   </span>
+                  {(q.data?.revisao || 0) > 0 && (
+                    <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                      Rev. {q.data.revisao}
+                    </span>
+                  )}
                 </div>
                 {/* Dados de contato do cliente */}
                 <div className="space-y-0.5">
@@ -1739,6 +2024,41 @@ function QuoteManagement() {
               </div>
             )}
 
+            {/* Confirmar implantação */}
+            {q.status === 'fechado' && (
+              <div className="px-4 pb-4 bg-orange-50 border-t border-orange-100">
+                <p className="text-xs text-orange-800 my-2 font-semibold">
+                  ⚡ Cliente solicitou implantação deste kit.
+                </p>
+                {confirmingImplantId === q.id ? (
+                  <div className="flex gap-2 items-center">
+                    <span className="text-xs text-gray-700">Confirmar implantação?</span>
+                    <button
+                      onClick={() => handleConfirmImplantacao(q.id)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                    >
+                      <Check size={12} /> Confirmar
+                    </button>
+                    <button onClick={() => setConfirmingImplantId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5">Cancelar</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingImplantId(q.id)}
+                    className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                  >
+                    <CheckCircle2 size={12} /> Confirmar implantação
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Kit implantado */}
+            {q.status === 'implantado' && (
+              <div className="px-4 py-2 border-t border-emerald-100 bg-emerald-50 text-xs text-emerald-800 font-semibold flex items-center gap-1.5">
+                <CheckCircle2 size={13} /> Implantação confirmada pelo administrador.
+              </div>
+            )}
+
             {/* Resposta do admin já enviada */}
             {q.desconto_resposta && q.status !== 'aguardando_desconto' && (
               <div className={`px-4 py-2 border-t text-xs ${
@@ -1819,7 +2139,7 @@ function NotificationSettings() {
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Seu número (com DDI)</label>
             <input type="tel" value={s.adminPhone || ''} onChange={set('adminPhone')}
-              placeholder="+5548999999999"
+              placeholder="5599988230393"
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue" />
           </div>
           <div>
@@ -1926,9 +2246,305 @@ function NotificationSettings() {
   )
 }
 
+// ─── Kits Fechados Panel ──────────────────────────────────────────────────────
+function KitsFechadosPanel({ onBadgeChange }) {
+  const [quotes, setQuotes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [acting, setActing] = useState({})
+  const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const fmtDt = d => d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+
+  const fetchQuotes = async (silent = false) => {
+    if (!silent) setLoading(true)
+    const { data } = await supabaseAdmin
+      .from('quotes')
+      .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
+      .in('status', ['fechado', 'implantado', 'perdida'])
+      .order('created_at', { ascending: false })
+    const list = data || []
+    setQuotes(list)
+    const pendCount = list.filter(q => q.status === 'fechado').length
+    onBadgeChange?.(pendCount)
+    if (!silent) setLoading(false)
+  }
+
+  useEffect(() => {
+    fetchQuotes()
+    // Polling a cada 30s para capturar novos kits fechados por clientes
+    const id = setInterval(() => fetchQuotes(true), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const updateStatus = async (id, status, ovNumero = null) => {
+    setActing(a => ({ ...a, [id]: status }))
+    const patch = { status }
+    if (ovNumero) {
+      const q = quotes.find(q => q.id === id)
+      patch.data = { ...(q?.data || {}), ov_numero: ovNumero }
+    }
+    await supabaseAdmin.from('quotes').update(patch).eq('id', id)
+    setQuotes(qs => {
+      const updated = qs.map(q => q.id === id
+        ? { ...q, status, data: ovNumero ? { ...(q.data || {}), ov_numero: ovNumero } : q.data }
+        : q)
+      onBadgeChange?.(updated.filter(q => q.status === 'fechado').length)
+      return updated
+    })
+    setActing(a => ({ ...a, [id]: null }))
+  }
+
+  const pending   = quotes.filter(q => q.status === 'fechado')
+  const implanted = quotes.filter(q => q.status === 'implantado')
+  const lost      = quotes.filter(q => q.status === 'perdida')
+
+  const KitCard = ({ q }) => {
+    const kd = q.data || {}
+    const [confirmMode, setConfirmMode] = useState(null) // 'implantar' | 'perdida'
+    const [ovNumber, setOvNumber] = useState('')
+    const busy = acting[q.id]
+    const isImpl = q.status === 'implantado'
+    const isPerd = q.status === 'perdida'
+
+    return (
+      <div className={`bg-white rounded-2xl border-2 shadow-sm p-5 space-y-4 ${
+        isImpl ? 'border-emerald-200' : isPerd ? 'border-red-200' : 'border-orange-200'
+      }`}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+              {kd.numero_orcamento && (
+                <span className="font-mono font-bold text-xs text-weg-blue bg-weg-blue/10 px-2 py-0.5 rounded-full">
+                  {kd.numero_orcamento}{(kd.revisao || 0) > 0 ? ` · Rev.${kd.revisao}` : ''}
+                </span>
+              )}
+              {isImpl && (
+                <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <CheckCircle2 size={10} /> Implantado
+                </span>
+              )}
+              {isPerd && (
+                <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <XCircle size={10} /> Perdida
+                </span>
+              )}
+              {!isImpl && !isPerd && (
+                <span className="text-xs bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                  <Package size={10} /> Aguard. Confirmação
+                </span>
+              )}
+            </div>
+            <p className="font-bold text-gray-900">{q.nome_projeto || `Kit ${q.kwp} kWp`}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="font-bold text-xl text-gray-900">{fmt(q.total_final)}</p>
+            <p className="text-xs text-gray-400">{q.kwp} kWp</p>
+          </div>
+        </div>
+
+        {/* Client info */}
+        <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-xs text-gray-600">
+          <div className="flex items-center gap-2">
+            <Users size={12} className="text-gray-400 shrink-0" />
+            <span className="font-semibold">{q.profiles?.nome || '—'}</span>
+            {q.profiles?.empresa && <span className="text-gray-400">— {q.profiles.empresa}</span>}
+          </div>
+          {q.profiles?.telefone && (
+            <div className="flex items-center gap-2">
+              <Phone size={12} className="text-gray-400 shrink-0" />
+              <span>{q.profiles.telefone}</span>
+            </div>
+          )}
+          {q.profiles?.cnpj && (
+            <div className="flex items-center gap-2">
+              <FileText size={12} className="text-gray-400 shrink-0" />
+              <span className="font-mono">{q.profiles.cnpj}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <CalendarDays size={12} className="text-gray-400 shrink-0" />
+            <span>{fmtDt(q.created_at)}</span>
+          </div>
+          {q.frete_nome && (
+            <div className="flex items-center gap-2">
+              <Truck size={12} className="text-gray-400 shrink-0" />
+              <span className="truncate">{q.frete_nome}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Kit summary */}
+        {kd.panel && (
+          <div className="text-xs text-gray-500 space-y-0.5 border-t border-gray-100 pt-3">
+            <p>☀️ <strong>{kd.panelQty}×</strong> {kd.panel.modelo || kd.panel.nome}</p>
+            {kd.inverter && <p>⚡ <strong>{kd.inverterQty || 1}×</strong> {kd.inverter.modelo || kd.inverter.nome}</p>}
+            {Array.isArray(kd.inverters) && kd.inverters.map((i, idx) => (
+              <p key={idx}>⚡ <strong>{i.qty}×</strong> {i.inverter?.modelo || i.inverter?.nome}</p>
+            ))}
+            {kd.estruturaRoofType && <p>🏗️ {kd.estruturaRoofType}</p>}
+          </div>
+        )}
+
+        {/* Actions — only for pending */}
+        {!isImpl && !isPerd && (
+          confirmMode === 'implantar' ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-800">Confirmar implantação</p>
+              <div>
+                <label className="block text-xs font-medium text-emerald-700 mb-1">
+                  Número da OV <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={ovNumber}
+                  onChange={e => setOvNumber(e.target.value)}
+                  placeholder="Ex: OV-2026-001"
+                  autoFocus
+                  className="w-full text-sm border-2 border-emerald-300 focus:border-emerald-500 rounded-lg px-3 py-2 focus:outline-none bg-white font-mono"
+                />
+                {ovNumber.trim() === '' && (
+                  <p className="text-xs text-red-500 mt-1">Informe o número da OV para confirmar</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => ovNumber.trim() && updateStatus(q.id, 'implantado', ovNumber.trim())}
+                  disabled={!!busy || ovNumber.trim() === ''}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Confirmar implantação</>}
+                </button>
+                <button onClick={() => { setConfirmMode(null); setOvNumber('') }} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+              </div>
+            </div>
+          ) : confirmMode === 'perdida' ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-sm font-semibold text-red-700 mb-2">Marcar como proposta perdida?</p>
+              <div className="flex gap-2">
+                <button onClick={() => updateStatus(q.id, 'perdida')} disabled={!!busy}
+                  className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><XCircle size={14} /> Sim, perdida</>}
+                </button>
+                <button onClick={() => setConfirmMode(null)} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmMode('implantar')}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                <CheckCircle2 size={16} /> Confirmar implantação
+              </button>
+              <button onClick={() => setConfirmMode('perdida')}
+                className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
+                <XCircle size={15} /> Perdida
+              </button>
+            </div>
+          )
+        )}
+
+        {isImpl && (
+          <div className="bg-emerald-50 rounded-xl px-3 py-2 space-y-0.5">
+            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
+              <CheckCircle2 size={13} /> Implantação confirmada
+            </div>
+            {kd.ov_numero && (
+              <p className="text-xs text-emerald-600 font-mono pl-5">OV: <strong>{kd.ov_numero}</strong></p>
+            )}
+          </div>
+        )}
+        {isPerd && (
+          <div className="flex items-center gap-2 text-xs font-semibold text-red-600 bg-red-50 rounded-xl px-3 py-2">
+            <XCircle size={13} /> Proposta marcada como perdida
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-24">
+      <div className="w-8 h-8 border-4 border-weg-blue border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+            <CheckCircle2 size={20} className="text-emerald-500" /> Kits Fechados
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {pending.length} aguardando confirmação · {implanted.length} implantados · {lost.length} perdidos
+          </p>
+        </div>
+        <button onClick={fetchQuotes} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue px-3 py-2 rounded-lg hover:bg-gray-100">
+          <RefreshCw size={14} /> Atualizar
+        </button>
+      </div>
+
+      {/* Awaiting implantation */}
+      <section>
+        <div className="flex items-center gap-2 mb-3">
+          <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+            <Package size={15} className="text-orange-500" /> Aguardando Confirmação
+          </h4>
+          {pending.length > 0 && (
+            <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">{pending.length}</span>
+          )}
+        </div>
+        {pending.length === 0 ? (
+          <div className="bg-green-50 border border-green-200 rounded-2xl py-10 text-center">
+            <CheckCircle2 size={32} className="text-green-400 mx-auto mb-2" />
+            <p className="text-green-700 font-semibold text-sm">Nenhum kit aguardando confirmação</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {pending.map(q => <KitCard key={q.id} q={q} />)}
+          </div>
+        )}
+      </section>
+
+      {/* Implanted */}
+      {implanted.length > 0 && (
+        <section>
+          <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5 mb-3">
+            <CheckCircle2 size={15} className="text-emerald-500" /> Implantados
+            <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">{implanted.length}</span>
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {implanted.map(q => <KitCard key={q.id} q={q} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Lost */}
+      {lost.length > 0 && (
+        <section>
+          <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5 mb-3">
+            <XCircle size={15} className="text-red-500" /> Propostas Perdidas
+            <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">{lost.length}</span>
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {lost.map(q => <KitCard key={q.id} q={q} />)}
+          </div>
+        </section>
+      )}
+
+      {quotes.length === 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
+          <Package size={48} className="text-gray-200 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-500 mb-2">Nenhum kit fechado ainda</h3>
+          <p className="text-sm text-gray-400">Quando clientes fecharem kits, eles aparecerão aqui para confirmação.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Admin Dashboard (rendered only when authenticated) ───────────────────────
 function AdminDashboard() {
-  const { products, tableInfo, saveProducts, saveTableInfo, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices } = useProducts()
+  const { products, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices } = useProducts()
   const { profile, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [search, setSearch] = useState('')
@@ -1942,10 +2558,9 @@ function AdminDashboard() {
     const { products: imported, tableName } = parsed
 
     if (mode === 'full') {
-      // Replace everything
       saveProducts(imported)
     } else {
-      // 'prices' mode: update prices by SAP code, add new products
+      // Atualiza preços por código SAP e adiciona produtos novos
       const bySAP = {}
       products.forEach(p => { bySAP[p.codigo] = p })
       const merged = [...products]
@@ -1953,13 +2568,11 @@ function AdminDashboard() {
 
       imported.forEach(imp => {
         if (bySAP[imp.codigo]) {
-          // Update price (and frete) on existing product
           const idx = merged.findIndex(p => p.codigo === imp.codigo)
           if (idx >= 0) {
             merged[idx] = { ...merged[idx], preco: imp.preco, precoFrete: imp.precoFrete }
           }
         } else if (!seen.has(imp.codigo)) {
-          // New product — add it
           merged.push(imp)
           seen.add(imp.codigo)
         }
@@ -1967,7 +2580,10 @@ function AdminDashboard() {
       saveProducts(merged)
     }
 
-    // Update table info if name was detected
+    // ── Salva whitelist com os SAP codes da lista importada ──
+    // O catálogo e kit builder mostrarão apenas esses produtos
+    setActiveListCodes(imported.map(p => p.codigo))
+
     if (tableName) {
       saveTableInfo({ ...tableInfo, nome: tableName })
     }
@@ -2052,16 +2668,25 @@ function AdminDashboard() {
 
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [pendingDiscounts, setPendingDiscounts] = useState(0)
-  const [pendingUsers, setPendingUsers] = useState(0)
+  const [pendingImplants, setPendingImplants]   = useState(0)
+  const [pendingUsers, setPendingUsers]         = useState(0)
 
-  // Carrega badges de notificação
-  useEffect(() => {
+  // Carrega e atualiza badges de notificação
+  const refreshBadges = () => {
     supabaseAdmin.from('quotes').select('id', { count: 'exact', head: true })
       .eq('status', 'aguardando_desconto')
       .then(({ count }) => setPendingDiscounts(count || 0))
+    supabaseAdmin.from('quotes').select('id', { count: 'exact', head: true })
+      .eq('status', 'fechado')
+      .then(({ count }) => setPendingImplants(count || 0))
     supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true })
       .eq('status', 'pendente')
       .then(({ count }) => setPendingUsers(count || 0))
+  }
+  useEffect(() => {
+    refreshBadges()
+    const id = setInterval(refreshBadges, 30_000)
+    return () => clearInterval(id)
   }, [activeTab])
 
   const totalValue = filtered.reduce((sum, p) => sum + (p.preco || 0), 0)
@@ -2071,6 +2696,7 @@ function AdminDashboard() {
     { key: 'produtos',       icon: Package,    label: 'Produtos',       badge: 0 },
     { key: 'usuarios',       icon: Users,      label: 'Usuários',       badge: pendingUsers },
     { key: 'cotacoes',       icon: LayoutList, label: 'Cotações',       badge: pendingDiscounts },
+    { key: 'kits_fechados',  icon: CheckCircle2, label: 'Kits Fechados', badge: pendingImplants },
     { key: 'notificacoes',   icon: Bell,       label: 'Notificações',   badge: 0 },
   ]
 
@@ -2119,6 +2745,9 @@ function AdminDashboard() {
       {/* Tab: Cotações */}
       {activeTab === 'cotacoes' && <QuoteManagement />}
 
+      {/* Tab: Kits Fechados */}
+      {activeTab === 'kits_fechados' && <KitsFechadosPanel onBadgeChange={setPendingImplants} />}
+
       {/* Tab: Notificações */}
       {activeTab === 'notificacoes' && <NotificationSettings />}
 
@@ -2153,6 +2782,28 @@ function AdminDashboard() {
             <option value="Todos">Todas as categorias</option>
             {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+
+          {/* Indicador de produtos ativos vs total */}
+          {activeListCodes && activeListCodes.size > 0 && (() => {
+            const ativos = products.filter(p => activeListCodes.has(p.codigo)).length
+            const total  = products.length
+            return (
+              <div className="flex items-center gap-2 text-xs bg-blue-50 border border-weg-blue/20 rounded-lg px-3 py-2">
+                <span className="font-bold text-weg-blue">{ativos}</span>
+                <span className="text-gray-500">na lista atual</span>
+                {total - ativos > 0 && (
+                  <span className="text-gray-400">({total - ativos} ocultos)</span>
+                )}
+                <button
+                  onClick={clearActiveList}
+                  className="ml-1 text-gray-400 hover:text-red-500 underline text-xs"
+                  title="Remover filtro — mostrar todos os produtos"
+                >
+                  remover filtro
+                </button>
+              </div>
+            )
+          })()}
 
           <div className="flex items-center gap-2 ml-auto flex-wrap">
             <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-1.5 text-sm px-4 py-2">
