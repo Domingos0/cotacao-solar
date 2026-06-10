@@ -271,110 +271,45 @@ function StepKitType({ data, onChange }) {
   )
 }
 
-// ─── Step 2: Dimensionamento ─────────────────────────────────────────────────
+// ─── Step 2: Dimensionamento (somente kWp) ───────────────────────────────────
 function Step1({ data, onChange }) {
-  const mode = data.mode || 'consumo'
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-1">Qual é o consumo da sua instalação?</h2>
-        <p className="text-gray-500 text-sm">Informe o consumo diário ou a potência desejada do sistema</p>
-      </div>
-
-      <div className="flex gap-3 justify-center">
-        {['consumo', 'potencia'].map(m => (
-          <button
-            key={m}
-            onClick={() => onChange({ ...data, mode: m })}
-            className={`px-5 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
-              mode === m ? 'border-weg-blue bg-weg-blue text-white' : 'border-gray-200 text-gray-600 hover:border-weg-blue'
-            }`}
-          >
-            {m === 'consumo' ? '⚡ Consumo diário (kWh/dia)' : '☀️ Potência do sistema (kWp)'}
-          </button>
-        ))}
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">Qual a potência desejada do sistema?</h2>
+        <p className="text-gray-500 text-sm">Informe a potência pico em kWp para dimensionar o kit</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md mx-auto">
-        {mode === 'consumo' ? (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Consumo diário médio (kWh/dia)
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  min="1"
-                  step="0.5"
-                  value={data.consumoDiario || ''}
-                  onChange={e => onChange({ ...data, consumoDiario: parseFloat(e.target.value) || '' })}
-                  placeholder="Ex: 20"
-                  className="flex-1 text-2xl font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-weg-blue text-center"
-                />
-                <span className="text-gray-500 font-medium">kWh/dia</span>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
-                Divida a conta de energia pelo número de dias do mês
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            ☀️ Potência pico do sistema (kWp)
+          </label>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min="0.5"
+              step="0.5"
+              value={data.kwpDesejado || ''}
+              onChange={e => onChange({ ...data, kwpDesejado: parseFloat(e.target.value) || '', mode: 'potencia' })}
+              placeholder="Ex: 5"
+              className="flex-1 text-2xl font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-weg-blue text-center"
+            />
+            <span className="text-gray-500 font-medium">kWp</span>
+          </div>
+
+          {data.kwpDesejado > 0 && (
+            <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 mt-4">
+              <p className="text-xs text-gray-500 mb-1">Geração estimada:</p>
+              <p className="text-2xl font-extrabold text-weg-blue">
+                {(data.kwpDesejado * (data.hsp || SUN_HOURS) * 30).toFixed(0)} kWh/mês
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                ({data.hsp || SUN_HOURS}h de sol pico/dia × 30 dias)
               </p>
             </div>
-
-            {data.consumoDiario > 0 && (
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                <p className="text-xs text-gray-500 mb-1">Potência estimada necessária:</p>
-                <p className="text-2xl font-extrabold text-weg-blue">
-                  {((data.consumoDiario / SUN_HOURS) * 1.2).toFixed(2)} kWp
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  ({SUN_HOURS}h de sol pico/dia × fator 1,2 de segurança)
-                </p>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Horas de sol pico (HSP)
-              </label>
-              <input
-                type="number"
-                min="2"
-                max="7"
-                step="0.1"
-                value={data.hsp || SUN_HOURS}
-                onChange={e => onChange({ ...data, hsp: parseFloat(e.target.value) || SUN_HOURS })}
-                className="w-28 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
-              />
-              <span className="text-xs text-gray-400 ml-2">(padrão Brasil: {SUN_HOURS}h)</span>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Potência pico do sistema (kWp)
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min="0.5"
-                step="0.5"
-                value={data.kwpDesejado || ''}
-                onChange={e => onChange({ ...data, kwpDesejado: parseFloat(e.target.value) || '' })}
-                placeholder="Ex: 5"
-                className="flex-1 text-2xl font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-weg-blue text-center"
-              />
-              <span className="text-gray-500 font-medium">kWp</span>
-            </div>
-
-            {data.kwpDesejado > 0 && (
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 mt-4">
-                <p className="text-xs text-gray-500 mb-1">Geração estimada:</p>
-                <p className="text-2xl font-extrabold text-weg-blue">
-                  {(data.kwpDesejado * (data.hsp || SUN_HOURS) * 30).toFixed(0)} kWh/mês
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Client info */}
         <div className="border-t border-gray-100 mt-6 pt-5">
@@ -401,13 +336,39 @@ function Step1({ data, onChange }) {
   )
 }
 
+// Detecta painel de CD Nordeste pelo nome
+function isNordestePanel(panel) {
+  if (!panel?.nome) return false
+  return /(nordeste|cd\s*ne\b)/i.test(panel.nome)
+}
+
 // ─── Step 2: Módulos ─────────────────────────────────────────────────────────
 function Step2({ data, onChange, products, targetKwp }) {
+  const { freteOpcoes } = useProducts()
+  const [nordesteWarning, setNordesteWarning] = useState(null) // { panel, qty }
+
   const panels = products.filter(p => p.kitRole === KIT_ROLE.PANEL && p.preco)
+
+  const nordesteFreteId = freteOpcoes.find(f => /nordeste/i.test(f.nome))?.id
+
+  const confirmSelectPanel = (panel, qty, freteAutoId) => {
+    onChange({ ...data, panel, panelQty: qty, freteAutoId })
+    setNordesteWarning(null)
+  }
 
   const selectPanel = (panel) => {
     const qty = Math.ceil((targetKwp * 1000) / panel.potencia)
-    onChange({ ...data, panel, panelQty: qty })
+    const wasNordeste = isNordestePanel(data.panel)
+    const willBeNordeste = isNordestePanel(panel)
+
+    // Switching FROM nordeste TO non-nordeste → ask for confirmation
+    if (wasNordeste && !willBeNordeste) {
+      setNordesteWarning({ panel, qty })
+      return
+    }
+
+    const freteAutoId = willBeNordeste ? nordesteFreteId : undefined
+    onChange({ ...data, panel, panelQty: qty, freteAutoId })
   }
 
   return (
@@ -418,6 +379,49 @@ function Step2({ data, onChange, products, targetKwp }) {
           Sistema alvo: <span className="font-bold text-weg-blue">{targetKwp.toFixed(2)} kWp</span>
         </p>
       </div>
+
+      {/* Aviso de frete auto-selecionado quando painel Nordeste */}
+      {isNordestePanel(data.panel) && (
+        <div className="max-w-3xl mx-auto bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-orange-800">
+          <AlertTriangle size={15} className="shrink-0 text-orange-500" />
+          <span>Painel <strong>CD Nordeste</strong> selecionado — o frete <strong>Nordeste</strong> foi pré-selecionado automaticamente no resumo.</span>
+        </div>
+      )}
+
+      {/* Modal de confirmação ao trocar painel nordeste por outro */}
+      {nordesteWarning && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-orange-500" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 mb-1">Atenção: frete CD Nordeste</h3>
+                <p className="text-sm text-gray-600">
+                  Você estava com um painel <strong>CD Nordeste</strong>. Ao trocar por{' '}
+                  <strong>{nordesteWarning.panel.nome}</strong>, a seleção automática de frete Nordeste será removida.
+                </p>
+                <p className="text-sm text-gray-500 mt-2">Deseja confirmar a troca?</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => confirmSelectPanel(nordesteWarning.panel, nordesteWarning.qty, undefined)}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl text-sm"
+              >
+                Confirmar troca
+              </button>
+              <button
+                onClick={() => setNordesteWarning(null)}
+                className="flex-1 border-2 border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl text-sm hover:border-gray-300"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {panels.map(panel => {
@@ -450,10 +454,15 @@ function Step2({ data, onChange, products, targetKwp }) {
               </div>
 
               <div className="p-4">
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex justify-between items-start mb-2 gap-1 flex-wrap">
                 <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
                   ☀️ {panel.fabricante}
                 </span>
+                {isNordestePanel(panel) && (
+                  <span className="text-xs font-semibold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">
+                    📦 CD Nordeste
+                  </span>
+                )}
               </div>
               <h3 className="font-bold text-gray-900 mb-1">{panel.nome}</h3>
               <p className="text-xs text-gray-400 font-mono mb-3">{panel.modelo}</p>
@@ -527,11 +536,9 @@ function Step3({ data, onChange, products, realKwp }) {
   const kitTypeCat = KIT_TYPE_TO_CAT[data.kitType]
   const kitTypeInfo = KIT_TYPES.find(k => k.key === data.kitType)
 
-  // Filtra APENAS a categoria do tipo de kit selecionado
   const allInverters = products.filter(p => {
     if (p.kitRole !== KIT_ROLE.INVERTER || !p.preco) return false
     if (kitTypeCat && p.categoria !== kitTypeCat) return false
-    // Para trifásico, filtra pela tensão escolhida (220 V ou 380 V)
     if (data.kitType === 'ongrid_tri' && data.tensaoRede) {
       const tipo = (p.tipo || '').toLowerCase()
       if (!tipo.includes(data.tensaoRede)) return false
@@ -540,18 +547,53 @@ function Step3({ data, onChange, products, realKwp }) {
   })
 
   const [showAll, setShowAll] = useState(false)
-
-  // Para bombeamento e microinversor não aplica filtro de potência (dimensionamento diferente)
   const usePowerFilter = data.kitType === 'ongrid_mono' || data.kitType === 'ongrid_tri'
-
   const suggested = usePowerFilter
     ? allInverters.filter(p => p.potencia >= realKwp * 0.8 && p.potencia <= realKwp * 1.5)
     : allInverters
-
   const displayList = showAll ? allInverters : (suggested.length > 0 ? suggested : allInverters)
+
+  // Mix mode: data.inverters is an array [{inverter, qty}]
+  const mixMode = Array.isArray(data.inverters)
+  const mixList = data.inverters || []
+  const combinedKw = mixList.reduce((s, i) => s + (i.inverter?.potencia || 0) * i.qty, 0)
+
+  const enterMixMode = () => {
+    const initial = data.inverter
+      ? [{ inverter: data.inverter, qty: data.inverterQty || 1 }]
+      : []
+    onChange({ ...data, inverters: initial, inverter: undefined, inverterQty: undefined })
+  }
+  const exitMixMode = () => {
+    const first = mixList[0]
+    onChange({ ...data, inverters: undefined, inverter: first?.inverter, inverterQty: first?.qty || 1 })
+  }
+
+  const getMixEntry = (invId) => mixList.find(i => i.inverter.id === invId)
+  const setMixQty = (inv, qty) => {
+    if (qty <= 0) {
+      onChange({ ...data, inverters: mixList.filter(i => i.inverter.id !== inv.id) })
+    } else {
+      const exists = mixList.some(i => i.inverter.id === inv.id)
+      onChange({
+        ...data,
+        inverters: exists
+          ? mixList.map(i => i.inverter.id === inv.id ? { ...i, qty } : i)
+          : [...mixList, { inverter: inv, qty }],
+      })
+    }
+  }
+
+  const catBadge = (inv) => {
+    if (inv.categoria === CATEGORIES.MICROINVERSORES) return { cls: 'bg-purple-100 text-purple-700', label: '🔌 Micro' }
+    if (inv.categoria === CATEGORIES.INVERSORES_MONO)  return { cls: 'bg-blue-100 text-blue-700',   label: '⚡ Mono'  }
+    if (inv.categoria === CATEGORIES.INVERSORES_BOMBEAMENTO) return { cls: 'bg-cyan-100 text-cyan-700', label: '💧 Bomb.' }
+    return { cls: 'bg-indigo-100 text-indigo-700', label: '⚡ Tri' }
+  }
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-1">Escolha o inversor</h2>
         <p className="text-gray-500 text-sm flex items-center justify-center gap-2 flex-wrap">
@@ -567,6 +609,34 @@ function Step3({ data, onChange, products, realKwp }) {
         </p>
       </div>
 
+      {/* Mode toggle */}
+      {data.kitType !== 'micro' && (
+        <div className="flex justify-center">
+          <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 gap-1">
+            <button
+              onClick={exitMixMode}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                !mixMode
+                  ? 'bg-white shadow-sm text-weg-blue border border-blue-200'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              ⚡ Inversor único
+            </button>
+            <button
+              onClick={enterMixMode}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                mixMode
+                  ? 'bg-white shadow-sm text-weg-blue border border-blue-200'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Plus size={14} /> Mesclar inversores
+            </button>
+          </div>
+        </div>
+      )}
+
       {usePowerFilter && suggested.length === 0 && !showAll && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800 flex items-start gap-2 max-w-xl mx-auto">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
@@ -574,90 +644,159 @@ function Step3({ data, onChange, products, realKwp }) {
         </div>
       )}
 
+      {/* Combined power bar (mix mode only) */}
+      {mixMode && (
+        <div className={`max-w-2xl mx-auto rounded-xl border-2 px-4 py-3 flex items-center justify-between gap-4 ${
+          mixList.length === 0
+            ? 'border-gray-200 bg-gray-50'
+            : combinedKw >= realKwp * 0.85
+            ? 'border-green-400 bg-green-50'
+            : 'border-amber-400 bg-amber-50'
+        }`}>
+          <div className="flex items-center gap-3">
+            <Zap size={18} className={mixList.length === 0 ? 'text-gray-400' : combinedKw >= realKwp * 0.85 ? 'text-green-600' : 'text-amber-600'} />
+            <div>
+              <p className="text-sm font-bold text-gray-800">
+                {mixList.length === 0 ? 'Nenhum inversor selecionado' : `Potência combinada: ${combinedKw.toFixed(1)} kW`}
+              </p>
+              {mixList.length > 0 && (
+                <p className="text-xs text-gray-500">
+                  {mixList.map(i => `${i.qty}× ${i.inverter.nome}`).join(' + ')}
+                </p>
+              )}
+            </div>
+          </div>
+          {mixList.length > 0 && (
+            <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 ${
+              combinedKw >= realKwp * 0.85 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              {combinedKw >= realKwp * 0.85 ? '✓ OK' : `falta ${(realKwp - combinedKw).toFixed(1)} kW`}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Inverter grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {displayList.map(inv => {
-          const selected = data.inverter?.id === inv.id
+          const badge = catBadge(inv)
           const ratio = inv.potencia / realKwp
 
+          // ── SINGLE MODE ──
+          if (!mixMode) {
+            const selected = data.inverter?.id === inv.id
+            return (
+              <button
+                key={inv.id}
+                onClick={() => onChange({ ...data, inverter: inv })}
+                className={`text-left rounded-xl border-2 overflow-hidden transition-all ${
+                  selected ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md'
+                }`}
+              >
+                <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
+                  <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
+                    className="w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105" />
+                  <div className="absolute top-2 left-2">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
+                  </div>
+                  {selected && (
+                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
+                      <Check size={13} className="text-white" />
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white/70 to-transparent" />
+                </div>
+                <div className="p-4">
+                  <h3 className="font-bold text-gray-900 text-sm mb-1">{inv.nome}</h3>
+                  <div className="space-y-1 text-sm mt-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Potência:</span>
+                      <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
+                    </div>
+                    {inv.tensao && <div className="flex justify-between"><span className="text-gray-500">Tensão CA:</span><span className="font-semibold">{inv.tensao} {inv.fase}</span></div>}
+                    {inv.entradas && <div className="flex justify-between"><span className="text-gray-500">Entradas MPPT:</span><span className="font-semibold">{inv.entradas}</span></div>}
+                    {inv.disjuntor && <div className="flex justify-between"><span className="text-gray-500">Disjuntor req.:</span><span className="font-mono text-xs font-semibold">{inv.disjuntor}</span></div>}
+                    <div className="border-t border-gray-100 pt-2 flex justify-between">
+                      <span className="text-gray-500">Preço:</span>
+                      <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
+                    </div>
+                  </div>
+                  <div className={`mt-3 text-[11px] font-medium px-2 py-1 rounded-full text-center ${
+                    ratio >= 0.9 && ratio <= 1.2 ? 'bg-green-100 text-green-700' :
+                    ratio >= 0.7 && ratio <= 1.5 ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {ratio >= 0.9 && ratio <= 1.2 ? '✓ Dimensionamento ideal' :
+                     ratio >= 0.7 && ratio <= 1.5 ? '~ Dimensionamento aceitável' :
+                     '⚠ Fora da faixa recomendada'}
+                  </div>
+                </div>
+              </button>
+            )
+          }
+
+          // ── MIX MODE ──
+          const entry = getMixEntry(inv.id)
+          const qty = entry?.qty || 0
+          const inMix = qty > 0
           return (
-            <button
+            <div
               key={inv.id}
-              onClick={() => onChange({ ...data, inverter: inv })}
-              className={`text-left rounded-xl border-2 overflow-hidden transition-all ${
-                selected ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md'
+              className={`rounded-xl border-2 overflow-hidden transition-all ${
+                inMix ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white'
               }`}
             >
-              {/* Inverter image banner */}
               <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
-                <ProductImg
-                  src={getProductImage(inv)}
-                  alt={inv.nome}
-                  fallback="⚡"
-                  className="w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105"
-                />
+                <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
+                  className="w-full h-full object-contain p-2" />
                 <div className="absolute top-2 left-2">
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${
-                    inv.categoria === CATEGORIES.MICROINVERSORES ? 'bg-purple-100 text-purple-700' :
-                    inv.categoria === CATEGORIES.INVERSORES_MONO ? 'bg-blue-100 text-blue-700' :
-                    inv.categoria === CATEGORIES.INVERSORES_BOMBEAMENTO ? 'bg-cyan-100 text-cyan-700' :
-                    'bg-indigo-100 text-indigo-700'
-                  }`}>
-                    {inv.categoria === CATEGORIES.MICROINVERSORES ? '🔌 Micro' :
-                     inv.categoria === CATEGORIES.INVERSORES_MONO ? '⚡ Mono' :
-                     inv.categoria === CATEGORIES.INVERSORES_BOMBEAMENTO ? '💧 Bomb.' : '⚡ Tri'}
-                  </span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
                 </div>
-                {selected && (
+                {inMix && (
                   <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
                     <Check size={13} className="text-white" />
                   </div>
                 )}
                 <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white/70 to-transparent" />
               </div>
-
               <div className="p-4">
-              <h3 className="font-bold text-gray-900 text-sm mb-1">{inv.nome}</h3>
-              <div className="space-y-1 text-sm mt-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Potência:</span>
-                  <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
+                <h3 className="font-bold text-gray-900 text-sm mb-1">{inv.nome}</h3>
+                <div className="space-y-1 text-xs text-gray-500 mb-3">
+                  <div className="flex justify-between">
+                    <span>Potência:</span>
+                    <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
+                  </div>
+                  {inv.entradas && <div className="flex justify-between"><span>Entradas MPPT:</span><span className="font-semibold text-gray-700">{inv.entradas}</span></div>}
+                  <div className="flex justify-between">
+                    <span>Preço unit.:</span>
+                    <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
+                  </div>
                 </div>
-                {inv.tensao && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Tensão CA:</span>
-                    <span className="font-semibold">{inv.tensao} {inv.fase}</span>
-                  </div>
-                )}
-                {inv.entradas && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Entradas MPPT:</span>
-                    <span className="font-semibold">{inv.entradas}</span>
-                  </div>
-                )}
-                {inv.disjuntor && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Disjuntor req.:</span>
-                    <span className="font-mono text-xs font-semibold">{inv.disjuntor}</span>
-                  </div>
-                )}
-                <div className="border-t border-gray-100 pt-2 flex justify-between">
-                  <span className="text-gray-500">Preço:</span>
-                  <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
+                {/* Qty controls */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMixQty(inv, qty - 1)}
+                    className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-red-50 hover:border-red-300 transition-colors"
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <span className={`flex-1 text-center font-bold text-lg ${inMix ? 'text-weg-blue' : 'text-gray-300'}`}>
+                    {qty}
+                  </span>
+                  <button
+                    onClick={() => setMixQty(inv, qty + 1)}
+                    className="w-8 h-8 rounded-lg border border-weg-blue bg-weg-blue text-white flex items-center justify-center hover:bg-weg-blue-mid transition-colors"
+                  >
+                    <Plus size={14} />
+                  </button>
                 </div>
+                {inMix && (
+                  <p className="text-xs text-center text-weg-blue font-semibold mt-1.5">
+                    {(qty * inv.potencia).toFixed(1)} kW — {fmt(inv.preco * qty)}
+                  </p>
+                )}
               </div>
-
-              {/* Sizing indicator */}
-              <div className={`mt-3 text-[11px] font-medium px-2 py-1 rounded-full text-center ${
-                ratio >= 0.9 && ratio <= 1.2 ? 'bg-green-100 text-green-700' :
-                ratio >= 0.7 && ratio <= 1.5 ? 'bg-yellow-100 text-yellow-700' :
-                'bg-red-100 text-red-700'
-              }`}>
-                {ratio >= 0.9 && ratio <= 1.2 ? '✓ Dimensionamento ideal' :
-                 ratio >= 0.7 && ratio <= 1.5 ? '~ Dimensionamento aceitável' :
-                 '⚠ Fora da faixa recomendada'}
-              </div>
-              </div>{/* /p-4 */}
-            </button>
+            </div>
           )
         })}
       </div>
@@ -667,6 +806,41 @@ function Step3({ data, onChange, products, realKwp }) {
           <button onClick={() => setShowAll(true)} className="text-sm text-weg-blue hover:underline">
             Ver todos os {kitTypeInfo?.catLabel} ({allInverters.length} modelos)
           </button>
+        </div>
+      )}
+
+      {/* Seletor de quantidade — modo inversor único */}
+      {!mixMode && data.inverter && data.kitType !== 'micro' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 max-w-sm mx-auto">
+          <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <Zap size={15} className="text-weg-blue" /> Quantidade de inversores
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onChange({ ...data, inverterQty: Math.max(1, (data.inverterQty || 1) - 1) })}
+              className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50"
+            >
+              <Minus size={16} />
+            </button>
+            <input
+              type="number" min="1"
+              value={data.inverterQty || 1}
+              onChange={e => onChange({ ...data, inverterQty: Math.max(1, parseInt(e.target.value) || 1) })}
+              className="w-20 text-center border border-gray-200 rounded-lg px-2 py-2 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-weg-blue"
+            />
+            <button
+              onClick={() => onChange({ ...data, inverterQty: (data.inverterQty || 1) + 1 })}
+              className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50"
+            >
+              <Plus size={16} />
+            </button>
+            <span className="text-gray-500 text-sm">inversores</span>
+          </div>
+          {(data.inverterQty || 1) > 1 && (
+            <p className="text-xs text-gray-400 mt-2">
+              Potência combinada: {((data.inverterQty || 1) * data.inverter.potencia).toFixed(1)} kW
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -746,7 +920,7 @@ function CableRow({ label, color, product, meters, onChange }) {
 }
 
 // ─── BreakerRow — seletor de disjuntor com lista expansível ──────────────────
-function BreakerRow({ products, selectedBreaker, onSelect, included, onToggle, isTri }) {
+function BreakerRow({ products, selectedBreaker, onSelect, included, onToggle, isTri, qty = 1, onQtyChange }) {
   const [open, setOpen] = useState(false)
 
   // Filtra disjuntores da fase correta
@@ -779,7 +953,7 @@ function BreakerRow({ products, selectedBreaker, onSelect, included, onToggle, i
             Minidisjuntor CA{current ? ` — ${current.modelo || current.nome}` : ''}
           </p>
           {current ? (
-            <p className="text-xs font-mono text-gray-400">{current.codigo} • {fmt(current.preco)}</p>
+            <p className="text-xs font-mono text-gray-400">{current.codigo} • {fmt(current.preco)}{qty > 1 ? ` × ${qty}` : ''}</p>
           ) : (
             <p className="text-xs text-amber-600">Selecione o modelo abaixo</p>
           )}
@@ -801,6 +975,19 @@ function BreakerRow({ products, selectedBreaker, onSelect, included, onToggle, i
           </button>
         </div>
       </div>
+
+      {/* Qty controls — shown when included and qty prop is provided */}
+      {included && onQtyChange && (
+        <div className="border-t border-blue-100 px-4 py-3 flex items-center gap-3">
+          <span className="text-xs text-gray-500 shrink-0">Qtd:</span>
+          <button onClick={() => onQtyChange(Math.max(1, qty - 1))} className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"><Minus size={12} /></button>
+          <input type="number" min="1" value={qty} onChange={e => onQtyChange(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-16 text-center border border-blue-200 rounded-lg px-2 py-1 text-sm font-bold bg-white focus:outline-none focus:ring-1 focus:ring-weg-blue" />
+          <button onClick={() => onQtyChange(qty + 1)} className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"><Plus size={12} /></button>
+          <span className="text-xs text-gray-400">un</span>
+          {current?.preco && <span className="ml-auto text-sm font-bold text-weg-orange">{fmt(current.preco * qty)}</span>}
+        </div>
+      )}
 
       {/* Lista expansível */}
       {included && open && (
@@ -849,8 +1036,11 @@ function Step4({ data, onChange, products }) {
   const isBomb   = kitType === 'bombeamento'
   const isMicro  = kitType === 'micro'
   const panelCount = data.panelQty || 1
-  const inv      = data.inverter
-  const entradas = inv?.entradas || 2
+  // In mix mode, first inverter is used for breaker detection; entradas is the sum
+  const inv      = data.inverter || data.inverters?.[0]?.inverter
+  const entradas = Array.isArray(data.inverters)
+    ? Math.max(2, data.inverters.reduce((s, i) => s + (i.inverter?.entradas || 2) * i.qty, 0))
+    : (inv?.entradas || 2)
 
   // Microinversores: quantidade de inversores = ceil(potência total / potência do micro)
   const microCount = (isMicro && inv && data.panel)
@@ -887,11 +1077,16 @@ function Step4({ data, onChange, products }) {
   const kitConnMiP  = bySAP(KIT_SAPS.KIT_CONN_MI)
   const cableCAP    = bySAP(KIT_SAPS.CABO_CA_3F)
 
+  // Total de inversores no kit (1 para modo único, soma das qtds no modo mix)
+  const totalInvCount = Array.isArray(data.inverters)
+    ? data.inverters.reduce((s, i) => s + i.qty, 0)
+    : 1
+
   // ── Defaults por tipo de kit ─────────────────────────────────────────────
   const defaults = isMicro ? {
     inclKitConnMi: true,  cableCAMeters: 10 * microCount,
-    inclSurgeCA:   true,  surgeACQty: 2,
-    inclBreaker:   true,
+    inclSurgeCA:   true,  surgeACQty: 2 * totalInvCount,
+    inclBreaker:   true,  breakerQty: totalInvCount,
   } : isBomb ? {
     mc4Qty:        entradas,  cablePosMeters: 25 * entradas, cableNegMeters: 25 * entradas,
     inclFusivel:   true,  fusilvelQty: entradas,
@@ -904,10 +1099,10 @@ function Step4({ data, onChange, products }) {
     mc4Qty:        entradas,
     cablePosMeters: 25 * entradas,
     cableNegMeters: 25 * entradas,
-    surgeACQty:    isTri ? 4 : 2,
+    surgeACQty:    (isTri ? 4 : 2) * totalInvCount,
     inclSurgeCA:   true,
     inclSurgeDC:   true,   surgeDCQty: 1,
-    inclBreaker:   true,
+    inclBreaker:   true,   breakerQty: totalInvCount,
   }
 
   const d = key => data[key] !== undefined ? data[key] : defaults[key]
@@ -974,6 +1169,8 @@ function Step4({ data, onChange, products }) {
           included={d('inclBreaker') ?? true}
           onToggle={() => set('inclBreaker', !d('inclBreaker'))}
           isTri={false}
+          qty={d('breakerQty') ?? totalInvCount}
+          onQtyChange={v => set('breakerQty', v)}
         />
 
         {estruturaSep}
@@ -1072,6 +1269,8 @@ function Step4({ data, onChange, products }) {
           included={d('inclBreaker') ?? true}
           onToggle={() => set('inclBreaker', !d('inclBreaker'))}
           isTri={isTri}
+          qty={d('breakerQty') ?? totalInvCount}
+          onQtyChange={v => set('breakerQty', v)}
         />
 
         {estruturaSep}
@@ -1515,11 +1714,88 @@ function StructureSection({ data, onChange, products, panelCount }) {
   )
 }
 
+// ─── Histórico de Revisões ────────────────────────────────────────────────────
+function RevisionHistory({ revisoes, numeroOrcamento }) {
+  const [open, setOpen] = useState(false)
+  if (!revisoes || revisoes.length === 0) return null
+  return (
+    <div className="max-w-3xl mx-auto print:hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-weg-blue hover:text-weg-blue transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <RefreshCw size={15} /> Histórico de revisões
+          <span className="bg-weg-blue/10 text-weg-blue text-xs px-2 py-0.5 rounded-full font-bold">{revisoes.length}</span>
+        </span>
+        <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-2 bg-white rounded-xl border border-weg-blue/20 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Rev.</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Data</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Frete</th>
+                <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revisoes.map((r, i) => (
+                <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="px-4 py-2 font-mono font-bold text-weg-blue">
+                    {numeroOrcamento ? `${numeroOrcamento}-R${r.revisao}` : `Rev. ${r.revisao}`}
+                  </td>
+                  <td className="px-4 py-2 text-gray-500 text-xs">
+                    {new Date(r.data).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                  </td>
+                  <td className="px-4 py-2 text-gray-500 text-xs truncate max-w-[160px]">{r.frete}</td>
+                  <td className="px-4 py-2 text-right font-bold text-gray-800">
+                    {r.total_final?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Step 6: Resumo / Orçamento ──────────────────────────────────────────────
-function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId }) {
+function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, onGoToQuotes }) {
   const { freteOpcoes, desconto } = useProducts()
   const { session, isAdmin } = useAuth()
-  const [freteId, setFreteId] = useState(freteOpcoes[0]?.id ?? 1)
+  const [freteId, setFreteId] = useState(() => {
+    if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) return data.freteAutoId
+    return freteOpcoes[0]?.id ?? 1
+  })
+
+  // Sincroniza frete quando painel CD Nordeste é selecionado em outra step
+  useEffect(() => {
+    if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) {
+      setFreteId(data.freteAutoId)
+    }
+  }, [data.freteAutoId])
+
+  // Fretes permitidos para módulos CD Nordeste
+  const isNordeste = isNordestePanel(data.panel)
+  const fretePermitidoNordeste = (f) => /(norte|nordeste|fob)/i.test(f.nome)
+  const freteOpcoesVisiveis = isNordeste
+    ? freteOpcoes.filter(fretePermitidoNordeste)
+    : freteOpcoes
+
+  // Corrige seleção se o frete atual não é permitido para CD Nordeste
+  useEffect(() => {
+    if (!isNordeste) return
+    const atual = freteOpcoes.find(f => f.id === freteId)
+    if (atual && !fretePermitidoNordeste(atual)) {
+      const primeiro = freteOpcoes.find(fretePermitidoNordeste)
+      if (primeiro) setFreteId(primeiro.id)
+    }
+  }, [isNordeste, freteId])
 
   // ── Salvar cotação ──
   const [saveStatus, setSaveStatus] = useState(null) // null | 'saving' | 'ok' | 'error'
@@ -1640,12 +1916,20 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
   const isTri    = kitType === 'ongrid_tri'
   const isBomb   = kitType === 'bombeamento'
   const isMicro  = kitType === 'micro'
-  const inv      = data.inverter
-  const entradas = inv?.entradas || 2
+  // Mix mode: data.inverters array; single mode: data.inverter
+  const mixInverters = Array.isArray(data.inverters) ? data.inverters : null
+  const inv      = data.inverter || mixInverters?.[0]?.inverter
+  const entradas = mixInverters
+    ? Math.max(2, mixInverters.reduce((s, i) => s + (i.inverter?.entradas || 2) * i.qty, 0))
+    : (inv?.entradas || 2)
   const panelCount = data.panelQty || 1
 
   const microCount = (isMicro && inv && data.panel)
     ? Math.max(1, Math.ceil((panelCount * data.panel.potencia) / (inv.potencia * 1000)))
+    : 1
+
+  const totalInvCount = mixInverters
+    ? mixInverters.reduce((s, i) => s + i.qty, 0)
     : 1
 
   const bySAP  = sap  => products.find(p => p.codigo === sap)
@@ -1668,7 +1952,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
   // Monta lista de itens conforme tipo de kit
   const kitItems = [
     data.panel   && { label: 'Módulo Fotovoltaico', product: data.panel, qty: panelCount, unit: 'un' },
-    inv          && { label: 'Inversor Solar', product: inv, qty: isMicro ? microCount : 1, unit: 'un' },
+    // Inversor(es): mix mode → one row per model; single mode → one row
+    ...(mixInverters
+      ? mixInverters.map(({ inverter: i, qty }) => ({ label: 'Inversor Solar', product: i, qty, unit: 'un' }))
+      : [inv && { label: 'Inversor Solar', product: inv, qty: isMicro ? microCount : (data.inverterQty || 1), unit: 'un' }]
+    ).filter(Boolean),
 
     // Itens comuns (CC cables + MC4) — on-grid e bombeamento
     !isMicro && (d('mc4Qty', entradas) > 0) && mc4P &&
@@ -1680,9 +1968,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
 
     // On-Grid string
     (!isMicro && !isBomb) && d('inclSurgeCA', true) && surgeCAP &&
-      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', isTri ? 4 : 2), unit: 'un' },
+      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', (isTri ? 4 : 2) * totalInvCount), unit: 'un' },
     (!isMicro && !isBomb) && d('inclBreaker', true) && breakerP &&
-      { label: 'Minidisjuntor CA', product: breakerP, qty: 1, unit: 'un' },
+      { label: 'Minidisjuntor CA', product: breakerP, qty: d('breakerQty', totalInvCount), unit: 'un' },
 
     // Bombeamento
     isBomb && d('inclFusivel', true)     && bySAP(KIT_SAPS.FUSIVEL_CC) &&
@@ -1706,9 +1994,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
     isMicro && (d('cableCAMeters', 10*microCount) > 0) && bySAP(KIT_SAPS.CABO_CA_3F) &&
       { label: 'Cabo CA 3×6mm²', product: bySAP(KIT_SAPS.CABO_CA_3F), qty: d('cableCAMeters', 10*microCount), unit: 'm' },
     isMicro && d('inclSurgeCA', true) && surgeCAP &&
-      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', 2), unit: 'un' },
+      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', 2 * totalInvCount), unit: 'un' },
     isMicro && d('inclBreaker', true) && breakerP &&
-      { label: 'Minidisjuntor CA', product: breakerP, qty: 1, unit: 'un' },
+      { label: 'Minidisjuntor CA', product: breakerP, qty: d('breakerQty', totalInvCount), unit: 'un' },
 
     // Estrutura (todos os tipos) — kit 4-mod
     data.wantsEstrutura && data.estruturaKit && (data.estruturaQty || 0) > 0 &&
@@ -1782,15 +2070,40 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
 
     try {
       if (!quoteId) {
+        // ── Gera número interno de referência EFF-YYYY-NNN ──
+        const { count } = await supabaseAdmin
+          .from('quotes')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', session.user.id)
+        const year = new Date().getFullYear()
+        const seq = String((count || 0) + 1).padStart(3, '0')
+        const numeroOrcamento = `EFF-${year}-${seq}`
+
+        const kitDataWithRef = { ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [] }
         const payload = { ...buildQuotePayload(statusOverride || 'rascunho') }
-        // renomeia kit_data → data para bater com a coluna do banco
-        payload.data = payload.kit_data
+        payload.data = kitDataWithRef
         delete payload.kit_data
         const { data: q, error } = await supabaseAdmin.from('quotes').insert(payload).select('id').single()
         if (error) throw error
         quoteId = q.id
         setSavedId(quoteId)
+        // Propaga referência e revisão para o estado local
+        onChange(kitDataWithRef)
       } else {
+        // ── Incrementa revisão a cada atualização ──
+        const novaRevisao = (data.revisao || 0) + 1
+        const historicoRevisao = {
+          revisao: novaRevisao,
+          data: new Date().toISOString(),
+          total_final: totalFinal,
+          frete: freteOpcao.nome,
+        }
+        const kitDataAtualizado = {
+          ...data,
+          revisao: novaRevisao,
+          revisoes: [...(data.revisoes || []), historicoRevisao],
+        }
+
         const shouldResetDiscount =
           ['aguardando_desconto', 'aprovada', 'recusada'].includes(quoteInfo?.status) && scopeChanged
         const { error } = await supabaseAdmin.from('quotes').update({
@@ -1799,7 +2112,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
           frete_nome:   freteOpcao.nome,
           frete_pct:    freteOpcao.acrescimo,
           total_final:  totalFinal,
-          data,
+          data: kitDataAtualizado,
           ...(statusOverride ? { status: statusOverride } : {}),
           ...(shouldResetDiscount ? { status: 'rascunho', desconto_pct: 0, desconto_resposta: null } : {}),
         }).eq('id', quoteId)
@@ -1807,6 +2120,8 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
         if (shouldResetDiscount) {
           setQuoteInfo(prev => ({ ...prev, status: 'rascunho', desconto_pct: 0, desconto_resposta: null }))
         }
+        // Propaga revisão para o estado local
+        onChange(kitDataAtualizado)
       }
 
       if (items.length > 0) {
@@ -1826,15 +2141,18 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
     }
   }
 
-  // ── Imprimir (salva automaticamente antes) ──
+  // Tela pós-impressão
+  const [showPrintedScreen, setShowPrintedScreen] = useState(false)
+
+  // ── Imprimir (salva automaticamente antes, muda status p/ em_analise) ──
   const handlePrint = async () => {
     if (session) {
       setSaveStatus('saving')
-      await saveQuote({ silent: true })
-      setSaveStatus('ok')
-      setTimeout(() => setSaveStatus(null), 2000)
+      await saveQuote({ silent: true, statusOverride: savedId ? undefined : 'em_analise' })
+      setSaveStatus(null)
     }
     window.print()
+    setShowPrintedScreen(true)
   }
 
   // ── Request discount ──
@@ -1914,25 +2232,70 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
     return Object.values(merged)
   }, [data.wantsEstrutura, data.estruturaKit, data.estruturaKit3, data.estruturaQty, data.estruturaQty3])
 
+  // ── Tela pós-impressão ──
+  if (showPrintedScreen) return (
+    <div className="text-center py-12 print:hidden">
+      <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
+        <CheckCircle2 size={40} className="text-green-500" />
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">Cotação impressa!</h2>
+      {data.numero_orcamento && (
+        <p className="text-weg-blue font-bold text-lg mb-1 font-mono">
+          {data.numero_orcamento}{(data.revisao || 0) > 0 ? ` · Rev. ${data.revisao}` : ' · Rev. 0'}
+        </p>
+      )}
+      <p className="text-gray-500 text-sm mb-8">Proposta salva e enviada com sucesso.</p>
+      <div className="flex gap-3 justify-center flex-wrap">
+        <button
+          onClick={() => onGoToQuotes?.()}
+          className="flex items-center gap-2 bg-weg-blue hover:bg-weg-blue-mid text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+        >
+          <FileText size={18} /> Ver minhas cotações
+        </button>
+        <button
+          onClick={() => setShowPrintedScreen(false)}
+          className="flex items-center gap-2 border-2 border-gray-200 text-gray-600 font-semibold px-6 py-3 rounded-xl hover:border-gray-300 transition-colors"
+        >
+          Continuar editando
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-1">Resumo do Kit Solar</h2>
-        <p className="text-gray-500 text-sm">Orçamento gerado em {new Date().toLocaleDateString('pt-BR')}</p>
+        <div className="flex items-center justify-center gap-2 flex-wrap">
+          <p className="text-gray-500 text-sm">Orçamento gerado em {new Date().toLocaleDateString('pt-BR')}</p>
+          {data.numero_orcamento && (
+            <span className="text-xs font-bold text-weg-blue bg-weg-blue/10 px-2 py-0.5 rounded-full font-mono">
+              {data.numero_orcamento}{(data.revisao || 0) > 0 ? ` · Rev. ${data.revisao}` : ''}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Freight control — hidden on print */}
       <div className="print:hidden max-w-sm mx-auto">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className={`bg-white rounded-xl border p-4 ${isNordeste ? 'border-amber-300' : 'border-gray-200'}`}>
           <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">
             Modalidade de Frete
           </label>
+          {isNordeste && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-800">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-500" />
+              <span>
+                Módulo <strong>CD Nordeste</strong>: frete restrito a <strong>Nordeste</strong>, <strong>Norte</strong> ou <strong>FOB no CD</strong>.
+              </span>
+            </div>
+          )}
           <select
             value={freteId}
             onChange={e => setFreteId(Number(e.target.value))}
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-weg-blue"
           >
-            {freteOpcoes.map(f => (
+            {freteOpcoesVisiveis.map(f => (
               <option key={f.id} value={f.id}>
                 {f.nome}{f.acrescimo !== 1 ? ` (+${((f.acrescimo-1)*100).toFixed(1)}%)` : ''}
               </option>
@@ -1965,7 +2328,19 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
         <div className="bg-weg-blue text-white px-6 py-5 print:hidden">
           <div className="flex justify-between items-start flex-wrap gap-3">
             <div>
-              <p className="text-white/60 text-xs uppercase tracking-wide">Ernaniff Representações</p>
+              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                <p className="text-white/60 text-xs uppercase tracking-wide">Ernaniff Representações</p>
+                {data.numero_orcamento && (
+                  <span className="text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-full font-mono">
+                    {data.numero_orcamento}
+                  </span>
+                )}
+                {(data.revisao || 0) > 0 && (
+                  <span className="text-xs font-semibold bg-yellow-400/30 text-yellow-200 px-2 py-0.5 rounded-full">
+                    Rev. {data.revisao}
+                  </span>
+                )}
+              </div>
               <h3 className="text-xl font-extrabold">
                 {kitTypeInfo ? `${kitTypeInfo.icon} Kit ${kitTypeInfo.title}${data.tensaoRede ? ` — ${data.tensaoRede} V` : ''}` : 'Kit Solar Fotovoltaico'}
               </h3>
@@ -1987,6 +2362,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
               <p style={{fontSize:15, fontWeight:800, color:'#1B3A8A', margin:0}}>
                 {kitTypeInfo ? `Kit ${kitTypeInfo.title}${data.tensaoRede ? ` — ${data.tensaoRede} V` : ''}` : 'Kit Solar Fotovoltaico'}
               </p>
+              {data.numero_orcamento && (
+                <p style={{fontSize:10, color:'#1B3A8A', margin:'2px 0 0', fontWeight:700}}>
+                  Ref: {data.numero_orcamento}{(data.revisao || 0) > 0 ? ` — Rev. ${data.revisao}` : ''}
+                </p>
+              )}
               {data.clienteNome && <p style={{fontSize:11, color:'#555', margin:'4px 0 0'}}>Cliente: <strong>{data.clienteNome}</strong>{data.clienteLocal ? ` — ${data.clienteLocal}` : ''}</p>}
               {prop.cnpjCpf && <p style={{fontSize:10, color:'#777', margin:'2px 0 0'}}>CPF/CNPJ: {prop.cnpjCpf}</p>}
               {prop.email && <p style={{fontSize:10, color:'#777', margin:'1px 0 0'}}>E-mail: {prop.email}</p>}
@@ -2362,6 +2742,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
         )}
       </div>
 
+      {/* ── Histórico de revisões ── */}
+      {data.revisoes && data.revisoes.length > 0 && (
+        <RevisionHistory revisoes={data.revisoes} numeroOrcamento={data.numero_orcamento} />
+      )}
+
       {/* ── Aviso: escopo alterado, desconto será cancelado ao salvar ── */}
       {!isAdmin && discountWillBeReset && (
         <div className="max-w-3xl mx-auto bg-orange-50 border border-orange-200 rounded-xl px-5 py-3 print:hidden flex items-start gap-2 text-sm text-orange-800">
@@ -2525,11 +2910,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId })
 }
 
 // ─── Main KitBuilder ─────────────────────────────────────────────────────────
-export default function KitBuilder({ initialData, initialSavedId } = {}) {
-  const { products, tableInfo } = useProducts()
+export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes } = {}) {
+  const { catalogProducts: products, tableInfo } = useProducts()
   // Se carregado a partir de uma cotação salva, começa no step 6 (resumo)
   const [step, setStep] = useState(initialData ? 6 : 1)
-  const [data, setData] = useState(initialData || { mode: 'consumo', hsp: SUN_HOURS })
+  const [data, setData] = useState(initialData || { mode: 'potencia', hsp: SUN_HOURS })
 
   const hsp = data.hsp || SUN_HOURS
   const targetKwp = data.mode === 'consumo'
@@ -2546,15 +2931,15 @@ export default function KitBuilder({ initialData, initialSavedId } = {}) {
       if (data.kitType === 'ongrid_tri' && !data.tensaoRede) return false
       return true
     }
-    if (step === 2) return targetKwp > 0
+    if (step === 2) return (data.kwpDesejado || 0) > 0
     if (step === 3) return !!data.panel
-    if (step === 4) return !!data.inverter
+    if (step === 4) return !!data.inverter || (Array.isArray(data.inverters) && data.inverters.length > 0)
     if (step === 5) return true
     return false
   }, [step, targetKwp, data])
 
   const reset = () => {
-    setData({ mode: 'consumo', hsp: SUN_HOURS })
+    setData({ mode: 'potencia', hsp: SUN_HOURS })
     setStep(1)
   }
 
@@ -2593,7 +2978,7 @@ export default function KitBuilder({ initialData, initialSavedId } = {}) {
         {step === 3 && <Step2 data={data} onChange={setData} products={products} targetKwp={targetKwp} />}
         {step === 4 && <Step3 data={data} onChange={setData} products={products} realKwp={realKwp} />}
         {step === 5 && <Step4 data={data} onChange={setData} products={products} />}
-        {step === 6 && <Step5 data={data} onChange={setData} products={products} tableInfo={tableInfo} realKwp={realKwp} initialSavedId={initialSavedId} />}
+        {step === 6 && <Step5 data={data} onChange={setData} products={products} tableInfo={tableInfo} realKwp={realKwp} initialSavedId={initialSavedId} onGoToQuotes={onGoToQuotes} />}
       </div>
 
       {/* Navigation */}
