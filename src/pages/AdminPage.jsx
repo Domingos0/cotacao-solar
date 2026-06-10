@@ -12,7 +12,7 @@ import {
 } from '../lib/notify'
 import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
-  Printer, Search, ChevronDown, AlertTriangle, Save,
+  Printer, Search, ChevronDown, ChevronUp, AlertTriangle, Save,
   FileText, Shield, Download, ArrowUpFromLine, Info, Truck,
   Users, Package, LayoutList, Clock, CheckCircle2, XCircle,
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
