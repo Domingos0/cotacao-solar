@@ -1,13 +1,15 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { products as defaultProducts, assignKitRole } from '../data/products'
+import { supabaseAdmin } from '../lib/supabaseAdmin'
 
 const ProductsContext = createContext()
 
-const STORAGE_KEY   = 'weg_products_v2'
-const TABLE_KEY     = 'weg_table_info'
-const FRETE_KEY     = 'weg_frete_opcoes'
-const DESCONTO_KEY  = 'weg_desconto'
-const AUTH_KEY      = 'weg_admin_auth'
+const STORAGE_KEY      = 'weg_products_v2'
+const TABLE_KEY        = 'weg_table_info'
+const FRETE_KEY        = 'weg_frete_opcoes'
+const DESCONTO_KEY     = 'weg_desconto'
+const AUTH_KEY         = 'weg_admin_auth'
+const ACTIVE_LIST_KEY  = 'weg_active_list_sap'
 
 export const DEFAULT_FRETE = [
   { id: 1, nome: 'FOB – Retirada em nossa fábrica WEG em Itajaí-SC', acrescimo: 1.000 },
@@ -18,6 +20,27 @@ export const DEFAULT_FRETE = [
   { id: 6, nome: 'CIF – Sem descarga – Região Norte',                 acrescimo: 1.110 },
 ]
 
+// ─── Supabase persistence helpers ─────────────────────────────────────────────
+async function sbSave(key, value) {
+  try {
+    await supabaseAdmin
+      .from('app_settings')
+      .upsert({ key, value, updated_at: new Date().toISOString() })
+  } catch (e) { console.warn('[settings] save error:', e?.message) }
+}
+
+async function sbLoad(key) {
+  try {
+    const { data } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle()
+    return data?.value ?? null
+  } catch { return null }
+}
+
+// ─── localStorage loaders ─────────────────────────────────────────────────────
 function loadDesconto() {
   try {
     const saved = localStorage.getItem(DESCONTO_KEY)
@@ -29,9 +52,14 @@ function loadFrete() {
   try {
     const saved = localStorage.getItem(FRETE_KEY)
     return saved ? JSON.parse(saved) : DEFAULT_FRETE
-  } catch {
-    return DEFAULT_FRETE
-  }
+  } catch { return DEFAULT_FRETE }
+}
+
+function loadActiveListCodes() {
+  try {
+    const saved = localStorage.getItem(ACTIVE_LIST_KEY)
+    return saved ? new Set(JSON.parse(saved)) : null
+  } catch { return null }
 }
 
 const r2 = v => v != null ? Math.round(v * 100) / 100 : v
@@ -48,13 +76,11 @@ function loadProducts() {
     const parsed = JSON.parse(saved)
     const savedCodes = new Set(parsed.map(p => p.codigo))
 
-    // Produtos salvos são autoritativos — preços editados pelo admin são preservados
     const savedList = parsed.map(p => normalizeProduct({
       ...p,
       kitRole: p.kitRole !== undefined ? p.kitRole : assignKitRole(p),
     }))
 
-    // Adiciona apenas produtos novos do defaultProducts que ainda não existem no salvo
     const newProducts = defaultProducts
       .filter(p => !savedCodes.has(p.codigo))
       .map(normalizeProduct)
@@ -79,21 +105,88 @@ function loadTableInfo() {
   }
 }
 
+// ─── Provider ─────────────────────────────────────────────────────────────────
 export function ProductsProvider({ children }) {
   const [products, setProducts] = useState(loadProducts)
   const [tableInfo, setTableInfo] = useState(loadTableInfo)
   const [freteOpcoes, setFreteOpcoes] = useState(loadFrete)
   const [desconto, setDesconto]       = useState(loadDesconto)
   const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem(AUTH_KEY) === '1')
+  const [activeListCodes, setActiveListCodesState] = useState(loadActiveListCodes)
+
+  // Na inicialização: se o localStorage não tem dados importados (cache foi limpo),
+  // restaura do Supabase automaticamente
+  useEffect(() => {
+    const hasLocal = localStorage.getItem(ACTIVE_LIST_KEY) !== null
+    if (hasLocal) return // localStorage OK, não precisa buscar do Supabase
+
+    Promise.all([
+      sbLoad('catalog_products'),
+      sbLoad('catalog_active_codes'),
+      sbLoad('catalog_table_info'),
+      sbLoad('catalog_frete'),
+      sbLoad('catalog_desconto'),
+    ]).then(([prods, codes, tinfo, frete, desc]) => {
+      if (prods) {
+        const restored = prods.map(p => normalizeProduct({ ...p, kitRole: p.kitRole ?? assignKitRole(p) }))
+        setProducts(restored)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(restored))
+      }
+      if (codes) {
+        const s = new Set(codes)
+        setActiveListCodesState(s)
+        localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(codes))
+      }
+      if (tinfo) {
+        setTableInfo(tinfo)
+        localStorage.setItem(TABLE_KEY, JSON.stringify(tinfo))
+      }
+      if (frete) {
+        setFreteOpcoes(frete)
+        localStorage.setItem(FRETE_KEY, JSON.stringify(frete))
+      }
+      if (desc !== null) {
+        const d = Number(desc)
+        setDesconto(d)
+        localStorage.setItem(DESCONTO_KEY, String(d))
+      }
+    }).catch(e => console.warn('[catalog] restore error:', e?.message))
+  }, [])
+
+  const catalogProducts = React.useMemo(() => {
+    if (!activeListCodes || activeListCodes.size === 0) return products
+    return products.filter(p => activeListCodes.has(p.codigo))
+  }, [products, activeListCodes])
 
   const saveProducts = useCallback((newProducts) => {
     setProducts(newProducts)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newProducts))
+    sbSave('catalog_products', newProducts)
   }, [])
 
   const saveTableInfo = useCallback((info) => {
     setTableInfo(info)
     localStorage.setItem(TABLE_KEY, JSON.stringify(info))
+    sbSave('catalog_table_info', info)
+  }, [])
+
+  const setActiveListCodes = useCallback((codes) => {
+    const s = codes && codes.length > 0 ? new Set(codes) : null
+    setActiveListCodesState(s)
+    if (s) {
+      const arr = [...s]
+      localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(arr))
+      sbSave('catalog_active_codes', arr)
+    } else {
+      localStorage.removeItem(ACTIVE_LIST_KEY)
+      sbSave('catalog_active_codes', null)
+    }
+  }, [])
+
+  const clearActiveList = useCallback(() => {
+    setActiveListCodesState(null)
+    localStorage.removeItem(ACTIVE_LIST_KEY)
+    sbSave('catalog_active_codes', null)
   }, [])
 
   const addProduct = useCallback((product) => {
@@ -118,7 +211,6 @@ export function ProductsProvider({ children }) {
     saveProducts(defaultProducts)
   }, [saveProducts])
 
-  // Apply updated prices from defaultProducts to current products by SAP code
   const syncDefaultPrices = useCallback(() => {
     const byCode = {}
     defaultProducts.forEach(p => { byCode[p.codigo] = p })
@@ -139,11 +231,13 @@ export function ProductsProvider({ children }) {
     const v = Math.min(100, Math.max(0, Number(val) || 0))
     setDesconto(v)
     localStorage.setItem(DESCONTO_KEY, String(v))
+    sbSave('catalog_desconto', v)
   }, [])
 
   const saveFrete = useCallback((opcoes) => {
     setFreteOpcoes(opcoes)
     localStorage.setItem(FRETE_KEY, JSON.stringify(opcoes))
+    sbSave('catalog_frete', opcoes)
   }, [])
 
   const addFreteOpcao = useCallback((opcao) => {
@@ -180,12 +274,16 @@ export function ProductsProvider({ children }) {
   return (
     <ProductsContext.Provider value={{
       products,
+      catalogProducts,
+      activeListCodes,
       tableInfo,
       freteOpcoes,
       desconto,
       isAdmin,
       saveProducts,
       saveTableInfo,
+      setActiveListCodes,
+      clearActiveList,
       addProduct,
       updateProduct,
       deleteProduct,
