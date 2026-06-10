@@ -116,7 +116,8 @@ export function AuthProvider({ children }) {
     if (session?.user) fetchProfile(session.user.id, session.user.user_metadata)
   }
 
-  const loading = session === undefined
+  // loading enquanto: sessão ainda não foi lida OU sessão existe mas perfil ainda não chegou
+  const loading = session === undefined || (session !== null && profile === null)
 
   const metaRole = session?.user?.user_metadata?.role
   const isAdmin = profile?.role === 'admin' || metaRole === 'admin'
