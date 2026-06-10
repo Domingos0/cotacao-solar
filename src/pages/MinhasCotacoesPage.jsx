@@ -36,6 +36,11 @@ const METALICO_PERFIS = [
 
 const ISOPLETA_OPTIONS = [30, 35, 40, 45, 50]
 
+const round2 = v => Math.round(v * 100) / 100
+
+// Fatores de precificação (mirror de KitBuilder)
+const FATOR_BASE = 0.63 * 0.92 * 0.95 * 0.93  // ≈ 0.5121
+
 const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = d => d
   ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -118,7 +123,7 @@ function AccRow({ label, included, onToggle, qty, onQtyChange, unit = 'un', prod
 }
 
 function InlineEditor({ quote, onApply, onCancel }) {
-  const { catalogProducts, freteOpcoes } = useProducts()
+  const { catalogProducts, freteOpcoes, desconto } = useProducts()
   const kitData    = quote.data || {}
   const kitType    = kitData.kitType || 'ongrid_mono'
   const isTri      = kitType === 'ongrid_tri'
@@ -312,7 +317,56 @@ function InlineEditor({ quote, onApply, onCancel }) {
       estruturaQty:      struct.qty,
       estruturaQty3:     struct.qty3,
     }
-    onApply(updatedData, selFrete)
+
+    // Calcula itens e total para persistir no banco e no histórico
+    const panel = updatedData.panel
+    const pQty  = updatedData.panelQty || 0
+    const rawItems = [
+      panel && pQty > 0 && { label: 'Módulo Fotovoltaico', product: panel, qty: pQty, unit: 'un' },
+      ...(mixMode && mixList
+        ? mixList.map(e => ({ label: 'Inversor Solar', product: e.inverter, qty: e.qty, unit: 'un' }))
+        : [(selInv || kitData.inverter) && {
+            label: 'Inversor Solar',
+            product: selInv || kitData.inverter,
+            qty: mixMode ? 1 : invQty,
+            unit: 'un',
+          }]),
+      !isMicro && acc.mc4Qty > 0 && mc4P &&
+        { label: 'Conector MC4 6mm²', product: mc4P, qty: acc.mc4Qty, unit: 'pares' },
+      !isMicro && acc.cablePosMeters > 0 && cablePosP &&
+        { label: 'Cabo CC Vermelho (+)', product: cablePosP, qty: acc.cablePosMeters, unit: 'm' },
+      !isMicro && acc.cableNegMeters > 0 && cableNegP &&
+        { label: 'Cabo CC Preto (–)', product: cableNegP, qty: acc.cableNegMeters, unit: 'm' },
+      !isMicro && !isBomb && acc.inclSurgeCA && surgeCAP &&
+        { label: 'Protetor de Surto CA', product: surgeCAP, qty: acc.surgeACQty, unit: 'un' },
+      !isMicro && !isBomb && acc.inclSurgeDC && surgeDCP &&
+        { label: 'Protetor de Surto CC', product: surgeDCP, qty: acc.surgeDCQty, unit: 'un' },
+      updatedData.wantsEstrutura && updatedData.estruturaKit && (updatedData.estruturaQty || 0) > 0 &&
+        { label: 'Estrutura de Fixação', product: updatedData.estruturaKit, qty: updatedData.estruturaQty, unit: 'kit' },
+      updatedData.wantsEstrutura && updatedData.estruturaKit3 && (updatedData.estruturaQty3 || 0) > 0 &&
+        { label: 'Estrutura de Fixação', product: updatedData.estruturaKit3, qty: updatedData.estruturaQty3, unit: 'kit' },
+      ...(kitData.avulsos || []).map(a => ({
+        label: a.nome,
+        product: { nome: a.nome, codigo: a.codigo || '—', preco: a.preco },
+        qty: a.qty, unit: a.unit,
+      })),
+    ].filter(Boolean)
+
+    const fatorDesc = round2(1 - (desconto / 100))
+    const subtotal  = rawItems.reduce((s, i) => round2(s + round2((i.product?.preco || 0) * i.qty)), 0)
+    const totalAjust = round2(subtotal * FATOR_BASE * fatorDesc)
+    const newTotal   = round2(totalAjust * (selFrete?.acrescimo || 1))
+    const dbItems = rawItems.map(i => ({
+      label:      i.label,
+      produto:    i.product.nome,
+      codigo_sap: i.product.codigo,
+      qty:        i.qty,
+      unit:       i.unit,
+      preco_unit: i.product.preco || 0,
+      total:      round2((i.product.preco || 0) * i.qty),
+    }))
+
+    onApply(updatedData, selFrete, newTotal, dbItems)
   }
 
   return (
@@ -703,14 +757,15 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     return () => clearTimeout(id)
   }, [successData, countdown]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleApplyEdit = async (updatedData, selFrete) => {
+  const handleApplyEdit = async (updatedData, selFrete, newTotal, dbItems) => {
     const novaRevisao = (kitData.revisao || 0) + 1
     const freteNome   = selFrete?.nome || quote.frete_nome || '—'
     const fretePct    = selFrete?.acrescimo || quote.frete_pct || 1
+    const totalFinal  = newTotal ?? quote.total_final ?? 0
     const historicoRevisao = {
       revisao:     novaRevisao,
       data:        new Date().toISOString(),
-      total_final: quote.total_final || 0,
+      total_final: totalFinal,
       frete:       freteNome,
     }
     const newData = {
@@ -719,8 +774,18 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
       revisoes: [...(kitData.revisoes || []), historicoRevisao],
     }
     await supabaseAdmin.from('quotes').update({
-      data: newData, frete_nome: freteNome, frete_pct: fretePct,
+      data:        newData,
+      frete_nome:  freteNome,
+      frete_pct:   fretePct,
+      total_final: totalFinal,
     }).eq('id', quote.id)
+
+    // Atualiza itens do kit no banco
+    if (dbItems && dbItems.length > 0) {
+      await supabaseAdmin.from('quote_items').delete().eq('quote_id', quote.id)
+      await supabaseAdmin.from('quote_items').insert(dbItems.map(i => ({ ...i, quote_id: quote.id })))
+    }
+
     setEditMode(false)
     setSuccessData(newData)
   }
