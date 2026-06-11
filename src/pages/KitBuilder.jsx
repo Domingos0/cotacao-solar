@@ -2171,6 +2171,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
   // Tela pós-impressão
   const [showPrintedScreen, setShowPrintedScreen] = useState(false)
+  const [pendingPrint, setPendingPrint] = useState(false)
+
+  // Imprime após voltar para a tela do kit (quando success screen some)
+  useEffect(() => {
+    if (pendingPrint && !showPrintedScreen) {
+      setPendingPrint(false)
+      window.print()
+    }
+  }, [pendingPrint, showPrintedScreen])
 
   // ── Imprimir (salva automaticamente antes, muda status p/ em_analise) ──
   const handlePrint = async () => {
@@ -2279,6 +2288,12 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           className="flex items-center gap-2 bg-weg-blue hover:bg-weg-blue-mid text-white font-semibold px-6 py-3 rounded-xl transition-colors"
         >
           <FileText size={18} /> Ver minhas cotações
+        </button>
+        <button
+          onClick={() => { setPendingPrint(true); setShowPrintedScreen(false) }}
+          className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+        >
+          <Printer size={18} /> Imprimir cotação
         </button>
         <button
           onClick={() => setShowPrintedScreen(false)}
