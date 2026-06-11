@@ -2297,7 +2297,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           >
             {freteOpcoesVisiveis.map(f => (
               <option key={f.id} value={f.id}>
-                {f.nome}{f.acrescimo !== 1 ? ` (+${((f.acrescimo-1)*100).toFixed(1)}%)` : ''}
+                {f.nome}{isAdmin && f.acrescimo !== 1 ? ` (+${((f.acrescimo-1)*100).toFixed(1)}%)` : ''}
               </option>
             ))}
           </select>
@@ -2448,9 +2448,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               <tr className="bg-green-50">
                 <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-green-700">
                   Ajuste
-                  <span className="font-normal text-green-600 ml-1">
-                    (×{F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × ${fatorDesc.toFixed(4)}` : ''})
-                  </span>
+                  {isAdmin && (
+                    <span className="font-normal text-green-600 ml-1">
+                      (×{F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × ${fatorDesc.toFixed(4)}` : ''})
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-2 text-right text-sm font-bold text-green-700">
                   − {fmt(ajusteAmt)}
@@ -2639,7 +2641,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         {/* Footer note */}
         <div className="px-5 py-3 bg-gray-50 text-xs text-gray-400 border-t border-gray-200 space-y-0.5">
           <p>Preços {freteOpcao.acrescimo === 1 ? 'FOB Itajaí-SC' : freteOpcao.nome}. Válidos conforme {tableInfo.nome}. Sujeitos a alteração sem aviso prévio.</p>
-          <p>Fator de precificação: {F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × (1 − ${desconto}%)` : ''}.</p>
+          {isAdmin && <p>Fator de precificação: {F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × (1 − ${desconto}%)` : ''}.</p>}
           <p>Validade desta proposta: <strong>{prop.validade || 7} dias</strong> a partir da data de emissão.</p>
         </div>
 
