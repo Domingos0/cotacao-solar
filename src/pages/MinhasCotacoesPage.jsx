@@ -1185,60 +1185,6 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             </div>
           )}
 
-          {/* Revision history */}
-          {revisoes.length > 0 && (
-            <div>
-              <button
-                onClick={() => setShowRevHistory(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-weg-blue hover:text-weg-blue transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <RefreshCw size={14} /> Histórico de revisões
-                  <span className="bg-weg-blue/10 text-weg-blue text-xs px-2 py-0.5 rounded-full">{revisoes.length}</span>
-                </span>
-                {showRevHistory ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-              </button>
-              {showRevHistory && (
-                <div className="mt-2 rounded-xl border border-gray-200 overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-4 py-2 text-left font-semibold text-gray-500">Revisão</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-500">Data</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-500">Frete</th>
-                        <th className="px-4 py-2 text-right font-semibold text-gray-500">Total</th>
-                        <th className="px-2 py-2 text-center font-semibold text-gray-500"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {revisoes.map((r, i) => (
-                        <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                          <td className="px-4 py-2 font-mono font-bold text-weg-blue">
-                            {kitData.numero_orcamento ? `${kitData.numero_orcamento}-R${r.revisao}` : `Rev. ${r.revisao}`}
-                          </td>
-                          <td className="px-4 py-2 text-gray-500">
-                            {new Date(r.data).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                          <td className="px-4 py-2 text-gray-400 truncate max-w-[140px]">{r.frete}</td>
-                          <td className="px-4 py-2 text-right font-bold text-gray-700">{fmt(r.total_final)}</td>
-                          <td className="px-2 py-2 text-center">
-                            <button
-                              onClick={() => handlePrintRevision(r)}
-                              title="Imprimir esta revisão"
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-weg-blue/10 transition-colors"
-                            >
-                              <Printer size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Actions */}
           <div className="print:hidden border-t border-gray-100 pt-4 flex flex-wrap gap-2 justify-end">
             {/* PDF */}
