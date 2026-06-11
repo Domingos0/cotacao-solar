@@ -2097,14 +2097,21 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
     try {
       if (!quoteId) {
-        // ── Gera número interno de referência EFF-YYYY-NNN ──
-        const { count } = await supabaseAdmin
-          .from('quotes')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', session.user.id)
+        // ── Gera número único de referência EFF-YYYY-NNN (global, sem repetição) ──
         const year = new Date().getFullYear()
-        const seq = String((count || 0) + 1).padStart(3, '0')
-        const numeroOrcamento = `EFF-${year}-${seq}`
+        const prefix = `EFF-${year}-`
+        const { data: allRows } = await supabaseAdmin
+          .from('quotes')
+          .select('data')
+        let maxSeq = 0
+        for (const row of allRows || []) {
+          const num = (row.data?.numero_orcamento) || ''
+          if (num.startsWith(prefix)) {
+            const n = parseInt(num.slice(prefix.length), 10)
+            if (!isNaN(n) && n > maxSeq) maxSeq = n
+          }
+        }
+        const numeroOrcamento = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`
 
         const kitDataWithRef = { ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [] }
         const payload = { ...buildQuotePayload(statusOverride || 'rascunho') }
