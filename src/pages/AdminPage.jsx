@@ -4,8 +4,7 @@ import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
-import { CATEGORIES, KIT_ROLE, assignKitRole } from '../data/products'
-import { products as defaultProducts } from '../data/products'
+import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
 import {
   getNotifySettings, saveNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado,
@@ -2610,18 +2609,27 @@ function AdminDashboard() {
   const handleImport = (parsed, mode) => {
     const { products: imported, tableName } = parsed
 
+    // Produtos fixos (Solo, Smart Home) nunca vêm do Excel — sempre preservados
+    const importedCodes = new Set(imported.map(p => p.codigo))
+    const fixedToKeep = fixedProducts.filter(p => !importedCodes.has(p.codigo))
+
     if (mode === 'full') {
-      saveProducts(imported)
+      saveProducts([...imported, ...fixedToKeep])
     } else {
       // Atualiza preços por código SAP e adiciona produtos novos
+      // Começa com os fixedProducts para garantir que sempre estão presentes
+      const base = [
+        ...products.filter(p => !fixedProducts.some(f => f.id === p.id)),
+        ...fixedToKeep,
+      ]
       const bySAP = {}
-      products.forEach(p => { bySAP[p.codigo] = p })
-      const merged = [...products]
-      const seen = new Set(products.map(p => p.codigo))
+      base.forEach(p => { bySAP[p.codigo] = p })
+      const merged = [...base]
+      const seen = new Set(base.map(p => p.codigo))
 
       imported.forEach(imp => {
         if (bySAP[imp.codigo]) {
-          const idx = merged.findIndex(p => p.codigo === imp.codigo)
+          const idx = merged.findIndex(p => p.codigo === imp.codigo && !fixedProducts.some(f => f.id === p.id))
           if (idx >= 0) {
             merged[idx] = { ...merged[idx], preco: imp.preco, precoFrete: imp.precoFrete }
           }

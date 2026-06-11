@@ -159,8 +159,11 @@ const soloFixoProducts = [
   { id: 8024, codigo: '15288210', nome: 'Região 4 e 5 - ESP-50-G20 (625 Wp - JA BIFACIAL [CD Nordeste])', modelo: 'ESP-50-G20', categoria: CATEGORIES.ESTRUTURAS, tipo: 'Estrutura para solo fixo', fabricante: 'WEG', preco: 0.76, precoFrete: 0.84, estoque: 'Disponível', potencia: 1, unidadePotencia: 'módulo', soloTier: 'acima20' },
 ]
 
+// Produtos fixos hardcoded — nunca vêm de importação Excel, sempre preservados
+export const fixedProducts = [...smartHomeProducts, ...soloFixoProducts]
+
 // Combined final list: processed raw + smart home + solo fixo
-export const products = [...processed, ...smartHomeProducts, ...soloFixoProducts]
+export const products = [...processed, ...fixedProducts]
 
 export const getCategoryIcon = (cat) => {
   const icons = {
