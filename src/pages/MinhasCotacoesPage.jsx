@@ -45,6 +45,9 @@ const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', cur
 const fmtDate = d => d
   ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   : '—'
+const fmtTime = d => d
+  ? new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  : ''
 
 export const STATUS_STYLE = {
   rascunho:            { label: 'Rascunho',               cls: 'bg-gray-100 text-gray-600',       icon: FileText },
@@ -1445,7 +1448,10 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                     const Icon = st.icon
                     return (
                       <tr key={q.id} className="border-b border-gray-50 hover:bg-orange-50/30 transition-colors">
-                        <td className="px-4 py-3.5 text-sm text-gray-500 whitespace-nowrap">{fmtDate(q.created_at)}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="text-sm text-gray-600">{fmtDate(q.created_at)}</span>
+                          <span className="block text-xs text-gray-400">{fmtTime(q.created_at)}</span>
+                        </td>
                         <td className="px-4 py-3.5">
                           <button onClick={() => setSelectedQuote(q)} className="font-mono font-bold text-sm text-weg-blue hover:underline">
                             {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
@@ -1521,8 +1527,9 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                         key={q.id}
                         className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors"
                       >
-                        <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
-                          {fmtDate(q.created_at)}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="text-sm text-gray-600">{fmtDate(q.created_at)}</span>
+                          <span className="block text-xs text-gray-400">{fmtTime(q.created_at)}</span>
                         </td>
                         <td className="px-4 py-3.5">
                           <button
