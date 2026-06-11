@@ -1335,9 +1335,9 @@ function StructureSection({ data, onChange, products, panelCount }) {
       const n = p.nome
       const nl = n.toLowerCase()
 
-      if (roofType === 'Carport') return p.tipo === 'Estrutura para garagem solar'
-      if (roofType === 'Laje')    return p.tipo === 'Estrutura para laje'
-      if (roofType === 'Solo')    return p.tipo === 'Estrutura para solo fixo'
+      if (roofType === 'Carport') return p.tipo === 'Estrutura para garagem solar' || n.startsWith('Carport') || nl.includes('garagem')
+      if (roofType === 'Laje')    return p.tipo === 'Estrutura para laje'    || n.startsWith('Laje')
+      if (roofType === 'Solo')    return p.tipo === 'Estrutura para solo fixo' || n.startsWith('Solo') || nl.includes('solo')
       if (!n.startsWith(roofType)) return false
 
       // Profile filter for Metálico
