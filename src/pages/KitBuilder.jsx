@@ -1333,6 +1333,31 @@ function StructureSection({ data, onChange, panelCount }) {
   // All structure kits for selected roof type / isopleta / profile / region
   const availableKits = useMemo(() => {
     if (!roofType) return []
+
+    // Solo: tratado separadamente para filtro Wp com fallback
+    if (roofType === 'Solo') {
+      const base = products.filter(p => {
+        if (!p.nome) return false
+        const nl = (p.nome || '').toLowerCase()
+        const tl = (p.tipo || '').toLowerCase()
+        if (!tl.includes('solo') && !nl.includes('região')) return false
+        if (!nl.startsWith(soloRegiao.toLowerCase())) return false
+        if (p.soloTier) {
+          const tier = panelCount <= 20 ? 'ate20' : 'acima20'
+          if (p.soloTier !== tier) return false
+        }
+        return true
+      })
+      // Filtra por Wp do painel — se nenhum bater, exibe todos da região/tier
+      // (evita "Nenhum kit encontrado" quando a tabela importada tem painéis com Wp diferente)
+      if (data.panel?.potencia && base.length > 0) {
+        const wpStr = String(data.panel.potencia) + ' wp'
+        const wpFiltered = base.filter(k => (k.nome || '').toLowerCase().includes(wpStr))
+        return wpFiltered.length > 0 ? wpFiltered : base
+      }
+      return base
+    }
+
     return products.filter(p => {
       if (!p.nome) return false
       const n = p.nome
@@ -1340,23 +1365,7 @@ function StructureSection({ data, onChange, panelCount }) {
       const tl = (p.tipo || '').toLowerCase()
       const catl = (p.categoria || '').toLowerCase()
 
-      // Solo: identifica por tipo OU nome — sem exigir categoria específica
-      if (roofType === 'Solo') {
-        const isSolo = tl.includes('solo') || nl.includes('região')
-        if (!isSolo) return false
-        // Filtra pela região selecionada (ex: "Região 1", "Região 2 e 3")
-        if (!nl.startsWith(soloRegiao.toLowerCase())) return false
-        // Filtra pelo tier de quantidade (≤20 → ate20, >20 → acima20)
-        if (p.soloTier) {
-          const tier = panelCount <= 20 ? 'ate20' : 'acima20'
-          if (p.soloTier !== tier) return false
-        }
-        // Filtra pelo tipo de painel atual — extrai Wp do nome "(615 Wp - WEG BIFACIAL)"
-        if (data.panel?.potencia) {
-          if (!nl.includes(String(data.panel.potencia) + ' wp')) return false
-        }
-        return true
-      }
+      if (roofType === 'Solo') return false // já tratado acima
 
       // Demais tipos — exige categoria Estruturas Metálicas
       const isEstrutura = p.categoria === CATEGORIES.ESTRUTURAS || p.categoria === CATEGORIES.ESTRUTURAS_AVULSOS
