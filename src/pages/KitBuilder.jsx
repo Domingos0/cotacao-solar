@@ -1330,14 +1330,17 @@ function StructureSection({ data, onChange, products, panelCount }) {
   const availableKits = useMemo(() => {
     if (!roofType) return []
     return products.filter(p => {
-      if (p.categoria !== CATEGORIES.ESTRUTURAS) return false
+      // Aceita tanto Estruturas Metálicas quanto Estruturas Avulsos
+      const isEstrutura = p.categoria === CATEGORIES.ESTRUTURAS || p.categoria === CATEGORIES.ESTRUTURAS_AVULSOS
+      if (!isEstrutura) return false
       if (!p.nome) return false
       const n = p.nome
       const nl = n.toLowerCase()
+      const tl = (p.tipo || '').toLowerCase()
 
-      if (roofType === 'Carport') return p.tipo === 'Estrutura para garagem solar' || n.startsWith('Carport') || nl.includes('garagem')
-      if (roofType === 'Laje')    return p.tipo === 'Estrutura para laje'    || n.startsWith('Laje')
-      if (roofType === 'Solo')    return p.tipo === 'Estrutura para solo fixo' || n.startsWith('Solo') || nl.includes('solo')
+      if (roofType === 'Carport') return tl.includes('garagem') || tl.includes('carport') || n.startsWith('Carport')
+      if (roofType === 'Laje')    return tl.includes('laje')    || n.startsWith('Laje')
+      if (roofType === 'Solo')    return tl.includes('solo')    || n.startsWith('Solo')
       if (!n.startsWith(roofType)) return false
 
       // Profile filter for Metálico
@@ -1732,15 +1735,9 @@ function StructureSection({ data, onChange, products, panelCount }) {
       )}
 
       {roofType && availableKits.length === 0 && (
-        <div className="text-sm text-yellow-700 bg-yellow-50 rounded-xl p-3 space-y-2">
-          <p>⚠ Nenhum kit encontrado para <strong>{roofType}</strong>.</p>
-          <p className="text-xs text-yellow-600">Produtos na categoria Estruturas:</p>
-          <ul className="text-xs text-yellow-800 space-y-0.5 max-h-40 overflow-y-auto">
-            {products.filter(p => p.categoria === 'Estruturas Metálicas').map(p => (
-              <li key={p.id} className="font-mono">nome: "{p.nome}" | tipo: "{p.tipo}"</li>
-            ))}
-          </ul>
-        </div>
+        <p className="text-sm text-yellow-700 bg-yellow-50 rounded-xl p-3">
+          ⚠ Nenhum kit encontrado para <strong>{roofType}</strong>. Verifique o catálogo.
+        </p>
       )}
     </div>
   )
