@@ -1297,6 +1297,15 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deletingId, setDeletingId]   = useState(null)
   const [activeTab, setActiveTab]     = useState('ativas') // 'ativas' | 'fechados'
+  const [printRevisionData, setPrintRevisionData] = useState(null) // { quote, r }
+
+  const handlePrintRevision = (quote, r) => {
+    setPrintRevisionData({ quote, r })
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.addEventListener('afterprint', () => setPrintRevisionData(null), { once: true })
+      window.print()
+    }))
+  }
 
   const activeQuotes = quotes.filter(q => !CLOSED_STATUSES.includes(q.status))
   const closedQuotes = quotes.filter(q => CLOSED_STATUSES.includes(q.status))
@@ -1337,6 +1346,78 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   )
 
   return (
+    <>
+    {/* Revision print overlay (table rows) */}
+    {printRevisionData && (() => {
+      const { quote: pq, r } = printRevisionData
+      const pkd = pq.data || {}
+      return (
+        <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
+          <div className="bg-[#1B3A8A] text-white px-8 py-6 flex items-center justify-between print-header">
+            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
+              onError={e => { e.target.style.display = 'none' }} />
+            <div className="text-right">
+              <p className="font-mono font-bold text-xl">
+                {pkd.numero_orcamento ? `${pkd.numero_orcamento}-R${r.revisao}` : `Rev. ${r.revisao}`}
+              </p>
+              <p className="text-white/70 text-sm">{pq.nome_projeto}</p>
+              <p className="text-white/60 text-xs">{fmtDate(r.data)}</p>
+            </div>
+          </div>
+          <div className="px-8 py-6 space-y-4">
+            {pkd.clienteNome && (
+              <p className="text-sm text-gray-600"><strong>Cliente:</strong> {pkd.clienteNome}</p>
+            )}
+            {r.items?.length > 0 ? (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Composição do Kit</h3>
+                <table className="w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Item</th>
+                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Produto / SAP</th>
+                      <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Qtd</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unitário</th>
+                      <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.items.map((item, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-4 py-2 text-xs font-medium text-gray-800">{item.label}</td>
+                        <td className="px-4 py-2 text-xs text-gray-500">
+                          <div>{item.produto}</div>
+                          <div className="font-mono text-gray-400">{item.codigo_sap}</div>
+                        </td>
+                        <td className="px-3 py-2 text-center text-xs font-bold text-gray-700">{item.qty} {item.unit}</td>
+                        <td className="px-3 py-2 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
+                        <td className="px-4 py-2 text-right text-xs font-bold text-gray-800">{fmt(item.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic">Itens do kit não disponíveis para esta revisão.</p>
+            )}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+              <div className="flex justify-between text-gray-500">
+                <span>Frete — {r.frete}</span>
+                <span className="text-green-600 font-medium">Incluso</span>
+              </div>
+              <div className="border-t border-gray-200 pt-2 flex justify-between font-extrabold text-gray-900">
+                <span>Total Final</span>
+                <span className="text-[#1B3A8A] text-lg">{fmt(r.total_final)}</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 text-center pt-4">
+              Revisão {r.revisao} — emitida em {fmtDate(r.data)}
+            </p>
+          </div>
+        </div>
+      )
+    })()}
+
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -1575,7 +1656,15 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                           <td className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">
                             {fmt(r.total_final)}
                           </td>
-                          <td className="px-3 py-2.5" />
+                          <td className="px-3 py-2.5 text-center">
+                            <button
+                              onClick={() => handlePrintRevision(q, r)}
+                              title="Imprimir esta revisão"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-weg-blue/10 transition-colors"
+                            >
+                              <Printer size={13} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </>
@@ -1599,5 +1688,6 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
         />
       )}
     </div>
+    </>
   )
 }
