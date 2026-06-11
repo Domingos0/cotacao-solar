@@ -2175,10 +2175,16 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
   // Imprime após voltar para a tela do kit (quando success screen some)
   // Dois requestAnimationFrame garantem que o browser pintou o #kit-print antes de imprimir
+  // Após o diálogo de impressão fechar (imprimiu ou cancelou) navega para Minhas Cotações
   useEffect(() => {
     if (pendingPrint && !showPrintedScreen) {
       setPendingPrint(false)
-      requestAnimationFrame(() => requestAnimationFrame(() => window.print()))
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        window.addEventListener('afterprint', () => {
+          setShowPrintedScreen(true)
+        }, { once: true })
+        window.print()
+      }))
     }
   }, [pendingPrint, showPrintedScreen])
 
@@ -2276,13 +2282,13 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
         <CheckCircle2 size={40} className="text-green-500" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Cotação impressa!</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">Kit salvo!</h2>
       {data.numero_orcamento && (
         <p className="text-weg-blue font-bold text-lg mb-1 font-mono">
           {data.numero_orcamento}{(data.revisao || 0) > 0 ? ` · Rev. ${data.revisao}` : ' · Rev. 0'}
         </p>
       )}
-      <p className="text-gray-500 text-sm mb-8">Proposta salva e enviada com sucesso.</p>
+      <p className="text-gray-500 text-sm mb-8">Cotação salva com sucesso.</p>
       <div className="flex gap-3 justify-center flex-wrap">
         <button
           onClick={() => onGoToQuotes?.()}
