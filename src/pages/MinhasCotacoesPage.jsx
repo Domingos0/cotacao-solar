@@ -1239,11 +1239,6 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             </div>
           )}
 
-          {/* Meta */}
-          <p className="text-xs text-gray-400 text-center">
-            Emitido em {fmtDate(quote.created_at)} · {quote.kwp} kWp · {(quote.kit_type || '').replace(/_/g,' ')}
-          </p>
-
           {/* Actions */}
           <div className="print:hidden border-t border-gray-100 pt-4 flex flex-wrap gap-2 justify-end">
             {/* PDF */}
