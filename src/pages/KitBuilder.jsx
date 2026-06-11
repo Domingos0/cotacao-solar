@@ -1317,30 +1317,42 @@ function computeOptimalMix(N) {
 }
 
 const ISOPLETA_OPTIONS = [30, 35, 40, 45, 50]
+const SOLO_REGIOES = ['Região 1', 'Região 2 e 3', 'Região 4 e 5']
 
 function StructureSection({ data, onChange, products, panelCount }) {
   const wants = data.wantsEstrutura
   const roofType = data.estruturaRoofType || ''
   const isopleta = data.estruturaIsopleta || 30
+  const soloRegiao = data.soloRegiao || 'Região 1'
   const set = (k, v) => onChange({ ...data, [k]: v })
 
   const metalicoPerfil = data.metalicoPerfil || 'padrao'
 
-  // All structure kits for selected roof type / isopleta / profile
+  // All structure kits for selected roof type / isopleta / profile / region
   const availableKits = useMemo(() => {
     if (!roofType) return []
     return products.filter(p => {
-      // Aceita tanto Estruturas Metálicas quanto Estruturas Avulsos
-      const isEstrutura = p.categoria === CATEGORIES.ESTRUTURAS || p.categoria === CATEGORIES.ESTRUTURAS_AVULSOS
-      if (!isEstrutura) return false
       if (!p.nome) return false
       const n = p.nome
       const nl = n.toLowerCase()
       const tl = (p.tipo || '').toLowerCase()
+      const catl = (p.categoria || '').toLowerCase()
+
+      // Solo: filtro próprio — aceita qualquer categoria 'estrutura' com tipo/nome de solo
+      if (roofType === 'Solo') {
+        if (!catl.includes('estrutura')) return false
+        const isSolo = tl.includes('solo') || nl.includes('região')
+        if (!isSolo) return false
+        // Filtra pela região selecionada (ex: "Região 1", "Região 2 e 3")
+        return nl.startsWith(soloRegiao.toLowerCase())
+      }
+
+      // Demais tipos — exige categoria Estruturas Metálicas
+      const isEstrutura = p.categoria === CATEGORIES.ESTRUTURAS || p.categoria === CATEGORIES.ESTRUTURAS_AVULSOS
+      if (!isEstrutura) return false
 
       if (roofType === 'Carport') return tl.includes('garagem') || tl.includes('carport') || n.startsWith('Carport')
       if (roofType === 'Laje')    return tl.includes('laje')    || n.startsWith('Laje')
-      if (roofType === 'Solo')    return tl.includes('solo')    || n.startsWith('Solo')
       if (!n.startsWith(roofType)) return false
 
       // Profile filter for Metálico
@@ -1355,7 +1367,7 @@ function StructureSection({ data, onChange, products, panelCount }) {
       }
       return true
     })
-  }, [products, roofType, isopleta, metalicoPerfil])
+  }, [products, roofType, isopleta, metalicoPerfil, soloRegiao])
 
   // Roof types that always use only 4-module kits (no 3-mod mix)
   const FORCE_4MOD = ['Cerâmico', 'Fibromadeira', 'Fibrometálico']
@@ -1529,6 +1541,33 @@ function StructureSection({ data, onChange, products, panelCount }) {
           </div>
           <p className="text-xs text-gray-400 mt-1">
             Consulte o mapa de isopletas da ABNT NBR 6123 para sua região.
+          </p>
+        </div>
+      )}
+
+      {/* Solo — seletor de região */}
+      {roofType === 'Solo' && (
+        <div>
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+            Região do projeto (vento)
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {SOLO_REGIOES.map(r => (
+              <button
+                key={r}
+                onClick={() => onChange({ ...data, soloRegiao: r, estruturaKit: null, estruturaKit3: null, estruturaQty: null, estruturaQty3: null })}
+                className={`px-4 py-2 rounded-lg border-2 text-sm font-bold transition-all ${
+                  soloRegiao === r
+                    ? 'border-weg-blue bg-weg-blue text-white'
+                    : 'border-blue-200 bg-white text-gray-600 hover:border-weg-blue'
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Consulte o mapa de regiões de vento WEG para definir a ESP correta.
           </p>
         </div>
       )}
