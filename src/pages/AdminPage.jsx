@@ -147,6 +147,24 @@ function parseComposicaoPrecos(workbook) {
   // raw:false converte datas e strings com R$; usamos raw:true para números puros
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true })
 
+  // ── Auto-detecta layout de colunas ────────────────────────────────────────
+  // Layout padrão: A[0]=Nome, B[1]=Tipo, C[2]=SAP, D[3]=Preço, E[4]=Frete
+  // Algumas tabelas mensais usam A[0]=Nome, B[1]=SAP, C[2]=Tipo (coluna SAP deslocada)
+  let iSAP = 2, iTipo = 1
+  for (let i = 0; i < Math.min(20, rows.length); i++) {
+    const row = rows[i]
+    if (!row) continue
+    const si = row.findIndex(c => c != null && /^item\s*sap$/i.test(String(c).trim()))
+    if (si < 0) continue
+    iSAP = si
+    for (let j = 0; j < row.length; j++) {
+      if (j === si) continue
+      const lbl = row[j]?.toString().trim().toLowerCase() || ''
+      if (lbl === 'tipo' || lbl === 'descrição' || lbl === 'descricao') { iTipo = j; break }
+    }
+    break
+  }
+
   const products = []
   let currentCat = ''
   let tableName = null
@@ -157,10 +175,10 @@ function parseComposicaoPrecos(workbook) {
     if (!row || row.length === 0) continue
 
     const colA = row[0]?.toString().trim() || ''
-    const colC = row[2]?.toString().trim() || ''
+    const colSAP = row[iSAP]?.toString().trim() || ''
 
-    // ── Cabeçalho de seção: coluna C contém "Item SAP" (texto literal) ──
-    if (/^item\s+sap$/i.test(colC)) {
+    // ── Cabeçalho de seção: coluna SAP contém "Item SAP" (texto literal) ──
+    if (/^item\s*sap$/i.test(colSAP)) {
       currentCat = mapSectionToCategory(colA)
       // Tenta capturar o nome da tabela em colunas à direita (col I-N)
       if (!tableName) {
@@ -174,8 +192,8 @@ function parseComposicaoPrecos(workbook) {
       continue
     }
 
-    // ── Linha de produto: coluna C é código SAP numérico ──
-    const sapRaw = row[2]
+    // ── Linha de produto: coluna SAP é código numérico ──
+    const sapRaw = row[iSAP]
     if (sapRaw == null) continue
     const sapNum = typeof sapRaw === 'number' ? sapRaw : parseFloat(String(sapRaw).replace(/\D/g, ''))
     if (isNaN(sapNum) || sapNum <= 0) continue
@@ -184,7 +202,7 @@ function parseComposicaoPrecos(workbook) {
 
     if (!colA) continue  // sem nome, pula
 
-    const tipo  = row[1]?.toString().trim() || ''
+    const tipo  = row[iTipo]?.toString().trim() || ''
     const preco = toNum(row[3])
     if (isNaN(preco) || preco <= 0) continue
 
@@ -247,9 +265,8 @@ function parseComposicaoPrecos(workbook) {
   }
 
   if (products.length === 0) {
-    // Diagnóstico: mostra primeiras linhas para debug
-    const sample = rows.slice(0, 10).map((r, i) => `[${i}] C=${r?.[2]} A=${r?.[0]}`).join('\n')
-    throw new Error(`Nenhum produto encontrado. Verifique se a aba é "Composição Preços".\n\nPrimeiras linhas:\n${sample}`)
+    const sample = rows.slice(0, 10).map((r, i) => `[${i}] SAP[${iSAP}]=${r?.[iSAP]} A=${r?.[0]}`).join('\n')
+    throw new Error(`Nenhum produto encontrado. Verifique se a aba é "Composição Preços".\n\nColuna SAP detectada: índice ${iSAP}\nPrimeiras linhas:\n${sample}`)
   }
 
   return { products, tableName }
