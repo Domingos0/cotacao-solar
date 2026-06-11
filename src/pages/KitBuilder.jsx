@@ -2838,28 +2838,18 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3 justify-center print:hidden">
-        <button
-          onClick={handlePrint}
-          disabled={saveStatus === 'saving'}
-          className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-70"
-        >
-          {saveStatus === 'saving'
-            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Salvando…</>
-            : <><Printer size={16} /> Imprimir / Salvar PDF</>}
-        </button>
-
         {session && (
           <button
-            onClick={saveQuote}
+            onClick={async () => {
+              const qid = await saveQuote()
+              if (qid) setShowPrintedScreen(true)
+            }}
             disabled={saveStatus === 'saving'}
-            className="flex items-center gap-2 px-5 py-3 rounded-lg border-2 border-weg-blue text-weg-blue font-semibold hover:bg-weg-blue hover:text-white transition-colors disabled:opacity-50"
+            className="btn-primary flex items-center gap-2 px-6 py-3 disabled:opacity-70"
           >
             {saveStatus === 'saving'
-              ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              : saveStatus === 'ok'
-              ? <CheckCircle2 size={16} className="text-green-500" />
-              : <Save size={16} />}
-            {saveStatus === 'ok' ? 'Cotação salva!' : savedId ? 'Atualizar cotação' : 'Salvar cotação'}
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Salvando…</>
+              : <><Save size={16} /> {savedId ? 'Atualizar cotação' : 'Salvar cotação'}</>}
           </button>
         )}
 
@@ -2874,18 +2864,6 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         )}
       </div>
 
-      {/* Save status feedback */}
-      {saveStatus === 'ok' && (
-        <div className="flex items-center justify-center gap-3 mt-2 print:hidden">
-          <p className="text-sm text-green-600 font-semibold">Cotação salva!</p>
-          <button
-            onClick={() => onGoToQuotes?.()}
-            className="text-xs text-weg-blue underline hover:no-underline"
-          >
-            Ver minhas cotações →
-          </button>
-        </div>
-      )}
       {saveStatus === 'error' && (
         <div className="mt-2 print:hidden bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-center max-w-xl mx-auto">
           <p className="text-sm text-red-600 font-semibold">Erro ao salvar cotação</p>
