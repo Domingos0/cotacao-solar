@@ -1841,8 +1841,29 @@ function QuoteManagement() {
     )
   }
 
+  const STATUS_BORDER = {
+    rascunho: 'border-l-gray-300', enviada: 'border-l-blue-400',
+    em_analise: 'border-l-blue-400', aguardando_desconto: 'border-l-yellow-400',
+    aprovada: 'border-l-green-400', recusada: 'border-l-red-400',
+    fechado: 'border-l-orange-400', implantado: 'border-l-emerald-400',
+    perdida: 'border-l-red-300',
+  }
+
+  const STATUS_PILLS = [
+    { value: 'all',                 label: 'Todas',           count: quotes.length },
+    { value: 'rascunho',            label: 'Rascunho',        count: quotes.filter(q => q.status === 'rascunho').length },
+    { value: 'em_analise',          label: 'Em análise',      count: quotes.filter(q => ['em_analise','enviada'].includes(q.status)).length },
+    { value: 'aguardando_desconto', label: 'Desc. pendente',  count: pendingDiscount.length },
+    { value: 'aprovada',            label: 'Aprovada',        count: quotes.filter(q => q.status === 'aprovada').length },
+    { value: 'fechado',             label: 'Aguard. Implant.',count: pendingImplant.length },
+    { value: 'implantado',          label: 'Implantado',      count: quotes.filter(q => q.status === 'implantado').length },
+    { value: 'perdida',             label: 'Perdida',         count: quotes.filter(q => q.status === 'perdida').length },
+  ]
+
+  const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3">
@@ -1850,264 +1871,260 @@ function QuoteManagement() {
           <LayoutList size={20} className="text-weg-blue" /> Cotações
           <span className="text-sm font-normal text-gray-400">({filtered.length}/{quotes.length})</span>
         </h3>
-
-        {/* Busca por CNPJ / nome / empresa */}
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Filtrar por CNPJ, nome ou empresa…"
-            className="pl-8 pr-8 py-2 text-sm border border-gray-200 rounded-lg w-64 focus:outline-none focus:border-weg-blue bg-white"
-          />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar CNPJ, nome, empresa ou cotação…"
+            className="pl-8 pr-8 py-2 text-sm border border-gray-200 rounded-xl w-72 focus:outline-none focus:border-weg-blue bg-white" />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X size={13} />
             </button>
           )}
         </div>
-
-        <select value={filter} onChange={e => setFilter(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
-          <option value="all">Todas ({quotes.length})</option>
-          <option value="rascunho">Rascunhos</option>
-          <option value="aguardando_desconto">Desc. pendentes ({pendingDiscount.length})</option>
-          <option value="aprovada">Aprovadas</option>
-          <option value="recusada">Recusadas</option>
-          <option value="fechado">Aguard. Implantação ({pendingImplant.length})</option>
-          <option value="implantado">Implantadas</option>
-          <option value="perdida">Perdidas</option>
-        </select>
-
-        <button onClick={fetchQuotes} className="flex items-center gap-1 text-sm text-gray-500 hover:text-weg-blue px-2 py-2 rounded-lg hover:bg-gray-100">
-          <RefreshCw size={14} />
+        <button onClick={fetchQuotes} className="p-2 rounded-xl text-gray-400 hover:text-weg-blue hover:bg-gray-100 transition-colors" title="Atualizar">
+          <RefreshCw size={15} />
         </button>
       </div>
 
-      {/* Banners de alerta */}
+      {/* ── Filtros por status (pills) ── */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {STATUS_PILLS.map(p => (
+          <button key={p.value} onClick={() => setFilter(p.value)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
+              filter === p.value
+                ? 'bg-weg-blue text-white border-weg-blue'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-weg-blue/50 hover:text-weg-blue'
+            }`}>
+            {p.label}
+            {p.count > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                filter === p.value ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-500'
+              } ${p.value === 'aguardando_desconto' && filter !== p.value ? '!bg-yellow-100 !text-yellow-700' : ''}`}>
+                {p.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Banner desconto pendente */}
       {pendingDiscount.length > 0 && filter !== 'aguardando_desconto' && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex items-center gap-2 text-sm text-yellow-800 cursor-pointer hover:bg-yellow-100"
-          onClick={() => setFilter('aguardando_desconto')}>
+        <div onClick={() => setFilter('aguardando_desconto')}
+          className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex items-center gap-2 text-sm text-yellow-800 cursor-pointer hover:bg-yellow-100">
           <BadgePercent size={16} />
           <span><strong>{pendingDiscount.length}</strong> solicitaç{pendingDiscount.length > 1 ? 'ões' : 'ão'} de desconto aguardando resposta</span>
-          <span className="ml-auto text-yellow-600 underline text-xs">Ver agora →</span>
+          <span className="ml-auto text-yellow-600 underline text-xs">Ver →</span>
         </div>
       )}
 
-      {search && (
-        <div className="bg-weg-blue/5 border border-weg-blue/20 rounded-xl px-4 py-2 flex items-center gap-2 text-sm text-weg-blue">
-          <Search size={14} />
-          <span>Mostrando <strong>{filtered.length}</strong> cotaç{filtered.length !== 1 ? 'ões' : 'ão'} para "<strong>{search}</strong>"</span>
-          <button onClick={() => setSearch('')} className="ml-auto text-xs underline">Limpar filtro</button>
+      {/* ── Cards de cotações ── */}
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
+          <FileText size={40} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">Nenhuma cotação encontrada.</p>
+          {search && <button onClick={() => setSearch('')} className="mt-2 text-xs text-weg-blue underline">Limpar busca</button>}
         </div>
-      )}
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(q => {
+            const kd = q.data || {}
+            const isExpanded = expandedId === q.id
+            const rev = kd.revisao || 0
+            const borderCls = STATUS_BORDER[q.status] || 'border-l-gray-200'
 
-      {/* ── Tabela de cotações ── */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {filtered.length === 0 ? (
-          <p className="text-center py-12 text-gray-400 text-sm">Nenhuma cotação encontrada.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Data</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cotação</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Rev.</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">CNPJ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Empresa</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">kWp</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Total</th>
-                  <th className="px-2 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(q => {
-                  const kd = q.data || {}
-                  const isExpanded = expandedId === q.id
-                  const rev = kd.revisao || 0
-                  return (
-                    <Fragment key={q.id}>
-                      {/* ── Linha principal ── */}
-                      <tr
-                        onClick={() => setExpandedId(isExpanded ? null : q.id)}
-                        className={`border-b border-gray-50 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50'}`}
-                      >
-                        <td className="px-4 py-3.5 text-xs text-gray-500 whitespace-nowrap">
-                          {new Date(q.created_at).toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <span className="font-mono font-bold text-sm text-weg-blue">
-                            {kd.numero_orcamento || q.id.slice(0,8).toUpperCase()}
+            return (
+              <div key={q.id} className={`bg-white rounded-xl border border-gray-100 border-l-4 ${borderCls} shadow-sm overflow-hidden transition-shadow hover:shadow-md`}>
+
+                {/* ── Card header (clicável) ── */}
+                <div onClick={() => setExpandedId(isExpanded ? null : q.id)}
+                  className="px-5 py-4 cursor-pointer">
+
+                  {/* Linha 1: número + rev + status + data */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className="font-mono font-bold text-base text-weg-blue">
+                      {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                    </span>
+                    {rev > 0 && (
+                      <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                        Rev. {rev}
+                      </span>
+                    )}
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[q.status]}`}>
+                      {STATUS_LABEL[q.status] || q.status}
+                    </span>
+                    {q.desconto_pct > 0 && (
+                      <span className="text-xs font-semibold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                        -{q.desconto_pct}% desc.
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs text-gray-400 whitespace-nowrap">{fmtDt(q.created_at)}</span>
+                  </div>
+
+                  {/* Linha 2: cliente + financeiro */}
+                  <div className="flex flex-wrap gap-4 justify-between">
+                    {/* Info do cliente */}
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">
+                        {q.profiles?.nome || kd.clienteNome || '—'}
+                      </p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                        {q.profiles?.empresa && (
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <Building2 size={11} /> {q.profiles.empresa}
                           </span>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {rev > 0
-                            ? <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{rev}</span>
-                            : <span className="text-xs text-gray-300">0</span>}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <p className="text-sm font-semibold text-gray-800 whitespace-nowrap">{q.profiles?.nome || '—'}</p>
-                          {q.profiles?.telefone && <p className="text-xs text-gray-400">{q.profiles.telefone}</p>}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {q.profiles?.cnpj ? (
-                            <button
-                              onClick={e => { e.stopPropagation(); setSearch(q.profiles.cnpj) }}
-                              title="Filtrar por este CNPJ"
-                              className="font-mono text-xs text-weg-blue hover:underline hover:text-weg-blue/80 whitespace-nowrap"
-                            >
-                              {q.profiles.cnpj}
-                            </button>
-                          ) : <span className="text-xs text-gray-300">—</span>}
-                        </td>
-                        <td className="px-4 py-3.5 hidden lg:table-cell">
-                          <span className="text-xs text-gray-600 truncate max-w-[140px] block">{q.profiles?.empresa || '—'}</span>
-                        </td>
-                        <td className="px-4 py-3.5 hidden md:table-cell">
-                          <span className="text-sm font-semibold text-gray-700">{q.kwp}</span>
-                          <span className="text-xs text-gray-400 ml-0.5">kWp</span>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${STATUS_COLOR[q.status]}`}>
-                            {STATUS_LABEL[q.status] || q.status}
+                        )}
+                        {q.profiles?.cnpj && (
+                          <button onClick={e => { e.stopPropagation(); setSearch(q.profiles.cnpj) }}
+                            className="text-xs text-weg-blue hover:underline font-mono flex items-center gap-1" title="Filtrar por CNPJ">
+                            {q.profiles.cnpj}
+                          </button>
+                        )}
+                        {q.profiles?.telefone && (
+                          <span className="text-xs text-gray-400 flex items-center gap-1">
+                            <Phone size={11} /> {q.profiles.telefone}
                           </span>
-                          {q.desconto_pct > 0 && (
-                            <p className="text-xs text-green-600 mt-0.5">-{q.desconto_pct}%</p>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-bold text-gray-800 text-sm whitespace-nowrap">
-                          {fmt(q.total_final)}
-                        </td>
-                        <td className="px-2 py-3.5 text-gray-400">
-                          {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                        </td>
-                      </tr>
+                        )}
+                      </div>
+                    </div>
 
-                      {/* ── Linha expandida com ações ── */}
-                      {isExpanded && (
-                        <tr className="border-b border-gray-100">
-                          <td colSpan={10} className="px-0 py-0">
-                            <div className="bg-blue-50/30 border-t border-b border-blue-100">
-
-                              {/* Itens do kit */}
-                              {(q.quote_items || []).length > 0 && (
-                                <div className="px-6 pt-4 pb-2">
-                                  <AdminKitItems items={q.quote_items} />
-                                </div>
-                              )}
-
-                              {/* Dados extras da empresa */}
-                              <div className="px-6 py-3 flex flex-wrap gap-4 text-xs text-gray-500 border-t border-blue-100/60">
-                                {q.profiles?.empresa && <span>🏢 <strong>{q.profiles.empresa}</strong></span>}
-                                {q.profiles?.cnpj && <span>📋 CNPJ: <strong>{q.profiles.cnpj}</strong></span>}
-                                {q.profiles?.telefone && <span>📞 {q.profiles.telefone}</span>}
-                                {q.frete_nome && <span>🚛 {q.frete_nome}</span>}
-                                {kd.ov_numero && <span>📦 OV: <strong>{kd.ov_numero}</strong></span>}
-                              </div>
-
-                              {/* Ação: desconto pendente */}
-                              {q.status === 'aguardando_desconto' && (
-                                <div className="px-6 pb-4 bg-yellow-50 border-t border-yellow-100">
-                                  <p className="text-xs text-yellow-800 my-2">
-                                    <strong>Motivo:</strong> {q.desconto_motivo || '—'}
-                                  </p>
-                                  {approvingId === q.id ? (
-                                    <div className="space-y-2">
-                                      <div className="flex items-center gap-2">
-                                        <label className="text-xs text-gray-700 whitespace-nowrap">Desconto (%):</label>
-                                        <input type="number" min="0" max="100" step="0.5"
-                                          value={approveDiscount} onChange={e => setApproveDiscount(e.target.value)}
-                                          className="w-24 border border-gray-300 rounded px-2 py-1 text-sm" placeholder="ex: 5" autoFocus />
-                                      </div>
-                                      <textarea value={approveMsg} onChange={e => setApproveMsg(e.target.value)}
-                                        rows={2} placeholder="Mensagem para o cliente (opcional)"
-                                        className="w-full text-xs border border-gray-300 rounded px-3 py-2 resize-none" />
-                                      <div className="flex gap-2">
-                                        <button onClick={() => handleApprove(q)}
-                                          className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                          <Check size={12} /> Aprovar e enviar
-                                        </button>
-                                        <button onClick={() => setApprovingId(null)} className="text-xs text-gray-500 px-2 py-1.5">Cancelar</button>
-                                      </div>
-                                    </div>
-                                  ) : rejectingId === q.id ? (
-                                    <div className="space-y-2">
-                                      <textarea value={rejectMsg} onChange={e => setRejectMsg(e.target.value)}
-                                        rows={2} placeholder="Motivo da recusa (opcional)"
-                                        className="w-full text-xs border border-gray-300 rounded px-3 py-2 resize-none" />
-                                      <div className="flex gap-2">
-                                        <button onClick={() => handleReject(q.id)}
-                                          className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                          <X size={12} /> Confirmar recusa
-                                        </button>
-                                        <button onClick={() => setRejectingId(null)} className="text-xs text-gray-500 px-2 py-1.5">Cancelar</button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex gap-2">
-                                      <button onClick={() => { setApprovingId(q.id); setRejectingId(null); setApproveDiscount(''); setApproveMsg('') }}
-                                        className="bg-green-100 hover:bg-green-200 text-green-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                        <BadgePercent size={12} /> Aprovar desconto
-                                      </button>
-                                      <button onClick={() => { setRejectingId(q.id); setApprovingId(null); setRejectMsg('') }}
-                                        className="bg-red-100 hover:bg-red-200 text-red-600 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                        <X size={12} /> Recusar
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Ação: confirmar implantação */}
-                              {q.status === 'fechado' && (
-                                <div className="px-6 pb-4 bg-orange-50 border-t border-orange-100">
-                                  <p className="text-xs text-orange-800 my-2 font-semibold">⚡ Cliente solicitou implantação.</p>
-                                  {confirmingImplantId === q.id ? (
-                                    <div className="flex gap-2 items-center">
-                                      <span className="text-xs text-gray-700">Confirmar?</span>
-                                      <button onClick={() => handleConfirmImplantacao(q.id)}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                        <Check size={12} /> Confirmar
-                                      </button>
-                                      <button onClick={() => setConfirmingImplantId(null)} className="text-xs text-gray-400 px-2 py-1.5">Cancelar</button>
-                                    </div>
-                                  ) : (
-                                    <button onClick={() => setConfirmingImplantId(q.id)}
-                                      className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                                      <CheckCircle2 size={12} /> Confirmar implantação
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-
-                              {q.status === 'implantado' && (
-                                <div className="px-6 py-2 border-t border-emerald-100 bg-emerald-50 text-xs text-emerald-800 font-semibold flex items-center gap-1.5">
-                                  <CheckCircle2 size={13} /> Implantação confirmada.
-                                  {kd.ov_numero && <span className="font-mono ml-1">OV: {kd.ov_numero}</span>}
-                                </div>
-                              )}
-
-                              {q.desconto_resposta && q.status !== 'aguardando_desconto' && (
-                                <div className={`px-6 py-2 border-t text-xs ${q.status === 'aprovada' ? 'bg-green-50 border-green-100 text-green-800' : 'bg-gray-50 border-gray-100 text-gray-600'}`}>
-                                  <strong>Resposta ao cliente:</strong> {q.desconto_resposta}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                    {/* Info financeira */}
+                    <div className="flex items-center gap-6 shrink-0">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-400 mb-0.5">kWp</p>
+                        <p className="font-bold text-gray-800 text-sm">{q.kwp}</p>
+                      </div>
+                      {q.frete_nome && (
+                        <div className="text-center hidden sm:block">
+                          <p className="text-xs text-gray-400 mb-0.5">Frete</p>
+                          <p className="text-xs text-gray-600 max-w-[120px] truncate">{q.frete_nome}</p>
+                        </div>
                       )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-400 mb-0.5">Total</p>
+                        <p className="font-extrabold text-gray-900 text-base">{fmt(q.total_final)}</p>
+                      </div>
+                      <div className="text-gray-300 ml-1">
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Painel expandido ── */}
+                {isExpanded && (
+                  <div className="border-t border-gray-100">
+
+                    {/* Itens do kit */}
+                    {(q.quote_items || []).length > 0 && (
+                      <div className="px-5 pt-4 pb-2 bg-gray-50/60">
+                        <AdminKitItems items={q.quote_items} />
+                      </div>
+                    )}
+
+                    {/* Dados extras */}
+                    <div className="px-5 py-3 flex flex-wrap gap-4 text-xs text-gray-500 bg-gray-50/40 border-t border-gray-100">
+                      {q.profiles?.empresa && <span>🏢 <strong>{q.profiles.empresa}</strong></span>}
+                      {q.profiles?.cnpj    && <span>📋 {q.profiles.cnpj}</span>}
+                      {q.profiles?.telefone && <span>📞 {q.profiles.telefone}</span>}
+                      {q.frete_nome        && <span>🚛 {q.frete_nome}</span>}
+                      {kd.ov_numero        && <span>📦 OV: <strong>{kd.ov_numero}</strong></span>}
+                    </div>
+
+                    {/* Desconto pendente */}
+                    {q.status === 'aguardando_desconto' && (
+                      <div className="px-5 pb-4 pt-3 bg-yellow-50 border-t border-yellow-100 space-y-3">
+                        <p className="text-xs text-yellow-800">
+                          <strong>Motivo do desconto:</strong> {q.desconto_motivo || '—'}
+                        </p>
+                        {approvingId === q.id ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs text-gray-700 whitespace-nowrap">Desconto (%):</label>
+                              <input type="number" min="0" max="100" step="0.5"
+                                value={approveDiscount} onChange={e => setApproveDiscount(e.target.value)}
+                                className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-sm" placeholder="ex: 5" autoFocus />
+                            </div>
+                            <textarea value={approveMsg} onChange={e => setApproveMsg(e.target.value)}
+                              rows={2} placeholder="Mensagem para o cliente (opcional)"
+                              className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 resize-none" />
+                            <div className="flex gap-2">
+                              <button onClick={() => handleApprove(q)}
+                                className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
+                                <Check size={12} /> Aprovar e enviar
+                              </button>
+                              <button onClick={() => setApprovingId(null)} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+                            </div>
+                          </div>
+                        ) : rejectingId === q.id ? (
+                          <div className="space-y-2">
+                            <textarea value={rejectMsg} onChange={e => setRejectMsg(e.target.value)}
+                              rows={2} placeholder="Motivo da recusa (opcional)"
+                              className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 resize-none" />
+                            <div className="flex gap-2">
+                              <button onClick={() => handleReject(q.id)}
+                                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
+                                <X size={12} /> Confirmar recusa
+                              </button>
+                              <button onClick={() => setRejectingId(null)} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button onClick={() => { setApprovingId(q.id); setRejectingId(null); setApproveDiscount(''); setApproveMsg('') }}
+                              className="bg-green-100 hover:bg-green-200 text-green-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
+                              <BadgePercent size={12} /> Aprovar desconto
+                            </button>
+                            <button onClick={() => { setRejectingId(q.id); setApprovingId(null); setRejectMsg('') }}
+                              className="bg-red-100 hover:bg-red-200 text-red-600 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
+                              <X size={12} /> Recusar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Confirmar implantação */}
+                    {q.status === 'fechado' && (
+                      <div className="px-5 pb-4 pt-3 bg-orange-50 border-t border-orange-100">
+                        <p className="text-xs text-orange-800 mb-2 font-semibold">⚡ Cliente solicitou implantação.</p>
+                        {confirmingImplantId === q.id ? (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-xs text-gray-700">Confirmar implantação?</span>
+                            <button onClick={() => handleConfirmImplantacao(q.id)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
+                              <Check size={12} /> Confirmar
+                            </button>
+                            <button onClick={() => setConfirmingImplantId(null)} className="text-xs text-gray-400 px-2 py-2">Cancelar</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmingImplantId(q.id)}
+                            className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
+                            <CheckCircle2 size={12} /> Confirmar implantação
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {q.status === 'implantado' && (
+                      <div className="px-5 py-3 border-t border-emerald-100 bg-emerald-50 text-xs text-emerald-800 font-semibold flex items-center gap-1.5">
+                        <CheckCircle2 size={13} /> Implantação confirmada.
+                        {kd.ov_numero && <span className="font-mono ml-1">OV: {kd.ov_numero}</span>}
+                      </div>
+                    )}
+
+                    {q.desconto_resposta && q.status !== 'aguardando_desconto' && (
+                      <div className={`px-5 py-3 border-t text-xs ${q.status === 'aprovada' ? 'bg-green-50 border-green-100 text-green-800' : 'bg-gray-50 border-gray-100 text-gray-600'}`}>
+                        <strong>Resposta ao cliente:</strong> {q.desconto_resposta}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
