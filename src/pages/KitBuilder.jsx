@@ -2147,9 +2147,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   // ── Imprimir (salva automaticamente antes, muda status p/ em_analise) ──
   const handlePrint = async () => {
     if (session) {
-      setSaveStatus('saving')
-      await saveQuote({ silent: true, statusOverride: savedId ? undefined : 'em_analise' })
-      setSaveStatus(null)
+      // silent:false → mostra "Erro ao salvar" se falhar; retorna null se erro
+      const qid = await saveQuote({ silent: false, statusOverride: savedId ? undefined : 'em_analise' })
+      if (!qid) return   // erro visível na UI, não avança para impressão
     }
     window.print()
     setShowPrintedScreen(true)
@@ -2317,7 +2317,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
         {/* ── Print header: logo + date ── */}
         <div className="print-header hidden print:flex items-center justify-between px-6 py-4" style={{backgroundColor:'#1B3A8A'}}>
-          <img src="/logo-ernaniff-horizontal.png" alt="Ernaniff" style={{height:44, objectFit:'contain'}} />
+          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:44, objectFit:'contain'}} />
           <div style={{textAlign:'right', color:'white'}}>
             <p style={{fontSize:10, opacity:0.7}}>Orçamento gerado em {new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'long',year:'numeric'})}</p>
             <p style={{fontSize:10, opacity:0.7}}>{tableInfo?.nome}</p>
@@ -2329,7 +2329,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           <div className="flex justify-between items-start flex-wrap gap-3">
             <div>
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                <img src="/logo-ernaniff-horizontal.png" alt="Ernaniff" style={{height:32, objectFit:'contain'}} className="mr-1" />
+                <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:30, objectFit:'contain'}} className="mr-1" />
                 <p className="text-white/60 text-xs uppercase tracking-wide">Ernaniff Representações</p>
                 {data.numero_orcamento && (
                   <span className="text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-full font-mono">
