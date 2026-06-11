@@ -2174,10 +2174,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const [pendingPrint, setPendingPrint] = useState(false)
 
   // Imprime após voltar para a tela do kit (quando success screen some)
+  // Dois requestAnimationFrame garantem que o browser pintou o #kit-print antes de imprimir
   useEffect(() => {
     if (pendingPrint && !showPrintedScreen) {
       setPendingPrint(false)
-      window.print()
+      requestAnimationFrame(() => requestAnimationFrame(() => window.print()))
     }
   }, [pendingPrint, showPrintedScreen])
 
