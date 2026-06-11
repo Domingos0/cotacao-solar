@@ -1174,7 +1174,7 @@ function Step4({ data, onChange, products }) {
         />
 
         {estruturaSep}
-        <StructureSection data={data} onChange={onChange} products={products} panelCount={panelCount} />
+        <StructureSection data={data} onChange={onChange} panelCount={panelCount} />
       </div>
     </div>
   )
@@ -1230,7 +1230,7 @@ function Step4({ data, onChange, products }) {
           product={kitSolar5wP}included={d('inclSolar5w') ?? true} onToggle={() => set('inclSolar5w', !d('inclSolar5w'))} color="green" />
 
         {estruturaSep}
-        <StructureSection data={data} onChange={onChange} products={products} panelCount={panelCount} />
+        <StructureSection data={data} onChange={onChange} panelCount={panelCount} />
       </div>
     </div>
   )
@@ -1274,7 +1274,7 @@ function Step4({ data, onChange, products }) {
         />
 
         {estruturaSep}
-        <StructureSection data={data} onChange={onChange} products={products} panelCount={panelCount} />
+        <StructureSection data={data} onChange={onChange} panelCount={panelCount} />
       </div>
     </div>
   )
@@ -1319,7 +1319,9 @@ function computeOptimalMix(N) {
 const ISOPLETA_OPTIONS = [30, 35, 40, 45, 50]
 const SOLO_REGIOES = ['Região 1', 'Região 2 e 3', 'Região 4 e 5']
 
-function StructureSection({ data, onChange, products, panelCount }) {
+function StructureSection({ data, onChange, panelCount }) {
+  // Usa lista COMPLETA de produtos (não filtrada por lista ativa) para estruturas
+  const { products } = useProducts()
   const wants = data.wantsEstrutura
   const roofType = data.estruturaRoofType || ''
   const isopleta = data.estruturaIsopleta || 30
@@ -1338,13 +1340,22 @@ function StructureSection({ data, onChange, products, panelCount }) {
       const tl = (p.tipo || '').toLowerCase()
       const catl = (p.categoria || '').toLowerCase()
 
-      // Solo: filtro próprio — aceita qualquer categoria 'estrutura' com tipo/nome de solo
+      // Solo: identifica por tipo OU nome — sem exigir categoria específica
       if (roofType === 'Solo') {
-        if (!catl.includes('estrutura')) return false
         const isSolo = tl.includes('solo') || nl.includes('região')
         if (!isSolo) return false
         // Filtra pela região selecionada (ex: "Região 1", "Região 2 e 3")
-        return nl.startsWith(soloRegiao.toLowerCase())
+        if (!nl.startsWith(soloRegiao.toLowerCase())) return false
+        // Filtra pelo tier de quantidade (≤20 → ate20, >20 → acima20)
+        if (p.soloTier) {
+          const tier = panelCount <= 20 ? 'ate20' : 'acima20'
+          if (p.soloTier !== tier) return false
+        }
+        // Filtra pelo tipo de painel atual — extrai Wp do nome "(615 Wp - WEG BIFACIAL)"
+        if (data.panel?.potencia) {
+          if (!nl.includes(String(data.panel.potencia) + ' wp')) return false
+        }
+        return true
       }
 
       // Demais tipos — exige categoria Estruturas Metálicas
@@ -1367,7 +1378,8 @@ function StructureSection({ data, onChange, products, panelCount }) {
       }
       return true
     })
-  }, [products, roofType, isopleta, metalicoPerfil, soloRegiao])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, roofType, isopleta, metalicoPerfil, soloRegiao, data.panel?.potencia, panelCount])
 
   // Roof types that always use only 4-module kits (no 3-mod mix)
   const FORCE_4MOD = ['Cerâmico', 'Fibromadeira', 'Fibrometálico']
@@ -1418,10 +1430,11 @@ function StructureSection({ data, onChange, products, panelCount }) {
         estruturaQty3: mix?.n3 ?? 0,
       })
     } else if (selectedKitSingle) {
+      const qty = Math.ceil(panelCount / (selectedKitSingle.potencia || 1))
       onChange({
         ...data,
         estruturaKit: selectedKitSingle,
-        estruturaQty: Math.ceil(panelCount / (selectedKitSingle.potencia || 1)),
+        estruturaQty: qty,
       })
     }
   }, [availableKits]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1722,17 +1735,31 @@ function StructureSection({ data, onChange, products, panelCount }) {
       {roofType && roofType !== 'Carport' && !hasBothMods && availableKits.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-            Selecionar kit ({availableKits.length} opções)
+            {roofType === 'Solo'
+              ? `Estrutura Solo — ${availableKits.length} opção${availableKits.length !== 1 ? 'ões' : ''}`
+              : `Selecionar kit (${availableKits.length} opções)`}
           </p>
+          {roofType === 'Solo' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 font-medium mb-2">
+              Mesa dupla — estrutura projetada para número par de módulos. Quantidade ímpar é permitida mas pode requerer adaptação.
+            </div>
+          )}
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
             {availableKits.map(kit => {
               const modPerKit = kit.potencia || 1
-              const qty = qtySingle
+              const autoQty = Math.ceil(panelCount / modPerKit)
+              // Solo: preço sempre usa qtd par (arredonda para cima)
+              const soloQtyPar = autoQty % 2 === 0 ? autoQty : autoQty + 1
               const isSel = (data.estruturaKit?.id ?? selectedKitSingle?.id) === kit.id
+              // Solo: total = qtyPar × preco_por_Wp × Wp_do_painel
+              const panelWp = data.panel?.potencia || null
+              const soloTotal = roofType === 'Solo' && kit.preco && panelWp
+                ? kit.preco * soloQtyPar * panelWp
+                : null
               return (
                 <button
                   key={kit.id}
-                  onClick={() => onChange({ ...data, estruturaKit: kit, estruturaQty: Math.ceil(panelCount / modPerKit) })}
+                  onClick={() => onChange({ ...data, estruturaKit: kit, estruturaQty: autoQty })}
                   className={`w-full text-left rounded-xl border-2 p-3 transition-all ${
                     isSel ? 'border-weg-blue bg-white shadow-sm' : 'border-blue-100 bg-white/70 hover:border-weg-blue/60'
                   }`}
@@ -1740,12 +1767,21 @@ function StructureSection({ data, onChange, products, panelCount }) {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{kit.nome}</p>
-                      <p className="text-xs font-mono text-gray-400">SAP: {kit.codigo} • {modPerKit} módulo{modPerKit > 1 ? 's' : ''}/kit</p>
+                      <p className="text-xs font-mono text-gray-400">
+                        SAP: {kit.codigo}
+                        {roofType === 'Solo' ? ' • preço/Wp' : ` • ${modPerKit} módulo${modPerKit > 1 ? 's' : ''}/kit`}
+                      </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs text-gray-400">Qtd: {Math.ceil(panelCount / modPerKit)}</p>
-                      <p className="text-sm font-bold text-weg-blue">{kit.preco ? fmt(kit.preco) : 'Sob consulta'}</p>
-                      {kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(kit.preco * Math.ceil(panelCount / modPerKit))} total</p> : null}
+                      {roofType === 'Solo'
+                        ? <p className="text-xs text-gray-400">{autoQty} módulos → <span className="font-semibold text-amber-600">{soloQtyPar} un.</span> (mesa dupla)</p>
+                        : <p className="text-xs text-gray-400">Qtd: {autoQty} kits</p>}
+                      {roofType === 'Solo'
+                        ? <p className="text-sm font-bold text-weg-blue">{kit.preco ? `R$${kit.preco.toFixed(2).replace('.',',')}/Wp` : 'Sob consulta'}</p>
+                        : <p className="text-sm font-bold text-weg-blue">{kit.preco ? fmt(kit.preco) : 'Sob consulta'}</p>}
+                      {roofType === 'Solo'
+                        ? soloTotal ? <p className="text-xs text-weg-orange font-semibold">{fmt(soloTotal)} total</p> : <p className="text-xs text-gray-400">{panelWp ? '' : 'Selecione painel'}</p>
+                        : kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(kit.preco * autoQty)} total</p> : null}
                     </div>
                     {isSel && <Check size={16} className="text-weg-blue shrink-0" />}
                   </div>
@@ -1754,22 +1790,47 @@ function StructureSection({ data, onChange, products, panelCount }) {
             })}
           </div>
           {/* Quantity adjuster */}
-          <div className="flex items-center gap-2 mt-2 bg-white rounded-xl p-2.5 border border-blue-200">
-            <span className="text-xs text-gray-600 font-medium mr-1">Qtd:</span>
-            <button onClick={() => set('estruturaQty', Math.max(1, qtySingle - 1))} className="w-7 h-7 rounded-lg border border-blue-200 flex items-center justify-center hover:bg-blue-50"><Minus size={12} /></button>
-            <input type="number" min="1" value={qtySingle}
-              onChange={e => set('estruturaQty', Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-12 text-center border border-blue-200 rounded-lg py-0.5 font-bold text-sm focus:outline-none focus:ring-1 focus:ring-weg-blue" />
-            <button onClick={() => set('estruturaQty', qtySingle + 1)} className="w-7 h-7 rounded-lg border border-blue-200 flex items-center justify-center hover:bg-blue-50"><Plus size={12} /></button>
-            <span className="text-xs text-gray-400 ml-1">
-              cobre {qtySingle * ((data.estruturaKit ?? selectedKitSingle)?.potencia || 1)} módulos
-            </span>
-            <span className="ml-auto font-bold text-weg-orange text-sm">
-              {((data.estruturaKit ?? selectedKitSingle)?.preco)
-                ? fmt((data.estruturaKit ?? selectedKitSingle).preco * qtySingle)
-                : 'Sob consulta'}
-            </span>
-          </div>
+          {(() => {
+            const activeKit = data.estruturaKit ?? selectedKitSingle
+            const panelWp = data.panel?.potencia || null
+            // Solo: preço sempre pela qtd par
+            const soloQtyParAdj = qtySingle % 2 === 0 ? qtySingle : qtySingle + 1
+            const soloTotalAdj = roofType === 'Solo' && activeKit?.preco && panelWp
+              ? activeKit.preco * soloQtyParAdj * panelWp
+              : null
+            return (
+              <div className="flex items-center gap-2 mt-2 bg-white rounded-xl p-2.5 border border-blue-200 flex-wrap gap-y-1">
+                <span className="text-xs text-gray-600 font-medium mr-1">Qtd:</span>
+                <button
+                  onClick={() => set('estruturaQty', Math.max(1, qtySingle - 1))}
+                  className="w-7 h-7 rounded-lg border border-blue-200 flex items-center justify-center hover:bg-blue-50"
+                ><Minus size={12} /></button>
+                <input
+                  type="number"
+                  min={1}
+                  value={qtySingle}
+                  onChange={e => set('estruturaQty', Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-12 text-center border border-blue-200 rounded-lg py-0.5 font-bold text-sm focus:outline-none focus:ring-1 focus:ring-weg-blue"
+                />
+                <button
+                  onClick={() => set('estruturaQty', qtySingle + 1)}
+                  className="w-7 h-7 rounded-lg border border-blue-200 flex items-center justify-center hover:bg-blue-50"
+                ><Plus size={12} /></button>
+                {roofType === 'Solo'
+                  ? <span className="text-xs ml-1 text-gray-500">
+                      {qtySingle % 2 !== 0
+                        ? <><span className="text-amber-600 font-medium">{qtySingle} módulos ⚠</span><span className="text-gray-400"> → cobrado: {soloQtyParAdj} un.</span></>
+                        : <span className="text-gray-400">{qtySingle} módulos (mesa dupla)</span>}
+                    </span>
+                  : <span className="text-xs text-gray-400 ml-1">cobre {qtySingle * (activeKit?.potencia || 1)} módulos</span>}
+                <span className="ml-auto font-bold text-weg-orange text-sm">
+                  {roofType === 'Solo'
+                    ? soloTotalAdj ? fmt(soloTotalAdj) : (activeKit?.preco ? 'Selecione painel' : 'Sob consulta')
+                    : activeKit?.preco ? fmt(activeKit.preco * qtySingle) : 'Sob consulta'}
+                </span>
+              </div>
+            )
+          })()}
         </div>
       )}
 
@@ -2068,8 +2129,17 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       { label: 'Minidisjuntor CA', product: breakerP, qty: d('breakerQty', totalInvCount), unit: 'un' },
 
     // Estrutura (todos os tipos) — kit 4-mod
-    data.wantsEstrutura && data.estruturaKit && (data.estruturaQty || 0) > 0 &&
-      { label: 'Estrutura de Fixação', product: data.estruturaKit, qty: data.estruturaQty || 1, unit: 'kit' },
+    data.wantsEstrutura && data.estruturaKit && (data.estruturaQty || 0) > 0 && (() => {
+      const isSolo = data.estruturaRoofType === 'Solo'
+      const panelWp = data.panel?.potencia || 1
+      // Solo: qtd cobrada = par (arredonda para cima se ímpar); preço = preco/Wp × Wp_painel
+      const rawQty = data.estruturaQty || 1
+      const qty = isSolo ? (rawQty % 2 === 0 ? rawQty : rawQty + 1) : rawQty
+      const prod = isSolo
+        ? { ...data.estruturaKit, preco: data.estruturaKit.preco * panelWp, precoFrete: (data.estruturaKit.precoFrete || data.estruturaKit.preco) * panelWp }
+        : data.estruturaKit
+      return { label: 'Estrutura de Fixação', product: prod, qty, unit: isSolo ? 'un' : 'kit' }
+    })(),
     // Estrutura — kit 3-mod (mixed selection)
     data.wantsEstrutura && data.estruturaKit3 && (data.estruturaQty3 || 0) > 0 &&
       { label: 'Estrutura de Fixação', product: data.estruturaKit3, qty: data.estruturaQty3, unit: 'kit' },
