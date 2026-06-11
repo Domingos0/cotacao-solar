@@ -2609,36 +2609,37 @@ function AdminDashboard() {
   const handleImport = (parsed, mode) => {
     const { products: imported, tableName } = parsed
 
-    // Produtos fixos (Solo, Smart Home) nunca vêm do Excel — sempre preservados
-    const importedCodes = new Set(imported.map(p => p.codigo))
-    const fixedToKeep = fixedProducts.filter(p => !importedCodes.has(p.codigo))
+    // Atualiza preços dos fixedProducts por correspondência SAP + nome exato
+    // (Solo tem 24 produtos com o mesmo SAP — match por nome é necessário)
+    const updatedFixed = fixedProducts.map(fp => {
+      const match = imported.find(imp => imp.codigo === fp.codigo && imp.nome === fp.nome)
+      return match ? { ...fp, preco: match.preco, precoFrete: match.precoFrete } : fp
+    })
+
+    // Remove do imported os itens que já foram tratados como fixedProducts
+    const fixedNomes = new Set(fixedProducts.map(f => f.nome))
+    const importedRegular = imported.filter(imp => !fixedNomes.has(imp.nome))
 
     if (mode === 'full') {
-      saveProducts([...imported, ...fixedToKeep])
+      saveProducts([...importedRegular, ...updatedFixed])
     } else {
-      // Atualiza preços por código SAP e adiciona produtos novos
-      // Começa com os fixedProducts para garantir que sempre estão presentes
-      const base = [
-        ...products.filter(p => !fixedProducts.some(f => f.id === p.id)),
-        ...fixedToKeep,
-      ]
+      // Atualiza preços por código SAP e adiciona produtos novos (apenas regulares)
+      const base = products.filter(p => !fixedProducts.some(f => f.id === p.id))
       const bySAP = {}
       base.forEach(p => { bySAP[p.codigo] = p })
       const merged = [...base]
       const seen = new Set(base.map(p => p.codigo))
 
-      imported.forEach(imp => {
+      importedRegular.forEach(imp => {
         if (bySAP[imp.codigo]) {
-          const idx = merged.findIndex(p => p.codigo === imp.codigo && !fixedProducts.some(f => f.id === p.id))
-          if (idx >= 0) {
-            merged[idx] = { ...merged[idx], preco: imp.preco, precoFrete: imp.precoFrete }
-          }
+          const idx = merged.findIndex(p => p.codigo === imp.codigo)
+          if (idx >= 0) merged[idx] = { ...merged[idx], preco: imp.preco, precoFrete: imp.precoFrete }
         } else if (!seen.has(imp.codigo)) {
           merged.push(imp)
           seen.add(imp.codigo)
         }
       })
-      saveProducts(merged)
+      saveProducts([...merged, ...updatedFixed])
     }
 
     // ── Salva whitelist com os SAP codes da lista importada ──
