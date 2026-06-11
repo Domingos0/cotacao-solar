@@ -1799,6 +1799,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
   // ── Salvar cotação ──
   const [saveStatus, setSaveStatus] = useState(null) // null | 'saving' | 'ok' | 'error'
+  const [saveError,  setSaveError]  = useState(null)
   const [savedId, setSavedId] = useState(initialSavedId || null)
 
   // ── Solicitar desconto ──
@@ -2136,7 +2137,8 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       return quoteId
     } catch (err) {
       console.error('[saveQuote]', err)
-      if (!silent) setSaveStatus('error')
+      const msg = err?.message || JSON.stringify(err) || 'Erro desconhecido'
+      if (!silent) { setSaveStatus('error'); setSaveError(msg) }
       return null
     }
   }
@@ -2830,11 +2832,23 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         )}
       </div>
 
-      {/* Save status error */}
+      {/* Save status feedback */}
+      {saveStatus === 'ok' && (
+        <div className="flex items-center justify-center gap-3 mt-2 print:hidden">
+          <p className="text-sm text-green-600 font-semibold">Cotação salva!</p>
+          <button
+            onClick={() => onGoToQuotes?.()}
+            className="text-xs text-weg-blue underline hover:no-underline"
+          >
+            Ver minhas cotações →
+          </button>
+        </div>
+      )}
       {saveStatus === 'error' && (
-        <p className="text-center text-sm text-red-500 mt-2 print:hidden">
-          Erro ao salvar. Verifique sua conexão.
-        </p>
+        <div className="mt-2 print:hidden bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-center max-w-xl mx-auto">
+          <p className="text-sm text-red-600 font-semibold">Erro ao salvar cotação</p>
+          {saveError && <p className="text-xs text-red-500 mt-1 font-mono break-all">{saveError}</p>}
+        </div>
       )}
 
       {/* Discount Request Modal */}
