@@ -1732,9 +1732,15 @@ function StructureSection({ data, onChange, products, panelCount }) {
       )}
 
       {roofType && availableKits.length === 0 && (
-        <p className="text-sm text-yellow-700 bg-yellow-50 rounded-xl p-3">
-          ⚠ Nenhum kit encontrado para este tipo de cobertura. Verifique o catálogo.
-        </p>
+        <div className="text-sm text-yellow-700 bg-yellow-50 rounded-xl p-3 space-y-2">
+          <p>⚠ Nenhum kit encontrado para <strong>{roofType}</strong>.</p>
+          <p className="text-xs text-yellow-600">Produtos na categoria Estruturas:</p>
+          <ul className="text-xs text-yellow-800 space-y-0.5 max-h-40 overflow-y-auto">
+            {products.filter(p => p.categoria === 'Estruturas Metálicas').map(p => (
+              <li key={p.id} className="font-mono">nome: "{p.nome}" | tipo: "{p.tipo}"</li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
