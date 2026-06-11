@@ -107,22 +107,41 @@ const KIT_SAPS = {
 
 const SUN_HOURS = 4.5 // HSP médio Brasil
 
-// Map inverter disjuntor model → breaker product model
-const BREAKER_MAP = {
-  'MDWP-C16-2': 'MDWP-C16-2',
-  'MDWP-C20-2': 'MDWP-C20-2',
-  'MDWP-C25-2': 'MDWP-C25-2',
-  'MDWP-C32-2': 'MDWP-C32-2',
-  'MDWP-C40-2': 'MDWP-C40-2',
-  'MDWP-C50-2': 'MDWP-C50-2',
-  'MDWH-C80-2': 'MDWH-C80-2',
-  'MDWP-C32-3': 'MDWP-C32-3',
-  'MDWP-C40-3': 'MDWP-C40-3',
-  'MDWP-C50-3': null,
-  'MDWP-C63-3': 'MDWP-C63-3',
-  'MDWH-C80-3': null,
-  'MDWH-C100-3': 'MDWH-C100-3',
-  'MDWH-C125-3': null,
+// Localiza no catálogo o disjuntor pelo código do campo disjuntor do inversor.
+// Busca primeiro por modelo exato, depois por nome que contenha o código,
+// e faz fallback para o primeiro produto com KIT_ROLE.BREAKER.
+// Funciona com qualquer tabela importada — sem mapa estático.
+function findBreakerProduct(products, disCode) {
+  if (!disCode) return products.find(p => p.kitRole === KIT_ROLE.BREAKER)
+  return (
+    products.find(p => p.kitRole === KIT_ROLE.BREAKER && p.modelo === disCode) ||
+    products.find(p => p.kitRole === KIT_ROLE.BREAKER && (p.nome || '').includes(disCode)) ||
+    products.find(p => p.kitRole === KIT_ROLE.BREAKER)
+  )
+}
+
+// Agrupa inversores do mix por código de disjuntor.
+// Retorna [{dis, qty, product}] — um item por código único.
+function buildBreakerGroups(inverters, products, selections) {
+  return inverters.reduce((acc, { inverter: i, qty }) => {
+    const dis = i?.disjuntor || '__none__'
+    const existing = acc.find(g => g.dis === dis)
+    if (existing) { existing.qty += qty; return acc }
+    acc.push({
+      dis,
+      qty,
+      product: selections?.[dis] || findBreakerProduct(products, dis !== '__none__' ? dis : null),
+    })
+    return acc
+  }, [])
+}
+
+// Calcula o total de protetores de surto CA respeitando a fase de cada inversor.
+function calcSurgeACQty(inverters, defaultTri) {
+  return inverters.reduce((s, { inverter: i, qty }) => {
+    const tri = (i?.categoria || '').toLowerCase().includes('trifásico') || defaultTri
+    return s + (tri ? 4 : 2) * qty
+  }, 0)
 }
 
 // Round to 2 decimal places — matches Excel ROUND(x, 2) behaviour
@@ -1059,10 +1078,13 @@ function Step4({ data, onChange, products }) {
   // ── Produtos On-Grid string ──────────────────────────────────────────────
   const surgeCAP    = bySAP(KIT_SAPS.SURGE_CA)    || byRole(KIT_ROLE.SURGE_AC)
   const surgeDCP    = byRole(KIT_ROLE.SURGE_DC)
+  const isMix       = Array.isArray(data.inverters)
   const invDis      = inv?.disjuntor
-  const breakerP    = (invDis && BREAKER_MAP[invDis])
-    ? products.find(p => p.modelo === BREAKER_MAP[invDis] || p.nome?.includes(BREAKER_MAP[invDis]))
-    : byRole(KIT_ROLE.BREAKER)
+  const breakerP    = findBreakerProduct(products, invDis)
+  // Mix mode: um grupo por código de disjuntor → um BreakerRow por grupo
+  const mixBreakerGroups = isMix
+    ? buildBreakerGroups(data.inverters, products, data.breakerSelections)
+    : null
 
   // ── Produtos Bombeamento ─────────────────────────────────────────────────
   const surgeCCBombP = bySAP(KIT_SAPS.SURGE_CC_12) || byRole(KIT_ROLE.SURGE_DC)
@@ -1099,7 +1121,10 @@ function Step4({ data, onChange, products }) {
     mc4Qty:        entradas,
     cablePosMeters: 25 * entradas,
     cableNegMeters: 25 * entradas,
-    surgeACQty:    (isTri ? 4 : 2) * totalInvCount,
+    // Surto CA: 2 por inversor mono, 4 por trifásico — calculado por grupo no mix
+    surgeACQty: isMix
+      ? calcSurgeACQty(data.inverters, isTri)
+      : (isTri ? 4 : 2) * totalInvCount,
     inclSurgeCA:   true,
     inclSurgeDC:   true,   surgeDCQty: 1,
     inclBreaker:   true,   breakerQty: totalInvCount,
@@ -1257,21 +1282,39 @@ function Step4({ data, onChange, products }) {
           <CableRow label="Cabo CC Preto (–)"   color="dark" product={cableNegP} meters={d('cableNegMeters') ?? 25 * entradas} onChange={v => set('cableNegMeters', v)} />
         </div>
 
-        <AccessoryRow icon={Shield} label={`Protetor de Surto CA — ${isTri ? '4 un. (Trifásico)' : '2 un. (Monofásico)'}`}
+        <AccessoryRow icon={Shield}
+          label={isMix
+            ? `Protetor de Surto CA — ${d('surgeACQty') ?? calcSurgeACQty(data.inverters, isTri)} un. (mix)`
+            : `Protetor de Surto CA — ${isTri ? '4 un. (Trifásico)' : '2 un. (Monofásico)'}`}
           product={surgeCAP} included={d('inclSurgeCA') ?? true}
           onToggle={() => set('inclSurgeCA', !d('inclSurgeCA'))}
-          qty={d('surgeACQty') ?? (isTri ? 4 : 2)} onQtyChange={v => set('surgeACQty', v)} />
+          qty={d('surgeACQty') ?? (isMix ? calcSurgeACQty(data.inverters, isTri) : (isTri ? 4 : 2) * totalInvCount)}
+          onQtyChange={v => set('surgeACQty', v)} />
 
-        <BreakerRow
-          products={products}
-          selectedBreaker={d('selectedBreaker') ?? breakerP}
-          onSelect={brk => set('selectedBreaker', brk)}
-          included={d('inclBreaker') ?? true}
-          onToggle={() => set('inclBreaker', !d('inclBreaker'))}
-          isTri={isTri}
-          qty={d('breakerQty') ?? totalInvCount}
-          onQtyChange={v => set('breakerQty', v)}
-        />
+        {mixBreakerGroups
+          ? mixBreakerGroups.map(g => (
+              <BreakerRow key={g.dis}
+                products={products}
+                selectedBreaker={(data.breakerSelections || {})[g.dis] || g.product}
+                onSelect={brk => set('breakerSelections', { ...(data.breakerSelections || {}), [g.dis]: brk })}
+                included={d('inclBreaker') ?? true}
+                onToggle={() => set('inclBreaker', !(d('inclBreaker') ?? true))}
+                isTri={isTri}
+                qty={data[`brkQty_${g.dis}`] ?? g.qty}
+                onQtyChange={v => set(`brkQty_${g.dis}`, v)}
+              />
+            ))
+          : <BreakerRow
+              products={products}
+              selectedBreaker={d('selectedBreaker') ?? breakerP}
+              onSelect={brk => set('selectedBreaker', brk)}
+              included={d('inclBreaker') ?? true}
+              onToggle={() => set('inclBreaker', !(d('inclBreaker') ?? true))}
+              isTri={isTri}
+              qty={d('breakerQty') ?? totalInvCount}
+              onQtyChange={v => set('breakerQty', v)}
+            />
+        }
 
         {estruturaSep}
         <StructureSection data={data} onChange={onChange} panelCount={panelCount} />
@@ -2080,11 +2123,18 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const surgeCAP   = bySAP(KIT_SAPS.SURGE_CA)    || byRole(KIT_ROLE.SURGE_AC)
   const surgeCCBP  = bySAP(KIT_SAPS.SURGE_CC_12) || byRole(KIT_ROLE.SURGE_DC)
   const surgeDCP   = byRole(KIT_ROLE.SURGE_DC)
-  const invDis     = inv?.disjuntor
-  const autoBreaker = (invDis && BREAKER_MAP[invDis])
-    ? products.find(p => p.modelo === BREAKER_MAP[invDis] || p.nome?.includes(BREAKER_MAP[invDis]))
-    : byRole(KIT_ROLE.BREAKER)
-  const breakerP   = data.selectedBreaker || autoBreaker
+  const invDis      = inv?.disjuntor
+  const autoBreaker = findBreakerProduct(products, invDis)
+  const breakerP    = data.selectedBreaker || autoBreaker
+  // Grupos de disjuntor por tipo de inversor no mix
+  const mixBreakerGroups = mixInverters
+    ? buildBreakerGroups(mixInverters, products, data.breakerSelections)
+        .map(g => ({
+          ...g,
+          product: (data.breakerSelections || {})[g.dis] || g.product,
+          qty: data[`brkQty_${g.dis}`] ?? g.qty,
+        }))
+    : null
 
   const d = (key, def) => data[key] !== undefined ? data[key] : def
 
@@ -2106,10 +2156,22 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       { label: 'Cabo CC Preto (–)', product: cableNegP, qty: d('cableNegMeters', 25*entradas), unit: 'm' },
 
     // On-Grid string
-    (!isMicro && !isBomb) && d('inclSurgeCA', true) && surgeCAP &&
-      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', (isTri ? 4 : 2) * totalInvCount), unit: 'un' },
-    (!isMicro && !isBomb) && d('inclBreaker', true) && breakerP &&
-      { label: 'Minidisjuntor CA', product: breakerP, qty: d('breakerQty', totalInvCount), unit: 'un' },
+    (!isMicro && !isBomb) && d('inclSurgeCA', true) && surgeCAP && {
+      label: 'Protetor de Surto CA',
+      product: surgeCAP,
+      qty: d('surgeACQty', mixInverters
+        ? calcSurgeACQty(mixInverters, isTri)
+        : (isTri ? 4 : 2) * totalInvCount),
+      unit: 'un',
+    },
+    // Disjuntor: um item por grupo de disjuntor no mix, ou item único no modo normal
+    ...(!isMicro && !isBomb && d('inclBreaker', true)
+      ? (mixBreakerGroups
+          ? mixBreakerGroups.filter(g => g.product).map(g => ({ label: 'Minidisjuntor CA', product: g.product, qty: g.qty, unit: 'un' }))
+          : (breakerP ? [{ label: 'Minidisjuntor CA', product: breakerP, qty: d('breakerQty', totalInvCount), unit: 'un' }] : [])
+        )
+      : []
+    ),
 
     // Bombeamento
     isBomb && d('inclFusivel', true)     && bySAP(KIT_SAPS.FUSIVEL_CC) &&
