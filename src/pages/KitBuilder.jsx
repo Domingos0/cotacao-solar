@@ -1385,6 +1385,32 @@ function StructureSection({ data, onChange, products, panelCount }) {
     onChange({ ...data, estruturaIsopleta: val, estruturaKit: null, estruturaKit3: null, estruturaQty: null, estruturaQty3: null })
   }
 
+  // Auto-seleciona primeiro kit disponível quando a lista muda (troca de telhado/isopleta)
+  useEffect(() => {
+    if (!roofType || !wants || roofType === 'Carport') return
+    if (data.estruturaKit) return  // já tem kit selecionado manualmente
+    if (availableKits.length === 0) return
+
+    if (hasBothMods) {
+      const k4 = kits4[0]
+      const k3 = kits3[0]
+      if (!k4) return
+      onChange({
+        ...data,
+        estruturaKit:  k4,
+        estruturaKit3: k3 || null,
+        estruturaQty:  mix?.n4 ?? Math.ceil(panelCount / 4),
+        estruturaQty3: mix?.n3 ?? 0,
+      })
+    } else if (selectedKitSingle) {
+      onChange({
+        ...data,
+        estruturaKit: selectedKitSingle,
+        estruturaQty: Math.ceil(panelCount / (selectedKitSingle.potencia || 1)),
+      })
+    }
+  }, [availableKits]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (wants === undefined || wants === null) {
     // Unanswered — show the question
     return (
