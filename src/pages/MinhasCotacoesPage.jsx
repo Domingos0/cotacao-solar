@@ -748,6 +748,8 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const [editMode, setEditMode]           = useState(false)
   const [successData, setSuccessData]     = useState(null)
   const [countdown, setCountdown]         = useState(4)
+  const [isPrinting, setIsPrinting]       = useState(false)
+  const [printRevision, setPrintRevision] = useState(null)
 
   // Auto-close after success
   useEffect(() => {
@@ -767,6 +769,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
       data:        new Date().toISOString(),
       total_final: totalFinal,
       frete:       freteNome,
+      items:       dbItems || [],
     }
     const newData = {
       ...updatedData,
@@ -816,7 +819,21 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     setConfirmAction(null)
   }
 
-  const handlePrint = () => window.print()
+  const handlePrint = () => {
+    setIsPrinting(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.addEventListener('afterprint', () => setIsPrinting(false), { once: true })
+      window.print()
+    }))
+  }
+
+  const handlePrintRevision = (r) => {
+    setPrintRevision(r)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.addEventListener('afterprint', () => setPrintRevision(null), { once: true })
+      window.print()
+    }))
+  }
 
   // ── Confirmation overlay ──
   if (confirmAction) {
@@ -975,7 +992,75 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white">
+    <>
+    {/* Revision print overlay — visible only during print */}
+    {printRevision && (
+      <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
+        <div className="bg-[#1B3A8A] text-white px-8 py-6 flex items-center justify-between print-header">
+          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
+            onError={e => { e.target.style.display = 'none' }} />
+          <div className="text-right">
+            <p className="font-mono font-bold text-xl">
+              {kitData.numero_orcamento ? `${kitData.numero_orcamento}-R${printRevision.revisao}` : `Rev. ${printRevision.revisao}`}
+            </p>
+            <p className="text-white/70 text-sm">{quote.nome_projeto}</p>
+            <p className="text-white/60 text-xs">{fmtDate(printRevision.data)}</p>
+          </div>
+        </div>
+        <div className="px-8 py-6 space-y-4">
+          {kitData.clienteNome && (
+            <p className="text-sm text-gray-600"><strong>Cliente:</strong> {kitData.clienteNome}</p>
+          )}
+          {printRevision.items?.length > 0 ? (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Composição do Kit</h3>
+              <table className="w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Item</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Produto / SAP</th>
+                    <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Qtd</th>
+                    <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unitário</th>
+                    <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {printRevision.items.map((item, i) => (
+                    <tr key={i} className="border-t border-gray-100">
+                      <td className="px-4 py-2 text-xs font-medium text-gray-800">{item.label}</td>
+                      <td className="px-4 py-2 text-xs text-gray-500">
+                        <div>{item.produto}</div>
+                        <div className="font-mono text-gray-400">{item.codigo_sap}</div>
+                      </td>
+                      <td className="px-3 py-2 text-center text-xs font-bold text-gray-700">{item.qty} {item.unit}</td>
+                      <td className="px-3 py-2 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
+                      <td className="px-4 py-2 text-right text-xs font-bold text-gray-800">{fmt(item.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic">Itens do kit não disponíveis para esta revisão.</p>
+          )}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+            <div className="flex justify-between text-gray-500">
+              <span>Frete — {printRevision.frete}</span>
+              <span className="text-green-600 font-medium">Incluso</span>
+            </div>
+            <div className="border-t border-gray-200 pt-2 flex justify-between font-extrabold text-gray-900">
+              <span>Total Final</span>
+              <span className="text-[#1B3A8A] text-lg">{fmt(printRevision.total_final)}</span>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 text-center pt-4">
+            Revisão {printRevision.revisao} — emitida em {fmtDate(printRevision.data)}
+          </p>
+        </div>
+      </div>
+    )}
+
+    <div id={isPrinting ? 'kit-print' : undefined} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto print:rounded-none print:shadow-none print:max-h-none">
 
         {/* Header */}
@@ -1122,6 +1207,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                         <th className="px-4 py-2 text-left font-semibold text-gray-500">Data</th>
                         <th className="px-4 py-2 text-left font-semibold text-gray-500">Frete</th>
                         <th className="px-4 py-2 text-right font-semibold text-gray-500">Total</th>
+                        <th className="px-2 py-2 text-center font-semibold text-gray-500"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1135,6 +1221,15 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                           </td>
                           <td className="px-4 py-2 text-gray-400 truncate max-w-[140px]">{r.frete}</td>
                           <td className="px-4 py-2 text-right font-bold text-gray-700">{fmt(r.total_final)}</td>
+                          <td className="px-2 py-2 text-center">
+                            <button
+                              onClick={() => handlePrintRevision(r)}
+                              title="Imprimir esta revisão"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-weg-blue/10 transition-colors"
+                            >
+                              <Printer size={13} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1191,6 +1286,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
         </div>
       </div>
     </div>
+    </>
   )
 }
 
