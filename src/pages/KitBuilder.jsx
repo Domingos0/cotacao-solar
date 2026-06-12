@@ -1199,6 +1199,42 @@ function Step3({ data, onChange, products, realKwp }) {
         </div>
       )}
 
+      {/* Dica: Trifásico 220V para kit mais barato */}
+      {data.kitType === 'ongrid_mono' && realKwp > 0 && (() => {
+        const triInvs = products.filter(p =>
+          p.kitRole === KIT_ROLE.INVERTER && p.preco && p.potencia &&
+          p.categoria === CATEGORIES.INVERSORES_TRI &&
+          (p.tipo || '').toLowerCase().includes('220')
+        )
+        const cheapestTri = triInvs
+          .filter(inv => isInvCompatible(inv, realKwp))
+          .sort((a, b) => a.preco - b.preco)[0]
+        if (!cheapestTri) return null
+        const cheapestMono = [...suggested].sort((a, b) => a.preco - b.preco)[0]
+        const saving = cheapestMono && cheapestTri.preco < cheapestMono.preco
+          ? round2(cheapestMono.preco - cheapestTri.preco) : null
+        return (
+          <div className="max-w-2xl mx-auto bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <span className="text-xl shrink-0">💡</span>
+              <div className="min-w-0">
+                <p className="font-bold text-emerald-800 text-sm">Kit mais econômico disponível</p>
+                <p className="text-xs text-emerald-700 mt-0.5 truncate">
+                  {cheapestTri.nome} — {fmt(cheapestTri.preco)}
+                  {saving ? ` · economia de ${fmt(saving)} vs. monofásico` : ' (Trifásico 220V)'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => onChange({ ...data, kitType: 'ongrid_tri', tensaoRede: '220', inverter: undefined, inverters: undefined })}
+              className="shrink-0 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors whitespace-nowrap"
+            >
+              Ver Trifásico 220V →
+            </button>
+          </div>
+        )
+      })()}
+
       {/* Aviso + sugestões de mesclagem */}
       {usePowerFilter && (suggested.length === 0 || mixMode) && mixSuggestions.length > 0 && (
         <div className="max-w-2xl mx-auto space-y-3">
@@ -1292,6 +1328,16 @@ function Step3({ data, onChange, products, realKwp }) {
           // ── SINGLE MODE ──
           if (!mixMode) {
             const selected = data.inverter?.id === inv.id
+            const olBarCls = olPct === null ? '' :
+              olPct > maxOlPct ? 'bg-red-100 text-red-700' :
+              olPct > 30       ? 'bg-yellow-100 text-yellow-700' :
+              olPct >= 0       ? 'bg-green-100 text-green-700' :
+              olPct >= -30     ? 'bg-sky-50 text-sky-600' :
+                                 'bg-gray-100 text-gray-500'
+            const olLabel = olPct === null ? null :
+              olPct > maxOlPct ? `✗ ${olPct.toFixed(0)}% OL — excede máx. ${maxOlPct}%` :
+              olPct >= 0       ? `Overload ${olPct.toFixed(0)}% (máx. ${maxOlPct}%)` :
+                                 `Superdim. ${olPct.toFixed(0)}%`
             return (
               <div key={inv.id} className="contents">
                 {firstNotSugg && (
@@ -1303,16 +1349,17 @@ function Step3({ data, onChange, products, realKwp }) {
                 )}
                 <button
                   onClick={() => onChange({ ...data, inverter: inv })}
-                  className={`text-left rounded-xl border-2 overflow-hidden transition-all ${
-                    selected ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' :
-                    compatible ? 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md' :
-                    'border-gray-200 bg-gray-50 opacity-70 hover:opacity-100 hover:shadow-md'
+                  className={`text-left rounded-xl border-2 overflow-hidden transition-all flex flex-col ${
+                    selected ? 'border-weg-blue ring-2 ring-blue-100' :
+                    compatible ? 'border-gray-200 bg-white hover:border-weg-blue/60 hover:shadow-md' :
+                    'border-gray-200 bg-white opacity-65 hover:opacity-100 hover:shadow-md'
                   }`}
                 >
-                  <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
+                  {/* Image */}
+                  <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center shrink-0">
                     <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
                       className="w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105" />
-                    <div className="absolute top-2 left-2 flex gap-1">
+                    <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
                       {compatible && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm bg-green-500 text-white">✓ Sugerido</span>}
                     </div>
@@ -1321,42 +1368,44 @@ function Step3({ data, onChange, products, realKwp }) {
                         <Check size={13} className="text-white" />
                       </div>
                     )}
-                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white/70 to-transparent" />
+                    <div className="absolute bottom-0 inset-x-0 h-6 bg-gradient-to-t from-white/60 to-transparent" />
                   </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-gray-900 text-sm mb-1">{inv.nome}</h3>
-                    <div className="space-y-1 text-sm mt-2">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Potência CA:</span>
-                        <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">DC máx:</span>
-                        <span className="font-semibold text-gray-700">{getMaxDCkW(inv)} kWp</span>
-                      </div>
-                      {inv.tensao && <div className="flex justify-between"><span className="text-gray-500">Tensão CA:</span><span className="font-semibold">{inv.tensao} {inv.fase}</span></div>}
-                      {inv.entradas && <div className="flex justify-between"><span className="text-gray-500">Entradas MPPT:</span><span className="font-semibold">{inv.entradas}</span></div>}
-                      {inv.disjuntor && <div className="flex justify-between"><span className="text-gray-500">Disjuntor req.:</span><span className="font-mono text-xs font-semibold">{inv.disjuntor}</span></div>}
-                      <div className="border-t border-gray-100 pt-2 flex justify-between">
-                        <span className="text-gray-500">Preço:</span>
-                        <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
-                      </div>
+
+                  {/* Specs */}
+                  <div className="px-3 pt-3 pb-2 flex-1 space-y-1 text-xs">
+                    <h3 className="font-bold text-gray-900 text-sm leading-tight mb-2">{inv.nome}</h3>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Potência CA:</span>
+                      <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
                     </div>
-                    {olPct !== null && (
-                      <div className={`mt-3 text-[11px] font-bold px-2 py-1 rounded-full text-center ${
-                        olPct > maxOlPct   ? 'bg-red-100 text-red-700' :
-                        olPct > 30         ? 'bg-yellow-100 text-yellow-700' :
-                        olPct >= 0         ? 'bg-green-100 text-green-700' :
-                        olPct >= -30       ? 'bg-blue-50 text-blue-600' :
-                                             'bg-gray-100 text-gray-500'
-                      }`}>
-                        {olPct > maxOlPct   ? `✗ Overload ${olPct.toFixed(0)}% > máx. ${maxOlPct}%` :
-                         olPct >= 0         ? `✓ Overload ${olPct.toFixed(0)}% (máx. ${maxOlPct}%)` :
-                         olPct >= -30       ? `Inversor levemente superdimensionado (${olPct.toFixed(0)}%)` :
-                                              `Inversor superdimensionado (${olPct.toFixed(0)}%)`}
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">DC máx:</span>
+                      <span className="font-semibold text-gray-700">{getMaxDCkW(inv)} kWp (OL máx. {maxOlPct}%)</span>
+                    </div>
+                    {inv.entradas != null && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Entradas MPPT:</span>
+                        <span className="font-semibold text-gray-700">{inv.entradas}</span>
                       </div>
                     )}
+                    {inv.disjuntor && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Disjuntor:</span>
+                        <span className="font-mono font-semibold text-gray-700">{inv.disjuntor}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-gray-100 pt-1.5 flex justify-between">
+                      <span className="text-gray-500">Preço:</span>
+                      <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
+                    </div>
                   </div>
+
+                  {/* Overload bar — full width strip at bottom */}
+                  {olLabel && (
+                    <div className={`w-full px-3 py-2 text-[11px] font-bold text-center ${olBarCls}`}>
+                      {olLabel}
+                    </div>
+                  )}
                 </button>
               </div>
             )
