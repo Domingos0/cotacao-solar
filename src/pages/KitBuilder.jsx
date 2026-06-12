@@ -1199,8 +1199,8 @@ function Step3({ data, onChange, products, realKwp }) {
         </div>
       )}
 
-      {/* Dica: Trifásico 220V para kit mais barato */}
-      {data.kitType === 'ongrid_mono' && realKwp > 0 && (() => {
+      {/* Dica: Trifásico 220V para kit mais barato — só quando nenhum mono comporta o sistema */}
+      {data.kitType === 'ongrid_mono' && realKwp > 0 && suggested.length === 0 && (() => {
         const triInvs = products.filter(p =>
           p.kitRole === KIT_ROLE.INVERTER && p.preco && p.potencia &&
           p.categoria === CATEGORIES.INVERSORES_TRI &&
