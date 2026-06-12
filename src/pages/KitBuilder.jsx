@@ -1038,6 +1038,13 @@ function invTypeBadge(inv) {
   if (/SIW/.test(m))     return { label: 'On-Grid', cls: 'bg-sky-100 text-sky-700' }
   return null
 }
+function invHybridSubBadge(inv) {
+  const m = (inv.modelo || inv.nome || '').toUpperCase()
+  if (!/SIW\d*H/.test(m)) return null
+  if (/W20/.test(m))  return { label: 'Split 127/220V', cls: 'bg-amber-100 text-amber-700' }
+  if (/SIW[23]00H/.test(m)) return { label: 'Mono 220V', cls: 'bg-blue-100 text-blue-700' }
+  return null
+}
 
 function Step3({ data, onChange, products, realKwp }) {
   const kitTypeCat = KIT_TYPE_TO_CAT[data.kitType]
@@ -1331,6 +1338,7 @@ function Step3({ data, onChange, products, realKwp }) {
         {displayList.map((inv, listIdx) => {
           const badge = catBadge(inv)
           const typeBadge = invTypeBadge(inv)
+          const hybridSubBadge = invHybridSubBadge(inv)
           const olPct = usePowerFilter ? invOverloadPct(realKwp, inv.potencia) : null
           const maxOlPct = Math.round(getOverloadMax(inv) * 100)
           const compatible = usePowerFilter ? isInvCompatible(inv, realKwp) : true
@@ -1371,9 +1379,10 @@ function Step3({ data, onChange, products, realKwp }) {
                   <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center shrink-0">
                     <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
                       className="w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105" />
-                    <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
+                    <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[85%]">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
                       {typeBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${typeBadge.cls}`}>{typeBadge.label}</span>}
+                      {hybridSubBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${hybridSubBadge.cls}`}>{hybridSubBadge.label}</span>}
                       {compatible && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm bg-green-500 text-white">✓ Sugerido</span>}
                     </div>
                     {selected && (
@@ -1448,9 +1457,10 @@ function Step3({ data, onChange, products, realKwp }) {
               <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
                 <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
                   className="w-full h-full object-contain p-2" />
-                <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
+                <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[85%]">
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
                   {typeBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${typeBadge.cls}`}>{typeBadge.label}</span>}
+                  {hybridSubBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${hybridSubBadge.cls}`}>{hybridSubBadge.label}</span>}
                   {compatible && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm bg-green-500 text-white">✓</span>}
                 </div>
                 {inMix && (
