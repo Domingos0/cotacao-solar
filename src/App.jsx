@@ -24,7 +24,7 @@ const SORT_OPTIONS = [
 ]
 
 function CatalogPage({ searchQuery, setSearchQuery }) {
-  const { products } = useProducts()
+  const { catalogProducts: products } = useProducts()
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [sortBy, setSortBy] = useState('default')
@@ -258,6 +258,7 @@ function AuthenticatedApp() {
             key={loadedQuote?.savedId || 'new'}
             initialData={loadedQuote?.quoteData}
             initialSavedId={loadedQuote?.savedId}
+            onGoToQuotes={() => handlePageChange('cotacoes')}
           />
         )}
         {page === 'cotacoes' && <MinhasCotacoesPage onLoadQuote={handleLoadQuote} />}

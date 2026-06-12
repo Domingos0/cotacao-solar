@@ -11,7 +11,7 @@ import {
   Sun, Zap, Link2, Shield, Cable, ToggleLeft, ChevronRight, ChevronLeft,
   Printer, Plus, Minus, Check, Info, AlertTriangle, Calculator, RefreshCw,
   Package, User, FileText, Home, ChevronDown, Search, Save, BadgePercent,
-  CheckCircle2, XCircle, Clock, X
+  CheckCircle2, XCircle, Clock, X, Battery
 } from 'lucide-react'
 
 function ProductImg({ src, alt, fallback, className }) {
@@ -27,13 +27,22 @@ function ProductImg({ src, alt, fallback, className }) {
   )
 }
 
-const STEPS = [
+const STEPS_BASE = [
   { id: 1, label: 'Tipo de Kit',     icon: Home },
   { id: 2, label: 'Dimensionamento', icon: Calculator },
   { id: 3, label: 'Módulos',         icon: Sun },
   { id: 4, label: 'Inversor',        icon: Zap },
   { id: 5, label: 'Acessórios',      icon: Shield },
   { id: 6, label: 'Resumo',          icon: FileText },
+]
+const STEPS_HYBRID = [
+  { id: 1, label: 'Tipo de Kit',     icon: Home },
+  { id: 2, label: 'Dimensionamento', icon: Calculator },
+  { id: 3, label: 'Módulos',         icon: Sun },
+  { id: 4, label: 'Inversor',        icon: Zap },
+  { id: 5, label: 'Bateria',         icon: Battery },
+  { id: 6, label: 'Acessórios',      icon: Shield },
+  { id: 7, label: 'Resumo',          icon: FileText },
 ]
 
 // Tipos de kit disponíveis
@@ -160,10 +169,10 @@ function fmtInt(v) {
   return Math.round(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
-function StepIndicator({ current, onNavigate }) {
+function StepIndicator({ current, onNavigate, steps = STEPS_BASE }) {
   return (
     <div className="flex items-center justify-center gap-0 mb-8 overflow-x-auto pb-2">
-      {STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const Icon = step.icon
         const done = current > step.id
         const active = current === step.id
@@ -183,7 +192,7 @@ function StepIndicator({ current, onNavigate }) {
                 active ? 'text-weg-blue' : done ? 'text-green-600 group-hover:text-green-500' : 'text-gray-400'
               }`}>{step.label}</span>
             </div>
-            {idx < STEPS.length - 1 && (
+            {idx < steps.length - 1 && (
               <div className={`w-8 sm:w-12 h-0.5 mb-5 mx-1 ${done ? 'bg-green-400' : 'bg-gray-200'}`} />
             )}
           </div>
@@ -1028,9 +1037,42 @@ function invOverloadPct(totalKwp, invKw) {
   if (!invKw || !totalKwp) return null
   return round2((totalKwp / invKw - 1) * 100)
 }
+
+// ── SIW400H K-series — potência e overload dependem da tensão da rede ─────────
+// inv.potencia = CA nominal 380V (ex: K008 = 15 kW); para rede 220/127V usar CA abaixo.
+const SIW400K_CA_220 = { '007': 7.5, '008': 8.6, '011': 11.5, '014': 14.4, '017': 17.3 }
+const SIW400K_OL_220 = { '007': 1.00, '008': 0.86, '011': 0.91, '014': 0.94, '017': 0.96 }
+
+function getK400KVariant(inv) {
+  const match = (inv?.modelo || inv?.nome || '').toUpperCase().match(/SIW400H.*\bK(\d{3})\b/)
+  return match ? match[1] : null
+}
+// Potência CA efetiva considerando tensão da rede (380/220V ou 220/127V)
+function getInvEffKw(inv, gridConf) {
+  const variant = getK400KVariant(inv)
+  if (variant && gridConf === '220' && SIW400K_CA_220[variant]) return SIW400K_CA_220[variant]
+  return inv.potencia
+}
+// Overload máximo considerando tensão da rede
+function getOverloadMaxGrid(inv, gridConf) {
+  const variant = getK400KVariant(inv)
+  if (variant && gridConf === '220' && SIW400K_OL_220[variant] !== undefined) return SIW400K_OL_220[variant]
+  return getOverloadMax(inv)
+}
+// DC máx considerando tensão da rede
+function getMaxDCkWGrid(inv, gridConf) {
+  return round2(getInvEffKw(inv, gridConf) * (1 + getOverloadMaxGrid(inv, gridConf)))
+}
+
 function isInvCompatible(inv, realKwp) {
   const ol = realKwp / inv.potencia - 1
   return ol >= -0.3 && ol <= getOverloadMax(inv)
+}
+// Grid-aware compatibility (applies reduced power for K-series on 220V grid)
+function isInvCompatibleGrid(inv, realKwp, gridConf) {
+  const effKw = getInvEffKw(inv, gridConf)
+  const ol = realKwp / effKw - 1
+  return ol >= -0.3 && ol <= getOverloadMaxGrid(inv, gridConf)
 }
 function invTypeBadge(inv) {
   const m = (inv.modelo || inv.nome || '').toUpperCase()
@@ -1041,9 +1083,268 @@ function invTypeBadge(inv) {
 function invHybridSubBadge(inv) {
   const m = (inv.modelo || inv.nome || '').toUpperCase()
   if (!/SIW\d*H/.test(m)) return null
-  if (/W20/.test(m))  return { label: 'Split 127/220V', cls: 'bg-amber-100 text-amber-700' }
-  if (/SIW[23]00H/.test(m)) return { label: 'Mono 220V', cls: 'bg-blue-100 text-blue-700' }
+  // SIW200H S-series (S057/S075/S114) → Split 127/220V
+  if (/SIW200H/.test(m) && /\bS\d/.test(m)) return { label: 'Split 127/220V', cls: 'bg-amber-100 text-amber-700' }
+  // SIW200H M-series (M050/M075/M105) and SIW300H → Mono 220V
+  if (/SIW200H/.test(m) || /SIW300H/.test(m)) return { label: 'Mono 220V', cls: 'bg-blue-100 text-blue-700' }
+  // SIW400H K-series (K008/K017) → Tri 220V
+  if (/SIW400H/.test(m) && /\bK\d/.test(m)) return { label: 'Tri 220V', cls: 'bg-sky-100 text-sky-700' }
+  // SIW400H T-series (T015/T030) → Tri 380V
+  if (/SIW400H/.test(m) && /\bT\d/.test(m)) return { label: 'Tri 380V', cls: 'bg-indigo-100 text-indigo-700' }
   return null
+}
+
+function isHybridInv(inv) {
+  if (!inv) return false
+  return /SIW\d*H/i.test(inv.modelo || inv.nome || '')
+}
+
+// ─── Battery Step ─────────────────────────────────────────────────────────────
+function BatteryStep({ data, onChange, products }) {
+  const inv = data.inverter || data.inverters?.[0]?.inverter
+  const m = (inv?.modelo || inv?.nome || '').toUpperCase()
+
+  const isSIW200H  = /SIW200H/.test(m)
+  const isSIW300H  = /SIW300H/.test(m)
+  const isSIW400H  = /SIW400H/.test(m)
+  const isSIW500H  = /SIW500H/.test(m)
+  const isCBEco    = isSIW200H || isSIW400H
+  const isSBWEco   = isSIW300H || isSIW500H
+  // JBW 41DC: SIW200H ≥2 bat → 1 JBW; SIW400H ≥3 bat → 1 JBW, ≥6 bat → 2 JBW
+  const k400kVar     = getK400KVariant(inv)
+  const jbwThreshold = isSIW200H ? 2 : (isSIW400H ? 3 : null)
+  const maxBat       = isSIW400H ? 8 : 4
+  const maxGroups    = isSIW300H ? 6 : 12
+  // CB ecosystem products
+  const batCB050  = products.find(p => /\bCB.?050\b/i.test(p.modelo || p.nome || ''))
+  const batCB100  = products.find(p => /\bCB.?100\b/i.test(p.modelo || p.nome || ''))
+  const jbwProd   = products.find(p => /JBW.*41DC|41DC.*JBW/i.test(p.modelo || p.nome || ''))
+  // SBW300 ecosystem products (SmartGuard = mandatory controller; LUNA2000-7-E1 = battery module)
+  const sgSProd      = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bS0\b/i.test(p.nome || p.modelo || ''))
+  const sgTProd      = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bT0\b/i.test(p.nome || p.modelo || ''))
+  const luna2000Prod = products.find(p => /LUNA2000/i.test(p.modelo || p.nome || ''))
+  const sgCtrlProd   = isSIW300H ? sgSProd : sgTProd   // mandatory controller for SBW300 ecosystem
+
+  const [sub, setSub]             = useState(data.batteryDone ? 'done' : 'ask')
+  const [batType, setBatType]     = useState(data.batType || 'CB050')
+  const [batQty, setBatQty]       = useState(data.batQty || 1)
+  const [sbwGroups, setSbwGroups] = useState(data.sbwGroups || 1)
+
+  const jbwNeeded = isCBEco && jbwThreshold !== null && batQty >= jbwThreshold
+  const jbwQty    = !jbwNeeded ? 0 : (isSIW400H && batQty >= 6 ? 2 : 1)
+
+  const confirmBattery = () => {
+    const selBatProd = batType === 'CB100' ? batCB100 : batCB050
+    onChange({
+      ...data,
+      wantsBattery: true, batteryDone: true,
+      batEco:          isCBEco ? 'CB' : 'SBW300',
+      batType:         isCBEco ? batType : 'SBW300',
+      batQty:          isCBEco ? batQty : null,
+      sbwGroups:       isSBWEco ? sbwGroups : null,
+      sbwModType:      null,
+      batProduct:      isCBEco ? selBatProd : null,
+      // SBW300 ecosystem: mandatory SmartGuard controller + LUNA2000-7-E1 battery modules
+      sgCtrlProduct:   isSBWEco ? sgCtrlProd : null,
+      luna2000Product: isSBWEco ? luna2000Prod : null,
+      batB070Product:  null,
+      batCModProduct:  null,
+      inclJBW41DC:     jbwNeeded,
+      jbwQty:          jbwQty,
+      jbwProduct:      jbwNeeded ? jbwProd : null,
+      // Backup: não compatível com SIW200H/SIW400H
+      inclBatBackup:   false,
+      batBackupType:   null,
+      sgProduct:       null,
+      backupBoxProduct: null,
+    })
+    setSub('done')
+  }
+
+  const confirmNoBattery = () => {
+    onChange({ ...data, wantsBattery: false, batteryDone: true,
+      batProduct: null, sgCtrlProduct: null, luna2000Product: null,
+      batB070Product: null, batCModProduct: null,
+      inclJBW41DC: false, jbwQty: 0, jbwProduct: null, inclBatBackup: false,
+      sgProduct: null, backupBoxProduct: null })
+    setSub('done')
+  }
+
+  const editBattery = () => {
+    onChange({ ...data, batteryDone: false, wantsBattery: undefined })
+    setSub('ask')
+  }
+
+  const invName = inv?.nome || inv?.modelo || 'Inversor híbrido'
+  const cbKwh   = (batType === 'CB100' ? 10.07 : 5.02) * batQty
+  const sbwKwh  = 6.9 * sbwGroups
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">Armazenamento de Energia</h2>
+        <p className="text-gray-500 text-sm">Configuração de bateria para o inversor híbrido</p>
+      </div>
+
+      <div className="max-w-2xl mx-auto bg-violet-50 border border-violet-200 rounded-xl p-3 text-sm text-violet-800 flex items-center gap-2">
+        <Battery size={15} className="shrink-0" />
+        <span>Inversor híbrido: <strong>{invName}</strong></span>
+      </div>
+
+      {/* ── Sub-step: ask ── */}
+      {sub === 'ask' && (
+        <div className="max-w-2xl mx-auto space-y-4">
+          <p className="text-center text-gray-700 font-semibold text-lg">O cliente deseja incluir bateria?</p>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => setSub(isCBEco ? 'cbsel' : 'sbwsel')}
+              className="rounded-2xl border-2 border-violet-300 bg-violet-50 hover:bg-violet-100 p-8 text-center font-bold text-violet-800 text-xl transition-all hover:scale-105"
+            >
+              ⚡ Sim
+              <p className="text-xs font-normal text-violet-500 mt-1">Incluir bateria no kit</p>
+            </button>
+            <button
+              onClick={confirmNoBattery}
+              className="rounded-2xl border-2 border-gray-200 bg-gray-50 hover:bg-gray-100 p-8 text-center font-bold text-gray-600 text-xl transition-all hover:scale-105"
+            >
+              ✕ Não
+              <p className="text-xs font-normal text-gray-400 mt-1">Sem armazenamento</p>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sub-step: CB battery selection ── */}
+      {sub === 'cbsel' && (
+        <div className="max-w-2xl mx-auto space-y-5">
+          <p className="text-center text-gray-700 font-semibold">Selecione o modelo de bateria</p>
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { type: 'CB050', desc: '5,02 kWh / 192V DC', prod: batCB050 },
+              { type: 'CB100', desc: '10,07 kWh / 384V DC', prod: batCB100 },
+            ].map(opt => (
+              <button key={opt.type} onClick={() => setBatType(opt.type)}
+                className={`rounded-2xl border-2 p-5 text-left transition-all ${
+                  batType === opt.type ? 'border-violet-500 bg-violet-50 ring-4 ring-violet-100' : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}>
+                <p className="font-bold text-gray-900 text-base">{opt.type}</p>
+                <p className="text-sm text-gray-500 mt-0.5">{opt.desc}</p>
+                {opt.prod?.preco && <p className="text-xs font-semibold text-violet-700 mt-2">{fmt(opt.prod.preco)}/un</p>}
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Quantidade (máx. {maxBat})</p>
+            <div className="flex items-center justify-center gap-5">
+              <button onClick={() => setBatQty(q => Math.max(1, q - 1))}
+                className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-violet-400 transition-colors">
+                <Minus size={16} />
+              </button>
+              <span className="text-3xl font-bold text-gray-900 w-12 text-center">{batQty}</span>
+              <button onClick={() => setBatQty(q => Math.min(maxBat, q + 1))}
+                className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-violet-400 transition-colors">
+                <Plus size={16} />
+              </button>
+            </div>
+            <p className="text-center mt-2 text-sm text-violet-700 font-semibold">{cbKwh.toFixed(2)} kWh total</p>
+            {jbwNeeded && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-sm mx-auto">
+                <Info size={12} className="shrink-0" />
+                {jbwQty}× JBW 41DC 50A adicionado automaticamente
+                {isSIW400H && <span className="ml-1">({batQty >= 6 ? '≥6 bat. → 2 JBW' : '≥3 bat. → 1 JBW'})</span>}
+                {isSIW200H && <span className="ml-1">(≥2 bat. em paralelo)</span>}
+              </div>
+            )}
+          </div>
+
+
+          <div className="flex justify-between pt-2">
+            <button onClick={() => setSub('ask')} className="btn-outline px-4 py-2 text-sm">← Voltar</button>
+            <button onClick={confirmBattery} className="btn-primary px-6 py-2 text-sm">Confirmar ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sub-step: SBW300 selection ── */}
+      {sub === 'sbwsel' && (
+        <div className="max-w-2xl mx-auto space-y-5">
+          <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-violet-900 mb-2">Sistema SBW300 — componentes do pedido:</p>
+            <ul className="text-violet-800 text-xs space-y-1">
+              <li>• 1× Controlador de carga: <strong>SmartGuard-63A-{isSIW300H ? 'S0' : 'T0'}</strong> (obrigatório)</li>
+              <li>• N× Módulo de bateria: <strong>LUNA2000-7-E1</strong> — 6,9 kWh cada</li>
+            </ul>
+            {sgCtrlProd?.preco && (
+              <p className="text-xs text-violet-600 mt-2">SmartGuard: {fmt(sgCtrlProd.preco)}</p>
+            )}
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Módulos LUNA2000-7-E1 (máx. {maxGroups})</p>
+            <div className="flex items-center justify-center gap-5">
+              <button onClick={() => setSbwGroups(q => Math.max(1, q - 1))}
+                className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-violet-400 transition-colors">
+                <Minus size={16} />
+              </button>
+              <span className="text-3xl font-bold text-gray-900 w-12 text-center">{sbwGroups}</span>
+              <button onClick={() => setSbwGroups(q => Math.min(maxGroups, q + 1))}
+                className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-violet-400 transition-colors">
+                <Plus size={16} />
+              </button>
+            </div>
+            {luna2000Prod?.preco && (
+              <p className="text-center text-xs text-gray-400 mt-1">{fmt(luna2000Prod.preco)}/módulo</p>
+            )}
+            <p className="text-center mt-1 text-sm text-violet-700 font-semibold">{sbwKwh.toFixed(1)} kWh total</p>
+          </div>
+
+          <div className="flex justify-between pt-2">
+            <button onClick={() => setSub('ask')} className="btn-outline px-4 py-2 text-sm">← Voltar</button>
+            <button onClick={confirmBattery} className="btn-primary px-6 py-2 text-sm">Confirmar ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sub-step: done / summary ── */}
+      {sub === 'done' && (
+        <div className="max-w-2xl mx-auto">
+          {!data.wantsBattery ? (
+            <div className="text-center py-8">
+              <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                <Check size={28} className="text-gray-400" />
+              </div>
+              <p className="text-gray-700 font-semibold">Sem bateria — kit híbrido padrão</p>
+              <p className="text-gray-400 text-sm mt-1">Continue para configurar os acessórios</p>
+              <button onClick={editBattery} className="mt-4 text-sm text-violet-600 underline">Alterar</button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
+                <p className="font-bold text-violet-900 mb-3 flex items-center gap-2">
+                  <Check size={16} /> Bateria configurada
+                </p>
+                {data.batEco === 'CB' ? (
+                  <ul className="text-sm text-violet-800 space-y-1">
+                    <li>• <strong>{data.batQty}× {data.batType}</strong> — {((data.batType === 'CB100' ? 10.07 : 5.02) * data.batQty).toFixed(2)} kWh</li>
+                    {data.inclJBW41DC && <li>• {data.jbwQty || 1}× JBW 41DC 50A (paralelo)</li>}
+                  </ul>
+                ) : (
+                  <ul className="text-sm text-violet-800 space-y-1">
+                    <li>• <strong>1× SmartGuard-63A-{isSIW300H ? 'S0' : 'T0'}</strong> (controlador obrigatório)</li>
+                    <li>• <strong>{data.sbwGroups}× LUNA2000-7-E1</strong> — {(6.9 * data.sbwGroups).toFixed(1)} kWh</li>
+                  </ul>
+                )}
+              </div>
+              <button onClick={editBattery} className="w-full text-sm text-violet-600 underline text-center">
+                Alterar configuração de bateria
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function Step3({ data, onChange, products, realKwp }) {
@@ -1060,20 +1361,25 @@ function Step3({ data, onChange, products, realKwp }) {
     return true
   })
 
-  const [showAll, setShowAll] = useState(false)
+  // Trifásico: mostrar todos os modelos por padrão (com badges de overload visíveis)
+  const [showAll, setShowAll] = useState(data.kitType === 'ongrid_tri')
   const usePowerFilter = data.kitType === 'ongrid_mono' || data.kitType === 'ongrid_tri'
+
+  // SIW400H K-series: deriva tensão da rede da seleção feita no passo 1 (tensaoRede)
+  const gridConf = data.tensaoRede || '380'  // '380' = rede 380/220V, '220' = rede 220/127V
 
   // Inverters sorted: compatible (valid overload) first sorted by closeness to 20% OL,
   // then incompatible sorted by potencia. When showAll=false, hide incompatible.
   const suggested = usePowerFilter
-    ? allInverters.filter(inv => isInvCompatible(inv, realKwp))
+    ? allInverters.filter(inv => isInvCompatibleGrid(inv, realKwp, gridConf))
     : allInverters
   const notSuggested = usePowerFilter
-    ? allInverters.filter(inv => !isInvCompatible(inv, realKwp))
+    ? allInverters.filter(inv => !isInvCompatibleGrid(inv, realKwp, gridConf))
     : []
   const sortedSuggested = [...suggested].sort((a, b) => {
     const IDEAL = 0.20
-    return Math.abs(realKwp / a.potencia - 1 - IDEAL) - Math.abs(realKwp / b.potencia - 1 - IDEAL)
+    const effA = getInvEffKw(a, gridConf), effB = getInvEffKw(b, gridConf)
+    return Math.abs(realKwp / effA - 1 - IDEAL) - Math.abs(realKwp / effB - 1 - IDEAL)
   })
   const displayList = usePowerFilter
     ? [...sortedSuggested, ...(showAll ? notSuggested : [])]
@@ -1339,9 +1645,11 @@ function Step3({ data, onChange, products, realKwp }) {
           const badge = catBadge(inv)
           const typeBadge = invTypeBadge(inv)
           const hybridSubBadge = invHybridSubBadge(inv)
-          const olPct = usePowerFilter ? invOverloadPct(realKwp, inv.potencia) : null
-          const maxOlPct = Math.round(getOverloadMax(inv) * 100)
-          const compatible = usePowerFilter ? isInvCompatible(inv, realKwp) : true
+          const k400kVar  = getK400KVariant(inv)
+          const effKw     = getInvEffKw(inv, gridConf)
+          const olPct     = usePowerFilter ? invOverloadPct(realKwp, effKw) : null
+          const maxOlPct  = Math.round(getOverloadMaxGrid(inv, gridConf) * 100)
+          const compatible = usePowerFilter ? isInvCompatibleGrid(inv, realKwp, gridConf) : true
           // Divider before the first non-suggested inverter in the list
           const firstNotSugg = usePowerFilter && showAll && listIdx === sortedSuggested.length && notSuggested.length > 0
 
@@ -1398,11 +1706,22 @@ function Step3({ data, onChange, products, realKwp }) {
                     <h3 className="font-bold text-gray-900 text-sm leading-tight mb-2">{inv.nome}</h3>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Potência CA:</span>
-                      <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
+                      <span className="font-bold text-weg-blue">
+                        {effKw} kW
+                        {k400kVar && effKw !== inv.potencia && (
+                          <span className="ml-1 text-gray-400 font-normal">(rede {gridConf === '220' ? '220V' : '380V'})</span>
+                        )}
+                      </span>
                     </div>
+                    {k400kVar && gridConf === '220' && (
+                      <div className="flex justify-between text-gray-400">
+                        <span>CA 380V:</span>
+                        <span>{inv.potencia} kW</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-gray-500">DC máx:</span>
-                      <span className="font-semibold text-gray-700">{getMaxDCkW(inv)} kWp (OL máx. {maxOlPct}%)</span>
+                      <span className="font-semibold text-gray-700">{getMaxDCkWGrid(inv, gridConf)} kWp (OL máx. {maxOlPct}%)</span>
                     </div>
                     {inv.entradas != null && (
                       <div className="flex justify-between">
@@ -1588,6 +1907,7 @@ function AccessoryRow({ icon: Icon, label, product, included, onToggle, qty, onQ
     blue:   { border: 'border-weg-blue bg-blue-50',   icon: 'bg-weg-blue',   btn: 'bg-weg-blue hover:bg-weg-blue-mid', sep: 'border-blue-100',  input: 'border-blue-200 focus:ring-weg-blue'   },
     orange: { border: 'border-weg-orange bg-orange-50',icon: 'bg-weg-orange', btn: 'bg-weg-orange hover:bg-orange-600', sep: 'border-orange-100',input: 'border-orange-200 focus:ring-weg-orange'},
     green:  { border: 'border-green-500 bg-green-50',  icon: 'bg-green-600',  btn: 'bg-green-600 hover:bg-green-700',   sep: 'border-green-100', input: 'border-green-200 focus:ring-green-500' },
+    violet: { border: 'border-violet-400 bg-violet-50',icon: 'bg-violet-600', btn: 'bg-violet-600 hover:bg-violet-700', sep: 'border-violet-100',input: 'border-violet-200 focus:ring-violet-500'},
   }
   const c = colors[color] || colors.blue
   return (
@@ -1770,6 +2090,7 @@ function Step4({ data, onChange, products }) {
   const isTri    = kitType === 'ongrid_tri'
   const isBomb   = kitType === 'bombeamento'
   const isMicro  = kitType === 'micro'
+  const isHybridKit = isHybridInv(data.inverter || data.inverters?.[0]?.inverter)
   const panelCount = data.panelQty || 1
   // In mix mode, first inverter is used for breaker detection; entradas is the sum
   const inv      = data.inverter || data.inverters?.[0]?.inverter
@@ -2050,6 +2371,88 @@ function Step4({ data, onChange, products }) {
               onQtyChange={v => set('breakerQty', v)}
             />
         }
+
+        {/* ── Hybrid battery accessories ── */}
+        {isHybridKit && data.wantsBattery && (
+          <>
+            <div className="relative my-1">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-violet-200" /></div>
+              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-violet-500 uppercase tracking-widest">Armazenamento</span></div>
+            </div>
+
+            {/* Battery product row */}
+            {data.batEco === 'CB' && data.batProduct && (
+              <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0"><Battery size={14} /></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm">{data.batProduct.nome || data.batProduct.modelo}</p>
+                    <p className="text-xs text-gray-400 font-mono">{data.batProduct.codigo} • {fmt(data.batProduct.preco)}/un</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-sm font-bold text-violet-700">{data.batQty}× = {fmt((data.batProduct.preco || 0) * data.batQty)}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-violet-600 mt-2 ml-11">
+                  {((data.batType === 'CB100' ? 10.07 : 5.02) * data.batQty).toFixed(2)} kWh total
+                </p>
+              </div>
+            )}
+
+            {data.batEco === 'SBW300' && (
+              <>
+                {data.sgCtrlProduct && (
+                  <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0"><Shield size={14} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm">{data.sgCtrlProduct.nome || data.sgCtrlProduct.modelo}</p>
+                        <p className="text-xs text-gray-400 font-mono">{data.sgCtrlProduct.codigo} • {fmt(data.sgCtrlProduct.preco)}</p>
+                      </div>
+                      <span className="text-xs font-semibold text-violet-600 shrink-0 bg-violet-100 px-2 py-0.5 rounded-full">obrigatório</span>
+                    </div>
+                  </div>
+                )}
+                {data.luna2000Product && (
+                  <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-violet-500 text-white flex items-center justify-center shrink-0"><Battery size={14} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm">{data.luna2000Product.nome || data.luna2000Product.modelo}</p>
+                        <p className="text-xs text-gray-400 font-mono">{data.luna2000Product.codigo} • {fmt(data.luna2000Product.preco)}/un</p>
+                      </div>
+                      <span className="text-sm font-bold text-violet-700 shrink-0">{data.sbwGroups}× = {fmt((data.luna2000Product.preco || 0) * data.sbwGroups)}</span>
+                    </div>
+                    <p className="text-xs text-violet-600 mt-2 ml-11">{(6.9 * data.sbwGroups).toFixed(1)} kWh total</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* JBW 41DC */}
+            {data.inclJBW41DC && data.jbwProduct && (() => {
+              const jQty = data.jbwQty || 1
+              const incl = d('inclJBW41DC') ?? true
+              return (
+                <div className={`rounded-xl border-2 p-4 transition-all ${incl ? 'border-violet-400 bg-violet-50' : 'border-gray-200 bg-white opacity-60'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${incl ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-400'}`}><Zap size={14} /></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm">JBW 41DC 50A (paralelo de baterias)</p>
+                      <p className="text-xs text-gray-400 font-mono">{data.jbwProduct.codigo} • {fmt(data.jbwProduct.preco)}/un</p>
+                    </div>
+                    <span className="text-sm font-bold text-violet-700 shrink-0">{jQty}× = {fmt((data.jbwProduct.preco || 0) * jQty)}</span>
+                    <button onClick={() => set('inclJBW41DC', !incl)}
+                      className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${incl ? 'bg-violet-600 hover:bg-violet-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                      {incl ? '✓' : '+'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
+
+          </>
+        )}
 
         {estruturaSep}
         <StructureSection data={data} onChange={onChange} panelCount={panelCount} />
@@ -2956,6 +3359,21 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     // Estrutura — kit 3-mod (mixed selection)
     data.wantsEstrutura && data.estruturaKit3 && (data.estruturaQty3 || 0) > 0 &&
       { label: 'Estrutura de Fixação', product: data.estruturaKit3, qty: data.estruturaQty3, unit: 'kit' },
+
+    // Híbrido — bateria CB050 / CB100
+    data.wantsBattery && data.batEco === 'CB' && data.batProduct &&
+      { label: `Bateria ${data.batType}`, product: data.batProduct, qty: data.batQty || 1, unit: 'un' },
+
+    // Híbrido — sistema SBW300 (SmartGuard controlador obrigatório + módulos LUNA2000-7-E1)
+    data.wantsBattery && data.batEco === 'SBW300' && data.sgCtrlProduct &&
+      { label: `SmartGuard-63A-${data.sgCtrlProduct.nome?.includes('T0') ? 'T0' : 'S0'} (controlador)`, product: data.sgCtrlProduct, qty: 1, unit: 'un' },
+    data.wantsBattery && data.batEco === 'SBW300' && data.luna2000Product &&
+      { label: 'LUNA2000-7-E1 (6,9 kWh)', product: data.luna2000Product, qty: data.sbwGroups || 1, unit: 'un' },
+
+    // Híbrido — JBW 41DC (qty 1 ou 2 conforme batQty)
+    data.wantsBattery && d('inclJBW41DC', false) && data.jbwProduct &&
+      { label: 'JBW 41DC 50A (paralelo baterias)', product: data.jbwProduct, qty: data.jbwQty || 1, unit: 'un' },
+
 
     // Itens avulsos
     ...avulsos.map(a => ({
@@ -3887,8 +4305,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 // ─── Main KitBuilder ─────────────────────────────────────────────────────────
 export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes } = {}) {
   const { catalogProducts: products, tableInfo } = useProducts()
-  // Se carregado a partir de uma cotação salva, começa no step 6 (resumo)
-  const [step, setStep] = useState(initialData ? 6 : 1)
+  // Se carregado a partir de uma cotação salva, começa no step resumo
+  const initIsHybrid = initialData ? isHybridInv(initialData.inverter || initialData.inverters?.[0]?.inverter) : false
+  const [step, setStep] = useState(initialData ? (initIsHybrid ? 7 : 6) : 1)
   const [data, setData] = useState(initialData || { mode: 'potencia', hsp: SUN_HOURS })
 
   const hsp = data.hsp || SUN_HOURS
@@ -3899,6 +4318,16 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
   const realKwp = data.panel
     ? ((data.panelQty || 1) * data.panel.potencia / 1000)
     : targetKwp
+
+  const selectedInv  = data.inverter || data.inverters?.[0]?.inverter
+  const isHybrid     = isHybridInv(selectedInv)
+  const STEPS        = isHybrid ? STEPS_HYBRID : STEPS_BASE
+  const maxStep      = STEPS.length
+
+  // Clamp step when switching from hybrid to non-hybrid
+  useEffect(() => {
+    if (!isHybrid && step > 6) setStep(6)
+  }, [isHybrid])
 
   const canNext = useMemo(() => {
     if (step === 1) {
@@ -3912,9 +4341,10 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
     }
     if (step === 3) return !!data.panel
     if (step === 4) return !!data.inverter || (Array.isArray(data.inverters) && data.inverters.length > 0)
-    if (step === 5) return true
+    if (step === 5 && isHybrid) return !!data.batteryDone
+    if (step === 5 || step === 6) return true
     return false
-  }, [step, targetKwp, data])
+  }, [step, targetKwp, data, isHybrid])
 
   const reset = () => {
     setData({ mode: 'potencia', hsp: SUN_HOURS })
@@ -3947,7 +4377,7 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
       </div>
 
       {/* Steps */}
-      <StepIndicator current={step} onNavigate={setStep} />
+      <StepIndicator current={step} onNavigate={setStep} steps={STEPS} />
 
       {/* Step content */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
@@ -3956,8 +4386,9 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
         {step === 2 && data.kitType !== 'bombeamento' && <Step1 data={data} onChange={setData} />}
         {step === 3 && <Step2 data={data} onChange={setData} products={products} targetKwp={targetKwp} />}
         {step === 4 && <Step3 data={data} onChange={setData} products={products} realKwp={realKwp} />}
-        {step === 5 && <Step4 data={data} onChange={setData} products={products} />}
-        {step === 6 && <Step5 data={data} onChange={setData} products={products} tableInfo={tableInfo} realKwp={realKwp} initialSavedId={initialSavedId} onGoToQuotes={onGoToQuotes} />}
+        {step === 5 && isHybrid && <BatteryStep data={data} onChange={setData} products={products} />}
+        {step === (isHybrid ? 6 : 5) && <Step4 data={data} onChange={setData} products={products} />}
+        {step === (isHybrid ? 7 : 6) && <Step5 data={data} onChange={setData} products={products} tableInfo={tableInfo} realKwp={realKwp} initialSavedId={initialSavedId} onGoToQuotes={onGoToQuotes} />}
       </div>
 
       {/* Navigation */}
@@ -3979,7 +4410,7 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
           ))}
         </div>
 
-        {step < 6 ? (
+        {step < maxStep ? (
           <button
             onClick={() => setStep(s => s + 1)}
             disabled={!canNext}

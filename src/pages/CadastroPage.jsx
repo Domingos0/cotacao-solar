@@ -3,15 +3,30 @@ import { useAuth } from '../context/AuthContext'
 import { notifyClienteRegistered } from '../lib/notify'
 import { User, Building2, Hash, Phone, Mail, Lock, MessageCircle, CheckCircle2, AlertTriangle, ArrowLeft, ChevronDown } from 'lucide-react'
 
-const FIELDS = [
-  { key: 'nome',     label: 'Nome completo',  required: true,  type: 'text',     icon: User,      placeholder: 'Seu nome' },
-  { key: 'empresa',  label: 'Empresa',         required: false, type: 'text',     icon: Building2, placeholder: 'Nome da empresa' },
-  { key: 'cnpj',    label: 'CNPJ',            required: false, type: 'text',     icon: Hash,      placeholder: '00.000.000/0000-00' },
-  { key: 'telefone', label: 'Telefone / WhatsApp', required: false, type: 'tel', icon: Phone,     placeholder: '+55 (00) 00000-0000' },
-  { key: 'email',   label: 'E-mail',          required: true,  type: 'email',    icon: Mail,      placeholder: 'seu@email.com' },
-  { key: 'password', label: 'Senha',           required: true,  type: 'password', icon: Lock,      placeholder: 'Mínimo 6 caracteres' },
-  { key: 'confirm',  label: 'Confirmar senha', required: true,  type: 'password', icon: Lock,      placeholder: 'Repita a senha' },
-]
+// ─── Validação de CNPJ (algoritmo Receita Federal) ───────────────────────────
+function validateCNPJ(cnpj) {
+  const n = cnpj.replace(/\D/g, '')
+  if (n.length !== 14 || /^(\d)\1+$/.test(n)) return false
+  const calc = (len) => {
+    let sum = 0, pos = len - 7
+    for (let i = len; i >= 1; i--) {
+      sum += parseInt(n[len - i]) * pos--
+      if (pos < 2) pos = 9
+    }
+    const r = sum % 11
+    return r < 2 ? 0 : 11 - r
+  }
+  return calc(12) === parseInt(n[12]) && calc(13) === parseInt(n[13])
+}
+
+function formatCNPJ(raw) {
+  const d = raw.replace(/\D/g, '').slice(0, 14)
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+}
 
 export default function CadastroPage({ onGoToLogin }) {
   const { signUp } = useAuth()
@@ -25,6 +40,9 @@ export default function CadastroPage({ onGoToLogin }) {
 
   const submit = async (e) => {
     e.preventDefault()
+    if (!form.cnpj.trim()) { setError('CNPJ é obrigatório.'); return }
+    if (!validateCNPJ(form.cnpj)) { setError('CNPJ inválido. Verifique os dígitos.'); return }
+    if (!form.telefone.trim()) { setError('WhatsApp é obrigatório.'); return }
     if (form.password !== form.confirm) { setError('As senhas não conferem.'); return }
     if (form.password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return }
     setLoading(true)
@@ -32,7 +50,6 @@ export default function CadastroPage({ onGoToLogin }) {
     const { error } = await signUp({ ...form, whatsapp_apikey: form.whatsapp_apikey })
     setLoading(false)
     if (error) { setError(error.message); return }
-    // Notifica admin sobre novo cadastro (silencioso)
     notifyClienteRegistered({ nome: form.nome, userEmail: form.email, empresa: form.empresa, telefone: form.telefone })
     setDone(true)
   }
@@ -59,32 +76,98 @@ export default function CadastroPage({ onGoToLogin }) {
     <div className="min-h-screen bg-weg-gray flex items-center justify-center px-4 py-10">
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-md p-8">
         <div className="flex flex-col items-center mb-6">
-          <img src="/logo.svg" alt="Ernaniff" className="h-10 mb-3" />
+          <img src="/logo-ernaniff-horizontal.png" alt="Ernaniff" className="h-12 mb-3 object-contain" />
           <h2 className="text-xl font-bold text-gray-900">Solicitar Acesso</h2>
           <p className="text-gray-400 text-sm mt-1">Preencha seus dados — o admin aprovará seu acesso</p>
         </div>
 
         <form onSubmit={submit} className="space-y-3">
-          {FIELDS.map(({ key, label, required, type, icon: Icon, placeholder }) => (
-            <div key={key}>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                {label}{required && ' *'}
-              </label>
-              <div className="relative">
-                <Icon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type={type}
-                  required={required}
-                  value={form[key]}
-                  onChange={set(key)}
-                  placeholder={placeholder}
-                  className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
-                />
-              </div>
-            </div>
-          ))}
 
-          {/* Campo opcional: WhatsApp via CallMeBot */}
+          {/* Nome */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nome completo *</label>
+            <div className="relative">
+              <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" required value={form.nome} onChange={set('nome')} placeholder="Seu nome"
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+          </div>
+
+          {/* Empresa */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Empresa</label>
+            <div className="relative">
+              <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" value={form.empresa} onChange={set('empresa')} placeholder="Nome da empresa"
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+          </div>
+
+          {/* CNPJ — obrigatório + validação */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              CNPJ *
+              {form.cnpj.replace(/\D/g, '').length === 14 && (
+                validateCNPJ(form.cnpj)
+                  ? <span className="ml-2 text-green-600 font-semibold">✓ válido</span>
+                  : <span className="ml-2 text-red-500 font-semibold">✗ inválido</span>
+              )}
+            </label>
+            <div className="relative">
+              <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                required
+                value={form.cnpj}
+                onChange={e => setForm(f => ({ ...f, cnpj: formatCNPJ(e.target.value) }))}
+                placeholder="00.000.000/0000-00"
+                maxLength={18}
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue font-mono"
+              />
+            </div>
+          </div>
+
+          {/* WhatsApp — obrigatório */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">WhatsApp *</label>
+            <div className="relative">
+              <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="tel" required value={form.telefone} onChange={set('telefone')} placeholder="+55 (00) 00000-0000"
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+          </div>
+
+          {/* E-mail */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">E-mail *</label>
+            <div className="relative">
+              <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="email" required value={form.email} onChange={set('email')} placeholder="seu@email.com"
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+          </div>
+
+          {/* Senha */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Senha *</label>
+            <div className="relative">
+              <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="password" required value={form.password} onChange={set('password')} placeholder="Mínimo 6 caracteres"
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+          </div>
+
+          {/* Confirmar senha */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Confirmar senha *</label>
+            <div className="relative">
+              <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="password" required value={form.confirm} onChange={set('confirm')} placeholder="Repita a senha"
+                className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+          </div>
+
+          {/* WhatsApp API — opcional */}
           <div className="border border-dashed border-gray-200 rounded-xl p-3 space-y-2">
             <button type="button" onClick={() => setShowWaSetup(v => !v)}
               className="w-full flex items-center justify-between text-xs text-gray-500 hover:text-weg-blue">
