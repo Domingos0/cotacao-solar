@@ -1007,6 +1007,32 @@ function Step2({ data, onChange, products, targetKwp }) {
 }
 
 // ─── Step 4: Inversor ─────────────────────────────────────────────────────────
+// ─── Overload helpers ────────────────────────────────────────────────────────
+function getOverloadMax(inv) {
+  const m = (inv.modelo || inv.nome || '').toUpperCase()
+  if (/SIW420G.*K075/.test(m))   return 0.70
+  if (/SIW200H.*(W10|W20)/.test(m)) return 1.00
+  if (/SIW300H/.test(m))          return 1.00
+  if (/SIW400H.*K007/.test(m))   return 0.25
+  if (/SIW400H.*K008/.test(m))   return 0.07
+  if (/SIW400H.*K011/.test(m))   return 0.10
+  if (/SIW400H.*K014/.test(m))   return 0.12
+  if (/SIW400H.*K017/.test(m))   return 0.13
+  if (/SIW500H.*ST012/.test(m))  return 0.00
+  if (/SIW500H.*ST020/.test(m))  return 0.13
+  if (/SIW500G.*K075/.test(m))   return 0.00
+  return 0.50
+}
+function getMaxDCkW(inv) { return round2(inv.potencia * (1 + getOverloadMax(inv))) }
+function invOverloadPct(totalKwp, invKw) {
+  if (!invKw || !totalKwp) return null
+  return round2((totalKwp / invKw - 1) * 100)
+}
+function isInvCompatible(inv, realKwp) {
+  const ol = realKwp / inv.potencia - 1
+  return ol >= -0.3 && ol <= getOverloadMax(inv)
+}
+
 function Step3({ data, onChange, products, realKwp }) {
   const kitTypeCat = KIT_TYPE_TO_CAT[data.kitType]
   const kitTypeInfo = KIT_TYPES.find(k => k.key === data.kitType)
@@ -1023,10 +1049,71 @@ function Step3({ data, onChange, products, realKwp }) {
 
   const [showAll, setShowAll] = useState(false)
   const usePowerFilter = data.kitType === 'ongrid_mono' || data.kitType === 'ongrid_tri'
+
+  // Inverters sorted: compatible (valid overload) first sorted by closeness to 20% OL,
+  // then incompatible sorted by potencia. When showAll=false, hide incompatible.
   const suggested = usePowerFilter
-    ? allInverters.filter(p => p.potencia >= realKwp * 0.8 && p.potencia <= realKwp * 1.5)
+    ? allInverters.filter(inv => isInvCompatible(inv, realKwp))
     : allInverters
-  const displayList = showAll ? allInverters : (suggested.length > 0 ? suggested : allInverters)
+  const notSuggested = usePowerFilter
+    ? allInverters.filter(inv => !isInvCompatible(inv, realKwp))
+    : []
+  const sortedSuggested = [...suggested].sort((a, b) => {
+    const IDEAL = 0.20
+    return Math.abs(realKwp / a.potencia - 1 - IDEAL) - Math.abs(realKwp / b.potencia - 1 - IDEAL)
+  })
+  const displayList = usePowerFilter
+    ? [...sortedSuggested, ...(showAll ? notSuggested : [])]
+    : allInverters
+
+  // Mix suggestions: computed when single inverter doesn't cover realKwp
+  const mixSuggestions = useMemo(() => {
+    if (!usePowerFilter || realKwp <= 0) return []
+    const invs = allInverters.filter(inv => inv.preco && inv.potencia > 0)
+    const results = []
+
+    // Same-model multiples (2-6 units)
+    for (const inv of invs) {
+      const maxPer = getMaxDCkW(inv)
+      if (maxPer <= 0) continue
+      const n = Math.ceil(realKwp / maxPer)
+      if (n < 2 || n > 6) continue
+      const ol = realKwp / (n * inv.potencia) - 1
+      if (ol > getOverloadMax(inv) + 0.001) continue
+      results.push({
+        inverters: [{ inverter: inv, qty: n }],
+        totalCA: round2(n * inv.potencia),
+        overloadPct: Math.max(0, round2(ol * 100)),
+        totalPrice: round2(n * (inv.preco || 0)),
+        units: n,
+        label: `${n}× ${inv.nome}`,
+      })
+    }
+
+    // Pairs 1+1 of different models — feasible when sumMaxDC >= realKwp
+    const small = invs.slice(0, 20)
+    for (let i = 0; i < small.length; i++) {
+      for (let j = i + 1; j < small.length; j++) {
+        const a = small[i], b = small[j]
+        if (getMaxDCkW(a) + getMaxDCkW(b) < realKwp) continue
+        const combinedCA = a.potencia + b.potencia
+        const ol = realKwp / combinedCA - 1
+        if (ol > Math.min(getOverloadMax(a), getOverloadMax(b)) + 0.001) continue
+        results.push({
+          inverters: [{ inverter: a, qty: 1 }, { inverter: b, qty: 1 }],
+          totalCA: round2(combinedCA),
+          overloadPct: Math.max(0, round2(ol * 100)),
+          totalPrice: round2((a.preco || 0) + (b.preco || 0)),
+          units: 2,
+          label: `${a.nome} + ${b.nome}`,
+        })
+      }
+    }
+
+    return results
+      .sort((a, b) => a.units - b.units || a.overloadPct - b.overloadPct || a.totalPrice - b.totalPrice)
+      .slice(0, 4)
+  }, [allInverters, realKwp, usePowerFilter])
 
   // Mix mode: data.inverters is an array [{inverter, qty}]
   const mixMode = Array.isArray(data.inverters)
@@ -1112,10 +1199,51 @@ function Step3({ data, onChange, products, realKwp }) {
         </div>
       )}
 
-      {usePowerFilter && suggested.length === 0 && !showAll && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800 flex items-start gap-2 max-w-xl mx-auto">
-          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-          Nenhum inversor na faixa ideal. Mostrando todos os {kitTypeInfo?.catLabel}.
+      {/* Aviso + sugestões de mesclagem */}
+      {usePowerFilter && (suggested.length === 0 || mixMode) && mixSuggestions.length > 0 && (
+        <div className="max-w-2xl mx-auto space-y-3">
+          {suggested.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800 flex items-start gap-2">
+              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+              <span>Nenhum inversor único comporta <strong>{realKwp.toFixed(2)} kWp</strong> com as regras de overload. Sugestões de mesclagem abaixo.</span>
+            </div>
+          )}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-xs font-bold text-weg-blue uppercase tracking-wide mb-3 flex items-center gap-1.5">
+              <Calculator size={13} /> Mesclagens sugeridas — decisão final do cliente
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {mixSuggestions.map((s, idx) => (
+                <button key={idx}
+                  onClick={() => {
+                    if (!mixMode) onChange({ ...data, inverters: s.inverters.map(i => ({ ...i })), inverter: undefined, inverterQty: undefined })
+                    else {
+                      let next = { ...data }
+                      for (const { inverter: inv, qty } of s.inverters) {
+                        const existing = (next.inverters || []).some(i => i.inverter.id === inv.id)
+                        next = { ...next, inverters: existing
+                          ? (next.inverters || []).map(i => i.inverter.id === inv.id ? { ...i, qty } : i)
+                          : [...(next.inverters || []), { inverter: inv, qty }] }
+                      }
+                      onChange(next)
+                    }
+                  }}
+                  className="text-left bg-white rounded-xl border border-blue-200 hover:border-weg-blue hover:shadow-sm p-3 transition-all group">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <p className="text-xs font-bold text-gray-800 leading-tight">{s.label}</p>
+                    <span className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      s.overloadPct <= 30 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                    }`}>{s.overloadPct.toFixed(0)}% OL</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>{s.totalCA} kW CA</span>
+                    <span className="font-bold text-weg-orange">{fmt(s.totalPrice)}</span>
+                  </div>
+                  <p className="text-[10px] text-weg-blue mt-1.5 group-hover:font-semibold">↗ Aplicar esta mesclagem</p>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1153,60 +1281,84 @@ function Step3({ data, onChange, products, realKwp }) {
 
       {/* Inverter grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {displayList.map(inv => {
+        {displayList.map((inv, listIdx) => {
           const badge = catBadge(inv)
-          const ratio = inv.potencia / realKwp
+          const olPct = usePowerFilter ? invOverloadPct(realKwp, inv.potencia) : null
+          const maxOlPct = Math.round(getOverloadMax(inv) * 100)
+          const compatible = usePowerFilter ? isInvCompatible(inv, realKwp) : true
+          // Divider before the first non-suggested inverter in the list
+          const firstNotSugg = usePowerFilter && showAll && listIdx === sortedSuggested.length && notSuggested.length > 0
 
           // ── SINGLE MODE ──
           if (!mixMode) {
             const selected = data.inverter?.id === inv.id
             return (
-              <button
-                key={inv.id}
-                onClick={() => onChange({ ...data, inverter: inv })}
-                className={`text-left rounded-xl border-2 overflow-hidden transition-all ${
-                  selected ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md'
-                }`}
-              >
-                <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
-                  <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
-                    className="w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105" />
-                  <div className="absolute top-2 left-2">
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
+              <div key={inv.id} className="contents">
+                {firstNotSugg && (
+                  <div className="col-span-full flex items-center gap-3 py-1">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-xs text-gray-400 font-semibold whitespace-nowrap">Fora da faixa de overload ({notSuggested.length} modelos)</span>
+                    <div className="flex-1 h-px bg-gray-200" />
                   </div>
-                  {selected && (
-                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
-                      <Check size={13} className="text-white" />
+                )}
+                <button
+                  onClick={() => onChange({ ...data, inverter: inv })}
+                  className={`text-left rounded-xl border-2 overflow-hidden transition-all ${
+                    selected ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' :
+                    compatible ? 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md' :
+                    'border-gray-200 bg-gray-50 opacity-70 hover:opacity-100 hover:shadow-md'
+                  }`}
+                >
+                  <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
+                    <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
+                      className="w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105" />
+                    <div className="absolute top-2 left-2 flex gap-1">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
+                      {compatible && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm bg-green-500 text-white">✓ Sugerido</span>}
                     </div>
-                  )}
-                  <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white/70 to-transparent" />
-                </div>
-                <div className="p-4">
-                  <h3 className="font-bold text-gray-900 text-sm mb-1">{inv.nome}</h3>
-                  <div className="space-y-1 text-sm mt-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Potência:</span>
-                      <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
-                    </div>
-                    {inv.tensao && <div className="flex justify-between"><span className="text-gray-500">Tensão CA:</span><span className="font-semibold">{inv.tensao} {inv.fase}</span></div>}
-                    {inv.entradas && <div className="flex justify-between"><span className="text-gray-500">Entradas MPPT:</span><span className="font-semibold">{inv.entradas}</span></div>}
-                    {inv.disjuntor && <div className="flex justify-between"><span className="text-gray-500">Disjuntor req.:</span><span className="font-mono text-xs font-semibold">{inv.disjuntor}</span></div>}
-                    <div className="border-t border-gray-100 pt-2 flex justify-between">
-                      <span className="text-gray-500">Preço:</span>
-                      <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
-                    </div>
+                    {selected && (
+                      <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
+                        <Check size={13} className="text-white" />
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white/70 to-transparent" />
                   </div>
-                  <div className={`mt-3 text-[11px] font-medium px-2 py-1 rounded-full text-center ${
-                    ratio >= 0.9 && ratio <= 1.2 ? 'bg-green-100 text-green-700' :
-                    ratio >= 0.7 && ratio <= 1.5 ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {ratio >= 0.9 && ratio <= 1.2 ? '✓ Dimensionamento ideal' :
-                     ratio >= 0.7 && ratio <= 1.5 ? '~ Dimensionamento aceitável' :
-                     '⚠ Fora da faixa recomendada'}
+                  <div className="p-4">
+                    <h3 className="font-bold text-gray-900 text-sm mb-1">{inv.nome}</h3>
+                    <div className="space-y-1 text-sm mt-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Potência CA:</span>
+                        <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">DC máx:</span>
+                        <span className="font-semibold text-gray-700">{getMaxDCkW(inv)} kWp</span>
+                      </div>
+                      {inv.tensao && <div className="flex justify-between"><span className="text-gray-500">Tensão CA:</span><span className="font-semibold">{inv.tensao} {inv.fase}</span></div>}
+                      {inv.entradas && <div className="flex justify-between"><span className="text-gray-500">Entradas MPPT:</span><span className="font-semibold">{inv.entradas}</span></div>}
+                      {inv.disjuntor && <div className="flex justify-between"><span className="text-gray-500">Disjuntor req.:</span><span className="font-mono text-xs font-semibold">{inv.disjuntor}</span></div>}
+                      <div className="border-t border-gray-100 pt-2 flex justify-between">
+                        <span className="text-gray-500">Preço:</span>
+                        <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
+                      </div>
+                    </div>
+                    {olPct !== null && (
+                      <div className={`mt-3 text-[11px] font-bold px-2 py-1 rounded-full text-center ${
+                        olPct > maxOlPct   ? 'bg-red-100 text-red-700' :
+                        olPct > 30         ? 'bg-yellow-100 text-yellow-700' :
+                        olPct >= 0         ? 'bg-green-100 text-green-700' :
+                        olPct >= -30       ? 'bg-blue-50 text-blue-600' :
+                                             'bg-gray-100 text-gray-500'
+                      }`}>
+                        {olPct > maxOlPct   ? `✗ Overload ${olPct.toFixed(0)}% > máx. ${maxOlPct}%` :
+                         olPct >= 0         ? `✓ Overload ${olPct.toFixed(0)}% (máx. ${maxOlPct}%)` :
+                         olPct >= -30       ? `Inversor levemente superdimensionado (${olPct.toFixed(0)}%)` :
+                                              `Inversor superdimensionado (${olPct.toFixed(0)}%)`}
+                      </div>
+                    )}
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
             )
           }
 
@@ -1214,9 +1366,19 @@ function Step3({ data, onChange, products, realKwp }) {
           const entry = getMixEntry(inv.id)
           const qty = entry?.qty || 0
           const inMix = qty > 0
+          // In mix, overload is calculated with qty inverters
+          const mixOlPct = qty > 0 && usePowerFilter ? invOverloadPct(realKwp, qty * inv.potencia) : olPct
+          const mixMaxOl = Math.round(getOverloadMax(inv) * 100)
           return (
+            <div key={inv.id} className="contents">
+              {firstNotSugg && (
+                <div className="col-span-full flex items-center gap-3 py-1">
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-xs text-gray-400 font-semibold whitespace-nowrap">Fora da faixa de overload</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+              )}
             <div
-              key={inv.id}
               className={`rounded-xl border-2 overflow-hidden transition-all ${
                 inMix ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white'
               }`}
@@ -1224,8 +1386,9 @@ function Step3({ data, onChange, products, realKwp }) {
               <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
                 <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
                   className="w-full h-full object-contain p-2" />
-                <div className="absolute top-2 left-2">
+                <div className="absolute top-2 left-2 flex gap-1">
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
+                  {compatible && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm bg-green-500 text-white">✓</span>}
                 </div>
                 {inMix && (
                   <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
@@ -1238,8 +1401,12 @@ function Step3({ data, onChange, products, realKwp }) {
                 <h3 className="font-bold text-gray-900 text-sm mb-1">{inv.nome}</h3>
                 <div className="space-y-1 text-xs text-gray-500 mb-3">
                   <div className="flex justify-between">
-                    <span>Potência:</span>
+                    <span>Potência CA:</span>
                     <span className="font-bold text-weg-blue">{inv.potencia} kW</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>DC máx:</span>
+                    <span className="font-semibold text-gray-700">{getMaxDCkW(inv)} kWp (OL máx. {maxOlPct}%)</span>
                   </div>
                   {inv.entradas && <div className="flex justify-between"><span>Entradas MPPT:</span><span className="font-semibold text-gray-700">{inv.entradas}</span></div>}
                   <div className="flex justify-between">
@@ -1247,6 +1414,20 @@ function Step3({ data, onChange, products, realKwp }) {
                     <span className="font-bold text-gray-900">{fmt(inv.preco)}</span>
                   </div>
                 </div>
+                {olPct !== null && !inMix && (
+                  <div className={`text-[10px] font-bold px-2 py-1 rounded-full text-center mb-2 ${
+                    olPct > maxOlPct ? 'bg-red-100 text-red-700' : olPct >= 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    1× → overload {olPct.toFixed(0)}%
+                  </div>
+                )}
+                {inMix && mixOlPct !== null && (
+                  <div className={`text-[10px] font-bold px-2 py-1 rounded-full text-center mb-2 ${
+                    mixOlPct > mixMaxOl ? 'bg-red-100 text-red-700' : mixOlPct >= 0 ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600'
+                  }`}>
+                    {qty}× → overload {mixOlPct.toFixed(0)}%
+                  </div>
+                )}
                 {/* Qty controls */}
                 <div className="flex items-center gap-2">
                   <button
@@ -1272,15 +1453,21 @@ function Step3({ data, onChange, products, realKwp }) {
                 )}
               </div>
             </div>
-          )
+          </div>
+        )
         })}
       </div>
 
-      {usePowerFilter && !showAll && suggested.length > 0 && (
+      {usePowerFilter && notSuggested.length > 0 && (
         <div className="text-center">
-          <button onClick={() => setShowAll(true)} className="text-sm text-weg-blue hover:underline">
-            Ver todos os {kitTypeInfo?.catLabel} ({allInverters.length} modelos)
-          </button>
+          {!showAll
+            ? <button onClick={() => setShowAll(true)} className="text-sm text-gray-500 hover:text-weg-blue hover:underline">
+                Ver todos os {allInverters.length} modelos (inclui {notSuggested.length} fora do overload)
+              </button>
+            : <button onClick={() => setShowAll(false)} className="text-sm text-gray-400 hover:text-gray-600 hover:underline">
+                Ocultar inversores fora do overload
+              </button>
+          }
         </div>
       )}
 
