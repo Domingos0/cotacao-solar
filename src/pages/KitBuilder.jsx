@@ -1271,8 +1271,13 @@ function Step3({ data, onChange, products, realKwp }) {
                       s.overloadPct <= 30 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                     }`}>{s.overloadPct.toFixed(0)}% OL</span>
                   </div>
+                  <p className="text-[10px] text-gray-400 mb-1 leading-tight">
+                    {s.inverters.map(({ inverter: inv, qty }) =>
+                      `${qty > 1 ? qty + '× ' : ''}${inv.potencia} kW`
+                    ).join(' + ')}
+                  </p>
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>{s.totalCA} kW CA</span>
+                    <span className="font-semibold text-gray-700">Total: {s.totalCA} kW CA</span>
                     <span className="font-bold text-weg-orange">{fmt(s.totalPrice)}</span>
                   </div>
                   <p className="text-[10px] text-weg-blue mt-1.5 group-hover:font-semibold">↗ Aplicar esta mesclagem</p>
