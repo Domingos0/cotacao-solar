@@ -103,6 +103,9 @@ const KIT_SAPS = {
   // Microinversor
   KIT_CONN_MI: '18460783',  // Kit conector CA SIW100G W10
   CABO_CA_3F:  '18512552',  // Cabo CA MP Flex HEPR/NH 3X6mm² 90°C PT 1kV
+  // Bombeamento — Chaves de transferência CA
+  CHAVE_CA_2P: '17717300',  // Chave CA S6-02002DS0 (monofásico 220V)
+  CHAVE_CA_4P: '17717302',  // Chave CA S6-04002DS0 (trifásico 380V)
 }
 
 const SUN_HOURS = 4.5 // HSP médio Brasil
@@ -286,6 +289,457 @@ function StepKitType({ data, onChange }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Step 2B: Dimensionamento Automático de Bombeamento ──────────────────────
+const BOMB_STRUCT_TYPES = [
+  { key: 'Cerâmico',     label: 'Cerâmica',      emoji: '🧱' },
+  { key: 'Fibromadeira', label: 'Fibro/Madeira',  emoji: '🪵' },
+  { key: 'Metálico',     label: 'Metálico',       emoji: '🏗️' },
+  { key: 'Laje',         label: 'Laje',           emoji: '🏢' },
+  { key: 'Zipado',       label: 'Zipado',         emoji: '⚡' },
+  { key: 'Shingle',      label: 'Shingle',        emoji: '🏘️' },
+  { key: 'Solo',         label: 'Solo',           emoji: '🌱' },
+]
+
+function BombDimStep({ data, onChange, products }) {
+  const SUB_STEPS = ['tensao', 'metodo', 'motor', 'distancia', 'estrutura', 'resultado']
+  const [sub, setSub] = useState(data.bombDimDone ? 'resultado' : 'tensao')
+  const [form, setForm] = useState({
+    tensao:    data.bombTensao    || '',
+    metodo:    data.bombMetodo    || '',
+    cv:        data.bombCv        || '',
+    corrente:  data.bombCorrente  || '',
+    distancia: data.bombDistancia != null ? String(data.bombDistancia) : '',
+    roofType:  data.bombRoofType  || '',
+  })
+  const sf = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const modulos = products
+    .filter(p => p.categoria === CATEGORIES.MODULOS && p.potencia && p.preco)
+    .sort((a, b) => b.potencia - a.potencia)
+
+  const bombInvs = products
+    .filter(p => p.categoria === CATEGORIES.INVERSORES_BOMBEAMENTO && p.preco)
+    .sort((a, b) => (a.potencia || 0) - (b.potencia || 0))
+
+  const cvNum    = parseFloat(form.cv)       || 0
+  const corrNum  = parseFloat(form.corrente) || 0
+  const pMotorKw = form.metodo === 'cv'       ? cvNum * 0.736 : 0
+  const pFVMinKw = pMotorKw * 1.7
+  const iMinInv  = form.metodo === 'corrente' ? corrNum * 1.2  : 0
+  const distNum  = parseFloat(form.distancia) || 0
+  const needsReact = distNum > 70
+
+  const calcNMod = (panel) => {
+    if (!panel || !pFVMinKw) return 7
+    const pFVMinWp = pFVMinKw * 1000
+    let n = Math.ceil(pFVMinWp / panel.potencia)
+    n = Math.max(7, n)
+    if (panel.potencia >= 700 && n > 7 && (n - 1) * panel.potencia >= pFVMinWp) n--
+    return n
+  }
+
+  const [selPanel, setSelPanel] = useState(() => data.panel || modulos[0] || null)
+
+  const autoInverter = useMemo(() => {
+    if (form.metodo === 'cv' && pMotorKw > 0) {
+      return bombInvs.find(p => (p.potencia || 0) >= pMotorKw) || bombInvs[bombInvs.length - 1] || null
+    }
+    if (form.metodo === 'corrente' && iMinInv > 0) {
+      const vFactor = form.tensao === '380' ? 0.9 : 1.8
+      const estKw   = iMinInv / vFactor
+      return bombInvs.find(p => (p.potencia || 0) >= estKw) || bombInvs[bombInvs.length - 1] || null
+    }
+    return null
+  }, [form.metodo, pMotorKw, iMinInv, form.tensao, bombInvs])
+
+  const [selInv, setSelInv] = useState(() => data.inverter || null)
+  useEffect(() => {
+    if (!selInv && autoInverter) setSelInv(autoInverter)
+  }, [autoInverter])
+
+  const invFinal  = selInv || autoInverter
+  const nMod      = calcNMod(selPanel)
+  const pFVReal   = selPanel ? round2(nMod * selPanel.potencia / 1000) : 0
+  const entFinal  = invFinal?.entradas || 2
+
+  const handleConfirm = () => {
+    const panel = selPanel || modulos[0]
+    const inv   = invFinal
+    const qty   = calcNMod(panel)
+    const ent   = inv?.entradas || 2
+    onChange({
+      ...data,
+      kitType: 'bombeamento',
+      bombTensao: form.tensao,
+      bombMetodo: form.metodo,
+      bombCv: form.cv,
+      bombCorrente: form.corrente,
+      bombDistancia: distNum,
+      bombRoofType: form.roofType,
+      bombNeedsReactance: needsReact,
+      bombPMotorKw: round2(pMotorKw),
+      bombPFVMinKw: round2(pFVMinKw),
+      bombDimDone: true,
+      panel,
+      panelQty: qty,
+      kwpDesejado: round2(pFVReal),
+      inverter: inv,
+      inverterQty: 1,
+      wantsEstrutura: !!form.roofType,
+      estruturaRoofType: form.roofType || data.estruturaRoofType,
+      mc4Qty: 2 * ent,
+      cablePosMeters: 25 * ent,
+      cableNegMeters: 25 * ent,
+      inclFusivel: true,  fusilvelQty: 2 * ent,
+      inclBaseFus: true,  baseFusQty:  2 * ent,
+      inclSurgeCCBomb: true,
+      inclSeccion: true,
+      inclGateway: true,
+      inclDetect:  true,
+      inclSolar5w: true,
+      inclChaveCA: true,
+      inclReactancia: needsReact,
+    })
+  }
+
+  const subIdx = SUB_STEPS.indexOf(sub)
+  const goPrev = () => setSub(SUB_STEPS[Math.max(0, subIdx - 1)])
+  const goNext = () => {
+    if (sub === 'estrutura') { if (!selInv) setSelInv(autoInverter); setSub('resultado') }
+    else setSub(SUB_STEPS[Math.min(SUB_STEPS.length - 1, subIdx + 1)])
+  }
+
+  const canNextSub = {
+    tensao:    !!form.tensao,
+    metodo:    !!form.metodo,
+    motor:     form.metodo === 'cv' ? cvNum > 0 : corrNum > 0,
+    distancia: form.distancia !== '',
+    estrutura: true,
+  }
+
+  const progress = (
+    <div className="flex items-center justify-center gap-1 mb-6">
+      {['tensao', 'metodo', 'motor', 'distancia', 'estrutura'].map((s, i) => (
+        <div key={s} className={`h-1.5 rounded-full transition-all ${
+          i < subIdx ? 'bg-cyan-500 w-8' : i === subIdx ? 'bg-cyan-500 w-12' : 'bg-gray-200 w-8'
+        }`} />
+      ))}
+    </div>
+  )
+
+  const navBtns = (canGo, onNext, label = 'Próximo →') => (
+    <div className="flex justify-between pt-2">
+      {subIdx > 0
+        ? <button onClick={goPrev} className="flex items-center gap-1 px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:border-gray-300 transition-all">
+            <ChevronLeft size={16} /> Voltar
+          </button>
+        : <div />
+      }
+      <button disabled={!canGo} onClick={onNext}
+        className="px-8 py-2.5 rounded-xl bg-weg-blue text-white font-semibold hover:bg-weg-blue-mid disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+        {label}
+      </button>
+    </div>
+  )
+
+  // ─── tensao ─────────────────────────────────────────────────────────────────
+  if (sub === 'tensao') return (
+    <div className="space-y-6 max-w-md mx-auto">
+      {progress}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">💧 Tensão do sistema</h2>
+        <p className="text-gray-500 text-sm">Qual a tensão da rede elétrica para o bombeamento?</p>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {['220', '380'].map(v => (
+          <button key={v} onClick={() => sf('tensao', v)}
+            className={`p-8 rounded-2xl border-2 font-bold text-2xl transition-all ${
+              form.tensao === v
+                ? 'border-cyan-500 bg-cyan-50 text-cyan-700 shadow-md'
+                : 'border-gray-200 hover:border-cyan-300 text-gray-600'
+            }`}>
+            {v}V
+          </button>
+        ))}
+      </div>
+      {navBtns(canNextSub.tensao, goNext)}
+    </div>
+  )
+
+  // ─── metodo ─────────────────────────────────────────────────────────────────
+  if (sub === 'metodo') return (
+    <div className="space-y-6 max-w-md mx-auto">
+      {progress}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">💧 Método de dimensionamento</h2>
+      </div>
+      <div className="grid grid-cols-1 gap-3">
+        {[
+          { key: 'cv',       label: 'Por potência da bomba (CV)',  desc: 'Informe os cavalos-vapor do motor' },
+          { key: 'corrente', label: 'Por corrente do motor (A)',   desc: 'Informe a corrente nominal do motor' },
+        ].map(m => (
+          <button key={m.key} onClick={() => sf('metodo', m.key)}
+            className={`p-5 rounded-2xl border-2 text-left transition-all ${
+              form.metodo === m.key
+                ? 'border-cyan-500 bg-cyan-50'
+                : 'border-gray-200 hover:border-cyan-300'
+            }`}>
+            <p className="font-bold text-gray-900">{m.label}</p>
+            <p className="text-sm text-gray-500 mt-0.5">{m.desc}</p>
+          </button>
+        ))}
+      </div>
+      {navBtns(canNextSub.metodo, goNext)}
+    </div>
+  )
+
+  // ─── motor ──────────────────────────────────────────────────────────────────
+  if (sub === 'motor') return (
+    <div className="space-y-5 max-w-md mx-auto">
+      {progress}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">
+          💧 {form.metodo === 'cv' ? 'Potência da bomba (CV)' : 'Corrente do motor (A)'}
+        </h2>
+      </div>
+      {form.metodo === 'cv' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-2">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <span>A potência em CV dos drives é baseada nos motores VEC. Para outros fabricantes, reavaliar o dimensionamento. É indicado cotar pela corrente de saída. <strong>O dimensionamento é de total responsabilidade do integrador.</strong></span>
+        </div>
+      )}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        {form.metodo === 'cv' ? (
+          <>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Potência do motor (CV)</label>
+            <input type="number" min="0.5" step="0.5" value={form.cv}
+              onChange={e => sf('cv', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
+              placeholder="Ex: 5" />
+            {cvNum > 0 && (
+              <div className="mt-4 space-y-2 text-sm">
+                <div className="flex justify-between bg-gray-50 rounded-lg px-3 py-2">
+                  <span className="text-gray-600">Potência motor:</span>
+                  <span className="font-bold">{cvNum} CV = {round2(cvNum * 0.736)} kW</span>
+                </div>
+                <div className="flex justify-between bg-cyan-50 rounded-lg px-3 py-2">
+                  <span className="text-cyan-700">Potência FV mínima (×1,7):</span>
+                  <span className="font-bold text-cyan-800">{round2(pFVMinKw)} kW</span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Corrente nominal do motor (A)</label>
+            <input type="number" min="0.1" step="0.1" value={form.corrente}
+              onChange={e => sf('corrente', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
+              placeholder="Ex: 12.5" />
+            {corrNum > 0 && (
+              <div className="mt-4 bg-cyan-50 rounded-lg px-3 py-2 flex justify-between text-sm">
+                <span className="text-cyan-700">Corrente mínima do inversor (×1,2):</span>
+                <span className="font-bold text-cyan-800">{round2(iMinInv)} A</span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {navBtns(canNextSub.motor, goNext)}
+    </div>
+  )
+
+  // ─── distancia ──────────────────────────────────────────────────────────────
+  if (sub === 'distancia') return (
+    <div className="space-y-5 max-w-md mx-auto">
+      {progress}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">💧 Distância bomba → inversor</h2>
+        <p className="text-gray-500 text-sm">Distância em metros entre a bomba e o inversor</p>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Distância (metros)</label>
+        <input type="number" min="0" step="1" value={form.distancia}
+          onChange={e => sf('distancia', e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-4 py-3 text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
+          placeholder="Ex: 50" />
+      </div>
+      {needsReact && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-sm text-orange-800 flex items-start gap-2">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <span><strong>Atenção:</strong> Distâncias acima de 70 metros exigem reatância de saída. Será adicionada automaticamente ao kit.</span>
+        </div>
+      )}
+      {navBtns(canNextSub.distancia, goNext)}
+    </div>
+  )
+
+  // ─── estrutura ──────────────────────────────────────────────────────────────
+  if (sub === 'estrutura') return (
+    <div className="space-y-5 max-w-2xl mx-auto">
+      {progress}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">💧 Tipo de instalação</h2>
+        <p className="text-gray-500 text-sm">Selecione o tipo de estrutura (opcional — ajuste nos acessórios)</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {BOMB_STRUCT_TYPES.map(rt => (
+          <button key={rt.key} onClick={() => sf('roofType', form.roofType === rt.key ? '' : rt.key)}
+            className={`p-4 rounded-2xl border-2 text-center transition-all ${
+              form.roofType === rt.key
+                ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
+                : 'border-gray-200 hover:border-cyan-200'
+            }`}>
+            <div className="text-2xl mb-1">{rt.emoji}</div>
+            <div className="text-xs font-semibold">{rt.label}</div>
+          </button>
+        ))}
+      </div>
+      {navBtns(true, goNext, 'Calcular →')}
+    </div>
+  )
+
+  // ─── resultado ──────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-5 max-w-2xl mx-auto">
+      {progress}
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">💧 Dimensionamento automático</h2>
+        <p className="text-gray-500 text-sm">Revise e confirme o kit calculado</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 justify-center">
+        <span className="bg-cyan-100 text-cyan-800 text-xs font-semibold px-3 py-1.5 rounded-full">{form.tensao}V</span>
+        {form.metodo === 'cv' && <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-full">{cvNum} CV → {round2(pMotorKw)} kW</span>}
+        {form.metodo === 'corrente' && <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-full">Imotor {corrNum} A → Iinv ≥ {round2(iMinInv)} A</span>}
+        {form.metodo === 'cv' && <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1.5 rounded-full">FV mín.: {round2(pFVMinKw)} kW</span>}
+        {needsReact && <span className="bg-orange-100 text-orange-800 text-xs font-semibold px-3 py-1.5 rounded-full">⚠ Reatância ({distNum}m)</span>}
+      </div>
+
+      {/* Panel selector */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-gray-800">☀️ Módulos fotovoltaicos</h3>
+          {selPanel && (
+            <span className="text-xs bg-green-100 text-green-700 font-semibold px-2 py-1 rounded-full">
+              {nMod} un · {pFVReal} kWp
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+          {modulos.map(m => {
+            const n = calcNMod(m)
+            const p = round2(n * m.potencia / 1000)
+            return (
+              <button key={m.id} onClick={() => setSelPanel(m)}
+                className={`text-left text-sm rounded-lg border p-2.5 transition-all ${
+                  selPanel?.id === m.id ? 'border-cyan-500 bg-cyan-50' : 'border-gray-200 hover:border-cyan-300'
+                }`}>
+                <div className="font-semibold">{m.nome}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {m.potencia} Wp · {n} un · {p} kWp · {fmt(m.preco)}/un
+                </div>
+              </button>
+            )
+          })}
+          {modulos.length === 0 && <p className="text-sm text-gray-400 text-center py-3 col-span-2">Nenhum módulo no catálogo.</p>}
+        </div>
+        {form.metodo === 'cv' && selPanel && (
+          <p className="text-xs text-gray-500 mt-2">
+            P_FV mín. {round2(pFVMinKw)} kW · {nMod} × {selPanel.potencia} Wp = {pFVReal} kWp
+            {nMod === 7 && pFVReal < pFVMinKw ? ' (mín. 7 módulos aplicado)' : ''}
+          </p>
+        )}
+      </div>
+
+      {/* Inverter selector */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-gray-800">⚡ Inversor / Drive de bombeamento</h3>
+          {invFinal && <span className="text-xs text-gray-500 font-mono">{invFinal.codigo}</span>}
+        </div>
+        <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1">
+          {bombInvs.map(inv => (
+            <button key={inv.id} onClick={() => setSelInv(inv)}
+              className={`text-left text-sm rounded-lg border p-2.5 transition-all ${
+                invFinal?.id === inv.id ? 'border-cyan-500 bg-cyan-50' : 'border-gray-200 hover:border-cyan-300'
+              }`}>
+              <div className="flex justify-between items-center">
+                <span className="font-semibold">{inv.nome}</span>
+                <span className="text-weg-orange font-bold">{fmt(inv.preco)}</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {inv.potencia ? `${inv.potencia} kW` : ''}{inv.entradas ? ` · ${inv.entradas} entradas` : ''}{inv.tipo ? ` · ${inv.tipo}` : ''}
+              </div>
+            </button>
+          ))}
+          {bombInvs.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-3">Nenhum inversor de bombeamento no catálogo. Importe a tabela com inversores CFW.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Accessories summary */}
+      <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 text-sm">
+        <h3 className="font-bold text-gray-800 mb-3">🔧 Acessórios incluídos automaticamente</h3>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700">
+          <div>· {2 * entFinal} pares Conector MC4 6mm²</div>
+          <div>· {25 * entFinal}m Cabo CC Vermelho 6mm²</div>
+          <div>· {25 * entFinal}m Cabo CC Preto 6mm²</div>
+          <div>· {2 * entFinal} Fusíveis gPV 25A</div>
+          <div>· {2 * entFinal} Bases fusível 10×38mm</div>
+          <div>· DPS CC SPW12-1100-40</div>
+          <div>· Chave Secc. CC ES100-32A</div>
+          <div>· Chave CA ({form.tensao === '380' ? 'S6-04002DS0' : 'S6-02002DS0'})</div>
+          <div>· Gateway WEG ED100</div>
+          <div>· Kit Detecção Solar CFW500-KDS</div>
+          <div>· Kit Solar 5W RESUN</div>
+          {needsReact && <div className="text-orange-600 font-semibold col-span-2">· Reatância de saída (distância {distNum}m)</div>}
+        </div>
+      </div>
+
+      {/* Validation messages */}
+      <div className="space-y-2 text-sm">
+        {form.metodo === 'cv' && selPanel && pFVReal > 0 && pFVReal < pFVMinKw && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-700 flex items-center gap-2">
+            <AlertTriangle size={14} />
+            <span>FV {pFVReal} kWp abaixo do mínimo {round2(pFVMinKw)} kWp (regra mínimo 7 módulos aplicada).</span>
+          </div>
+        )}
+        {!invFinal && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 flex items-center gap-2">
+            <AlertTriangle size={14} />
+            <span>Nenhum inversor de bombeamento encontrado. Importe a tabela com inversores CFW.</span>
+          </div>
+        )}
+        {invFinal && form.metodo === 'cv' && pMotorKw > 0 && (invFinal.potencia || 0) >= pMotorKw && (
+          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-green-700 flex items-center gap-2">
+            <Check size={14} />
+            <span>Inversor compatível: {invFinal.potencia} kW ≥ motor {round2(pMotorKw)} kW ✓</span>
+          </div>
+        )}
+        {invFinal && form.metodo === 'cv' && pMotorKw > 0 && (invFinal.potencia || 0) < pMotorKw && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 flex items-center gap-2">
+            <AlertTriangle size={14} />
+            <span>Inversor selecionado ({invFinal.potencia} kW) abaixo da potência do motor ({round2(pMotorKw)} kW). Revise.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between pt-2">
+        <button onClick={() => setSub('estrutura')} className="flex items-center gap-1 px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:border-gray-300 transition-all">
+          <ChevronLeft size={16} /> Voltar
+        </button>
+        <button onClick={handleConfirm}
+          disabled={!selPanel || !invFinal}
+          className="px-8 py-2.5 rounded-xl bg-weg-blue text-white font-semibold hover:bg-weg-blue-mid disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+          ✓ Confirmar dimensionamento
+        </button>
+      </div>
     </div>
   )
 }
@@ -1254,6 +1708,25 @@ function Step4({ data, onChange, products }) {
         <AccessoryRow icon={Info}  label="Kit Módulo Solar 5W 17mm RESUN"
           product={kitSolar5wP}included={d('inclSolar5w') ?? true} onToggle={() => set('inclSolar5w', !d('inclSolar5w'))} color="green" />
 
+        <div className="relative my-1">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-gray-300" /></div>
+          <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400 uppercase tracking-widest">Elétrica CA</span></div>
+        </div>
+
+        <AccessoryRow icon={ToggleLeft}
+          label={`Chave CA ${data.bombTensao === '380' ? 'S6-04002DS0 (380V/Trifásico)' : 'S6-02002DS0 (220V/Monofásico)'}`}
+          product={bySAP(data.bombTensao === '380' ? KIT_SAPS.CHAVE_CA_4P : KIT_SAPS.CHAVE_CA_2P)}
+          included={d('inclChaveCA') ?? true}
+          onToggle={() => set('inclChaveCA', !d('inclChaveCA'))} />
+
+        {data.bombNeedsReactance && (
+          <AccessoryRow icon={Zap}
+            label="Reatância de saída (distância bomba > 70m)"
+            product={products.find(p => /reat[âa]ncia/i.test(p.nome || '') || /reat[âa]ncia/i.test(p.tipo || ''))}
+            included={d('inclReactancia') ?? true}
+            onToggle={() => set('inclReactancia', !d('inclReactancia'))} />
+        )}
+
         {estruturaSep}
         <StructureSection data={data} onChange={onChange} panelCount={panelCount} />
       </div>
@@ -2188,6 +2661,13 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       { label: 'Kit Detecção Solar CFW500-KDS', product: bySAP(KIT_SAPS.KIT_DETECT), qty: 1, unit: 'un' },
     isBomb && d('inclSolar5w', true)     && bySAP(KIT_SAPS.KIT_SOLAR5W) &&
       { label: 'Kit Módulo Solar 5W RESUN', product: bySAP(KIT_SAPS.KIT_SOLAR5W), qty: 1, unit: 'un' },
+    isBomb && d('inclChaveCA', true) && bySAP(data.bombTensao === '380' ? KIT_SAPS.CHAVE_CA_4P : KIT_SAPS.CHAVE_CA_2P) &&
+      { label: `Chave CA ${data.bombTensao === '380' ? 'S6-04002DS0' : 'S6-02002DS0'}`,
+        product: bySAP(data.bombTensao === '380' ? KIT_SAPS.CHAVE_CA_4P : KIT_SAPS.CHAVE_CA_2P), qty: 1, unit: 'un' },
+    isBomb && data.bombNeedsReactance && d('inclReactancia', true) && (() => {
+      const r = products.find(p => /reat[âa]ncia/i.test(p.nome || '') || /reat[âa]ncia/i.test(p.tipo || ''))
+      return r ? { label: 'Reatância de saída', product: r, qty: 1, unit: 'un' } : null
+    })(),
 
     // Microinversor
     isMicro && d('inclKitConnMi', true) && bySAP(KIT_SAPS.KIT_CONN_MI) &&
@@ -3164,7 +3644,10 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
       if (data.kitType === 'ongrid_tri' && !data.tensaoRede) return false
       return true
     }
-    if (step === 2) return (data.kwpDesejado || 0) > 0
+    if (step === 2) {
+      if (data.kitType === 'bombeamento') return !!data.bombDimDone
+      return (data.kwpDesejado || 0) > 0
+    }
     if (step === 3) return !!data.panel
     if (step === 4) return !!data.inverter || (Array.isArray(data.inverters) && data.inverters.length > 0)
     if (step === 5) return true
@@ -3207,7 +3690,8 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
       {/* Step content */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
         {step === 1 && <StepKitType data={data} onChange={setData} />}
-        {step === 2 && <Step1 data={data} onChange={setData} />}
+        {step === 2 && data.kitType === 'bombeamento' && <BombDimStep data={data} onChange={setData} products={products} />}
+        {step === 2 && data.kitType !== 'bombeamento' && <Step1 data={data} onChange={setData} />}
         {step === 3 && <Step2 data={data} onChange={setData} products={products} targetKwp={targetKwp} />}
         {step === 4 && <Step3 data={data} onChange={setData} products={products} realKwp={realKwp} />}
         {step === 5 && <Step4 data={data} onChange={setData} products={products} />}
