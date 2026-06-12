@@ -160,7 +160,7 @@ function fmtInt(v) {
   return Math.round(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
-function StepIndicator({ current }) {
+function StepIndicator({ current, onNavigate }) {
   return (
     <div className="flex items-center justify-center gap-0 mb-8 overflow-x-auto pb-2">
       {STEPS.map((step, idx) => {
@@ -169,16 +169,18 @@ function StepIndicator({ current }) {
         const active = current === step.id
         return (
           <div key={step.id} className="flex items-center">
-            <div className={`flex flex-col items-center gap-1 min-w-[64px]`}>
+            <div className={`flex flex-col items-center gap-1 min-w-[64px] ${done ? 'cursor-pointer group' : ''}`}
+              onClick={() => done && onNavigate?.(step.id)}
+              title={done ? `Voltar para ${step.label}` : undefined}>
               <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
-                done ? 'bg-green-500 text-white' :
+                done ? 'bg-green-500 text-white group-hover:bg-green-400 group-hover:scale-110' :
                 active ? 'bg-weg-blue text-white ring-4 ring-blue-100' :
                 'bg-gray-100 text-gray-400'
               }`}>
                 {done ? <Check size={16} /> : <Icon size={16} />}
               </div>
-              <span className={`text-[10px] font-medium text-center leading-tight ${
-                active ? 'text-weg-blue' : done ? 'text-green-600' : 'text-gray-400'
+              <span className={`text-[10px] font-medium text-center leading-tight transition-colors ${
+                active ? 'text-weg-blue' : done ? 'text-green-600 group-hover:text-green-500' : 'text-gray-400'
               }`}>{step.label}</span>
             </div>
             {idx < STEPS.length - 1 && (
@@ -3685,7 +3687,7 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
       </div>
 
       {/* Steps */}
-      <StepIndicator current={step} />
+      <StepIndicator current={step} onNavigate={setStep} />
 
       {/* Step content */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
