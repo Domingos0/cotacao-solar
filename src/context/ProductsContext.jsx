@@ -65,7 +65,7 @@ function loadActiveListCodes() {
 const r2 = v => v != null ? Math.round(v * 100) / 100 : v
 
 function normalizeProduct(p) {
-  return { ...p, preco: r2(p.preco), precoFrete: r2(p.precoFrete) }
+  return { ...p }
 }
 
 function loadProducts() {
