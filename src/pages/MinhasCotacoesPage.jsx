@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import kitCompositions from '../data/kitCompositions.json'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
@@ -744,6 +745,27 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
 
+  // Build structure composition (mirrors KitBuilder logic)
+  const structureComposition = useMemo(() => {
+    const kitsToExpand = [
+      kitData.wantsEstrutura && kitData.estruturaKit && (kitData.estruturaQty || 0) > 0
+        ? { kit: kitData.estruturaKit, qty: kitData.estruturaQty } : null,
+      kitData.wantsEstrutura && kitData.estruturaKit3 && (kitData.estruturaQty3 || 0) > 0
+        ? { kit: kitData.estruturaKit3, qty: kitData.estruturaQty3 } : null,
+    ].filter(Boolean)
+    if (!kitsToExpand.length) return []
+    const merged = {}
+    kitsToExpand.forEach(({ kit, qty }) => {
+      const comps = kitCompositions[kit.codigo] || []
+      comps.forEach(c => {
+        const totalQty = c.qty * qty
+        if (merged[c.sap]) merged[c.sap].qty += totalQty
+        else merged[c.sap] = { sap: c.sap, descricao: c.descricao, qty: totalQty }
+      })
+    })
+    return Object.values(merged)
+  }, [kitData])
+
   const [confirmAction, setConfirmAction] = useState(null) // 'fechar' | 'rejeitar'
   const [processing, setProcessing]       = useState(false)
   const [done, setDone]                   = useState(null)  // 'fechar' | 'rejeitar'
@@ -1171,6 +1193,43 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </table>
             </div>
           </div>
+
+          {/* Structure composition — mirrors KitBuilder section */}
+          {structureComposition.length > 0 && (
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-widest">Composição da Estrutura de Fixação</p>
+                {kitData.estruturaKit && <p className="text-xs text-gray-400 mt-0.5">
+                  {kitData.estruturaKit && <span className="mr-3">Kit 4 mod: {kitData.estruturaKit.nome}</span>}
+                  {kitData.estruturaKit3 && <span>Kit 3 mod: {kitData.estruturaKit3.nome}</span>}
+                </p>}
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase w-8">#</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-400 uppercase">Componente</th>
+                    <th className="px-4 py-2 text-left text-xs font-mono font-semibold text-gray-400 uppercase">SAP</th>
+                    <th className="px-4 py-2 text-center text-xs font-semibold text-gray-400 uppercase">Qtd</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {structureComposition.map((comp, idx) => (
+                    <tr key={comp.sap} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                      <td className="px-4 py-2.5 text-xs text-gray-400">{idx + 1}</td>
+                      <td className="px-4 py-2.5">
+                        <p className="text-sm font-semibold text-gray-800">{comp.descricao}</p>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs font-mono text-gray-400">{comp.sap}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className="bg-blue-50 text-blue-700 rounded-lg px-3 py-1 text-sm font-bold">{comp.qty} un</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Financial summary */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-2">
