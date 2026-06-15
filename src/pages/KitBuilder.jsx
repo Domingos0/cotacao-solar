@@ -3358,7 +3358,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       const rawQty = data.estruturaQty || 1
       const qty = isSolo ? (rawQty % 2 === 0 ? rawQty : rawQty + 1) : rawQty
       const prod = isSolo
-        ? { ...data.estruturaKit, preco: round2(data.estruturaKit.preco * panelWp), precoFrete: round2((data.estruturaKit.precoFrete || data.estruturaKit.preco) * panelWp) }
+        ? { ...data.estruturaKit, preco: round2(data.estruturaKit.preco * panelWp + 3), precoFrete: round2((data.estruturaKit.precoFrete || data.estruturaKit.preco) * panelWp + 3) }
         : data.estruturaKit
       return { label: 'Estrutura de Fixação', product: prod, qty, unit: isSolo ? 'un' : 'kit' }
     })(),
