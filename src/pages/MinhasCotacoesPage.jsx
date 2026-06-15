@@ -744,6 +744,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const items    = quote.quote_items || []
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
+  const { tableInfo } = useProducts()
 
   // Build structure composition (mirrors KitBuilder logic)
   const structureComposition = useMemo(() => {
@@ -1085,48 +1086,149 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
       </div>
     )}
 
-    <div id={isPrinting ? 'kit-print' : undefined} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto print:rounded-none print:shadow-none print:max-h-none">
-
-        {/* Print-only header: logo + quote reference */}
-        <div className="hidden print:flex items-center justify-between px-6 py-4" style={{backgroundColor:'#1B3A8A'}}>
-          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:44,objectFit:'contain'}}
-            onError={e => { e.target.style.display = 'none' }} />
-          <div style={{textAlign:'right',color:'white'}}>
-            {kitData.numero_orcamento && (
-              <p style={{fontSize:13,fontWeight:700,margin:0}}>
-                {kitData.numero_orcamento}{(kitData.revisao||0)>0?` · Rev. ${kitData.revisao}`:''}
-              </p>
-            )}
-            <p style={{fontSize:11,opacity:0.8,margin:'2px 0 0'}}>{quote.nome_projeto}</p>
-            <p style={{fontSize:10,opacity:0.6,margin:'2px 0 0'}}>
-              {new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}
-            </p>
+    {/* ── Dedicated print overlay (same approach as printRevision) ── */}
+    {isPrinting && (() => {
+      const totalBase  = Math.round((quote.total_final / (quote.frete_pct || 1)) * 100) / 100
+      const freteAmt   = Math.round((quote.total_final - totalBase) * 100) / 100
+      const ajusteAmt  = Math.round((quote.subtotal - totalBase) * 100) / 100
+      const kwp        = kitData.panel ? ((kitData.panelQty || 1) * (kitData.panel.potencia || 1) / 1000).toFixed(2) : null
+      return (
+        <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
+          {/* Logo header */}
+          <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
+            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
+              onError={e => { e.target.style.display = 'none' }} />
+            <div className="text-right">
+              <p className="text-white/70 text-xs">{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
+              <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
+            </div>
           </div>
-        </div>
 
-        {/* Print-only kit info bar */}
-        {kitData.panel && (
-          <div className="hidden print:flex items-start justify-between px-6 py-3 border-b border-gray-200" style={{background:'#f8f9fa'}}>
+          {/* Kit info bar */}
+          <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{background:'#f8f9fa'}}>
             <div>
-              <p style={{fontSize:15,fontWeight:800,color:'#1B3A8A',margin:0}}>{quote.nome_projeto}</p>
-              {kitData.clienteNome && (
-                <p style={{fontSize:11,color:'#555',margin:'4px 0 0'}}>Cliente: <strong>{kitData.clienteNome}</strong></p>
+              <p className="text-base font-extrabold text-[#003087]">{quote.nome_projeto}</p>
+              {kitData.numero_orcamento && (
+                <p className="text-xs font-bold text-[#1B3A8A] mt-0.5">
+                  Ref: {kitData.numero_orcamento}{(kitData.revisao||0)>0?` · Rev. ${kitData.revisao}`:''}
+                </p>
               )}
+              {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
+              {quote.frete_pct > 1 && <p className="text-xs text-gray-500 mt-0.5">{quote.frete_nome}</p>}
+              <p className="text-xs text-gray-400 mt-1">Validade: 7 dias</p>
             </div>
-            <div style={{textAlign:'right'}}>
-              <p style={{fontSize:22,fontWeight:800,color:'#1B3A8A',margin:0}}>
-                {(((kitData.panelQty||1)*(kitData.panel?.potencia||1))/1000).toFixed(2)} kWp
-              </p>
-              <p style={{fontSize:10,color:'#666',margin:'2px 0 0'}}>
-                {kitData.panelQty} painéis × {kitData.panel?.potencia} Wp
-              </p>
-            </div>
+            {kwp && (
+              <div className="text-right shrink-0">
+                <p className="text-3xl font-extrabold text-[#003087]">{kwp} kWp</p>
+                {kitData.panel && <p className="text-xs text-gray-500">{kitData.panelQty} painéis × {kitData.panel.potencia} Wp</p>}
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Screen header — hidden when printing */}
-        <div className="sticky top-0 bg-weg-blue text-white px-6 py-4 flex items-start justify-between gap-3 print:hidden">
+          {/* Items table */}
+          <div className="px-8 pt-5 pb-3">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
+                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
+                  <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, i) => (
+                  <tr key={i} className="border-b border-gray-100">
+                    <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
+                    <td className="py-2.5">
+                      <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
+                      <p className="text-xs text-gray-500">{item.produto}</p>
+                      <p className="text-xs text-gray-400 font-mono">SAP:&nbsp;&nbsp;{item.codigo_sap}</p>
+                    </td>
+                    <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
+                    <td className="py-2.5 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
+                    <td className="py-2.5 text-right text-sm font-bold text-gray-900">{fmt(item.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Structure composition */}
+          {structureComposition.length > 0 && (
+            <div className="mx-8 mb-4 border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-widest">Composição da Estrutura de Fixação</p>
+                {kitData.estruturaKit && <p className="text-xs text-gray-400 mt-0.5">
+                  {kitData.estruturaKit && <span className="mr-3">Kit 4 mod: {kitData.estruturaKit.nome}</span>}
+                  {kitData.estruturaKit3 && <span>Kit 3 mod: {kitData.estruturaKit3.nome}</span>}
+                </p>}
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-1.5 text-left text-xs text-gray-400 uppercase w-8">#</th>
+                    <th className="px-4 py-1.5 text-left text-xs text-gray-400 uppercase">Componente</th>
+                    <th className="px-4 py-1.5 text-left text-xs font-mono text-gray-400 uppercase">SAP</th>
+                    <th className="px-4 py-1.5 text-center text-xs text-gray-400 uppercase">Qtd</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {structureComposition.map((comp, idx) => (
+                    <tr key={comp.sap} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                      <td className="px-4 py-2 text-xs text-gray-400">{idx + 1}</td>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-800">{comp.descricao}</td>
+                      <td className="px-4 py-2 text-xs font-mono text-gray-400">{comp.sap}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className="bg-blue-50 text-blue-700 rounded px-2 py-0.5 text-xs font-bold">{comp.qty} un</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Financial summary */}
+          <div className="px-8 py-3 space-y-1.5 border-t border-gray-200">
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Subtotal (preço de tabela)</span>
+              <span className="font-semibold">{fmt(quote.subtotal)}</span>
+            </div>
+            {ajusteAmt > 0 && (
+              <div className="flex justify-between text-sm text-green-600 font-medium">
+                <span>Ajuste</span>
+                <span>– {fmt(ajusteAmt)}</span>
+              </div>
+            )}
+            {freteAmt > 0 && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>{quote.frete_nome}</span>
+                <span className="font-medium">+ {fmt(freteAmt)}</span>
+              </div>
+            )}
+          </div>
+          <div className="bg-[#003087] mx-0 px-8 py-4 flex justify-between items-center">
+            <span className="text-white font-extrabold text-sm uppercase tracking-widest">
+              {freteAmt > 0 ? 'Total com Frete' : 'Total do Kit'}
+            </span>
+            <span className="text-white font-extrabold text-xl">{fmt(quote.total_final)}</span>
+          </div>
+
+          {/* Footer */}
+          <p className="text-center text-xs text-gray-400 py-4">
+            Preços {quote.frete_pct > 1 ? quote.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.
+          </p>
+        </div>
+      )
+    })()}
+
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+
+        {/* Screen header */}
+        <div className="sticky top-0 bg-weg-blue text-white px-6 py-4 flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-1">
               {kitData.numero_orcamento && (
