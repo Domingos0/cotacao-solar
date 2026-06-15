@@ -162,9 +162,8 @@ function round2(v) {
   return Number(Math.round(Number(String(+v) + 'e2')) + 'e-2')
 }
 
-// Money multiplication: round unit price to 2 dp first, then multiply, then round total
-// This matches Excel behaviour: ROUND(ROUND(unit,2)*qty, 2)
-function moneyMul(preco, qty) { return round2(round2(preco || 0) * (qty || 0)) }
+// Money multiplication for display only — round2 applied to final product
+function moneyMul(preco, qty) { return round2((preco || 0) * (qty || 0)) }
 
 function fmt(v) {
   if (!v && v !== 0) return 'Sob consulta'
@@ -3399,8 +3398,8 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const F3 = 0.95   // Fator 3
   const F4 = 0.93   // Fator 4
 
-  // Subtotal: round each line total to 2 dp before summing (matches Excel ROUND(unit*qty,2) per line)
-  const subtotal    = kitItems.reduce((sum, item) => round2(sum + moneyMul(item.product.preco, item.qty)), 0)
+  // Subtotal: sum raw price×qty for all lines, round only the total (Excel: ROUND(SOMARPRODUTO(preços,qtds),2))
+  const subtotal    = round2(kitItems.reduce((sum, item) => sum + (item.product.preco || 0) * item.qty, 0))
   const freteOpcao  = freteOpcoes.find(f => f.id === freteId) || freteOpcoes[0] || { nome: 'FOB', acrescimo: 1 }
   const fatorDesc   = round2(1 - (desconto / 100))
   // Apply each factor sequentially with round2 after each step — matches Excel ROUND-at-each-factor behaviour
