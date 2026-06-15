@@ -156,12 +156,19 @@ function calcSurgeACQty(inverters, defaultTri) {
   }, 0)
 }
 
-// Round to 2 decimal places — matches Excel ROUND(x, 2) behaviour
-function round2(v) { return Math.round(v * 100) / 100 }
+// Round to 2 decimal places — uses exponential notation to avoid JS float drift
+// e.g. Math.round(1.005 * 100)/100 = 1.00 (wrong); this returns 1.01 (correct)
+function round2(v) {
+  return Number(Math.round(Number(String(+v) + 'e2')) + 'e-2')
+}
+
+// Money multiplication: round unit price to 2 dp first, then multiply, then round total
+// This matches Excel behaviour: ROUND(ROUND(unit,2)*qty, 2)
+function moneyMul(preco, qty) { return round2(round2(preco || 0) * (qty || 0)) }
 
 function fmt(v) {
   if (!v && v !== 0) return 'Sob consulta'
-  return round2(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return round2(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtInt(v) {
@@ -969,7 +976,7 @@ function Step2({ data, onChange, products, targetKwp }) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Total painéis:</span>
-                  <span className="font-bold text-weg-orange">{fmt(panel.preco * qty)}</span>
+                  <span className="font-bold text-weg-orange">{fmt(moneyMul(panel.preco, qty))}</span>
                 </div>
               </div>
               </div>{/* /p-4 */}
@@ -1840,7 +1847,7 @@ function Step3({ data, onChange, products, realKwp }) {
                 </div>
                 {inMix && (
                   <p className="text-xs text-center text-weg-blue font-semibold mt-1.5">
-                    {(qty * inv.potencia).toFixed(1)} kW — {fmt(inv.preco * qty)}
+                    {(qty * inv.potencia).toFixed(1)} kW — {fmt(moneyMul(inv.preco, qty))}
                   </p>
                 )}
               </div>
@@ -1941,7 +1948,7 @@ function AccessoryRow({ icon: Icon, label, product, included, onToggle, qty, onQ
             className={`w-16 text-center border rounded-lg px-2 py-1 text-sm font-bold bg-white focus:outline-none focus:ring-1 ${c.input}`} />
           <button onClick={() => onQtyChange(qty + 1)} className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"><Plus size={12} /></button>
           <span className="text-xs text-gray-400">{unit || 'un'}</span>
-          {product?.preco && <span className="ml-auto text-sm font-bold text-weg-orange">{fmt(product.preco * qty)}</span>}
+          {product?.preco && <span className="ml-auto text-sm font-bold text-weg-orange">{fmt(moneyMul(product.preco, qty))}</span>}
         </div>
       )}
     </div>
@@ -1967,7 +1974,7 @@ function CableRow({ label, color, product, meters, onChange }) {
           className={`w-20 text-center rounded-lg px-2 py-1.5 text-sm font-bold bg-white focus:outline-none focus:ring-1 ${isRed ? 'border border-red-200 focus:ring-red-400' : 'border border-gray-300 focus:ring-gray-400'}`} />
         <span className="text-xs text-gray-500">metros</span>
         {product?.preco && meters > 0 && (
-          <span className={`ml-auto text-sm font-bold ${isRed ? 'text-red-600' : 'text-gray-700'}`}>{fmt(product.preco * meters)}</span>
+          <span className={`ml-auto text-sm font-bold ${isRed ? 'text-red-600' : 'text-gray-700'}`}>{fmt(moneyMul(product.preco, meters))}</span>
         )}
       </div>
     </div>
@@ -2040,7 +2047,7 @@ function BreakerRow({ products, selectedBreaker, onSelect, included, onToggle, i
             className="w-16 text-center border border-blue-200 rounded-lg px-2 py-1 text-sm font-bold bg-white focus:outline-none focus:ring-1 focus:ring-weg-blue" />
           <button onClick={() => onQtyChange(qty + 1)} className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100"><Plus size={12} /></button>
           <span className="text-xs text-gray-400">un</span>
-          {current?.preco && <span className="ml-auto text-sm font-bold text-weg-orange">{fmt(current.preco * qty)}</span>}
+          {current?.preco && <span className="ml-auto text-sm font-bold text-weg-orange">{fmt(moneyMul(current.preco, qty))}</span>}
         </div>
       )}
 
@@ -2216,7 +2223,7 @@ function Step4({ data, onChange, products }) {
             <input type="number" min="0" value={d('cableCAMeters')} onChange={e => set('cableCAMeters', parseInt(e.target.value) || 0)}
               className="w-20 text-center border border-green-200 rounded-lg px-2 py-1.5 text-sm font-bold bg-white focus:outline-none focus:ring-1 focus:ring-green-400" />
             <span className="text-xs text-gray-500">metros</span>
-            {cableCAP?.preco && d('cableCAMeters') > 0 && <span className="ml-auto text-sm font-bold text-green-700">{fmt(cableCAP.preco * d('cableCAMeters'))}</span>}
+            {cableCAP?.preco && d('cableCAMeters') > 0 && <span className="ml-auto text-sm font-bold text-green-700">{fmt(moneyMul(cableCAP.preco, d('cableCAMeters')))}</span>}
           </div>
         </div>
 
@@ -2390,7 +2397,7 @@ function Step4({ data, onChange, products }) {
                     <p className="text-xs text-gray-400 font-mono">{data.batProduct.codigo} • {fmt(data.batProduct.preco)}/un</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="text-sm font-bold text-violet-700">{data.batQty}× = {fmt((data.batProduct.preco || 0) * data.batQty)}</span>
+                    <span className="text-sm font-bold text-violet-700">{data.batQty}× = {fmt(moneyMul(data.batProduct.preco, data.batQty))}</span>
                   </div>
                 </div>
                 <p className="text-xs text-violet-600 mt-2 ml-11">
@@ -2421,7 +2428,7 @@ function Step4({ data, onChange, products }) {
                         <p className="font-semibold text-gray-900 text-sm">{data.luna2000Product.nome || data.luna2000Product.modelo}</p>
                         <p className="text-xs text-gray-400 font-mono">{data.luna2000Product.codigo} • {fmt(data.luna2000Product.preco)}/un</p>
                       </div>
-                      <span className="text-sm font-bold text-violet-700 shrink-0">{data.sbwGroups}× = {fmt((data.luna2000Product.preco || 0) * data.sbwGroups)}</span>
+                      <span className="text-sm font-bold text-violet-700 shrink-0">{data.sbwGroups}× = {fmt(moneyMul(data.luna2000Product.preco, data.sbwGroups))}</span>
                     </div>
                     <p className="text-xs text-violet-600 mt-2 ml-11">{(6.9 * data.sbwGroups).toFixed(1)} kWh total</p>
                   </div>
@@ -2441,7 +2448,7 @@ function Step4({ data, onChange, products }) {
                       <p className="font-semibold text-gray-900 text-sm">JBW 41DC 50A (paralelo de baterias)</p>
                       <p className="text-xs text-gray-400 font-mono">{data.jbwProduct.codigo} • {fmt(data.jbwProduct.preco)}/un</p>
                     </div>
-                    <span className="text-sm font-bold text-violet-700 shrink-0">{jQty}× = {fmt((data.jbwProduct.preco || 0) * jQty)}</span>
+                    <span className="text-sm font-bold text-violet-700 shrink-0">{jQty}× = {fmt(moneyMul(data.jbwProduct.preco, jQty))}</span>
                     <button onClick={() => set('inclJBW41DC', !incl)}
                       className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${incl ? 'bg-violet-600 hover:bg-violet-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                       {incl ? '✓' : '+'}
@@ -2839,7 +2846,7 @@ function StructureSection({ data, onChange, panelCount }) {
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-xs font-bold text-weg-blue">{kit.preco ? fmt(kit.preco) : 'Sob consulta'}</p>
-                          {kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(kit.preco * qty4)}</p> : null}
+                          {kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(moneyMul(kit.preco, qty4))}</p> : null}
                         </div>
                         {isSel && <Check size={14} className="text-weg-blue shrink-0" />}
                       </div>
@@ -2884,7 +2891,7 @@ function StructureSection({ data, onChange, panelCount }) {
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-xs font-bold text-weg-blue">{kit.preco ? fmt(kit.preco) : 'Sob consulta'}</p>
-                          {kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(kit.preco * qty3)}</p> : null}
+                          {kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(moneyMul(kit.preco, qty3))}</p> : null}
                         </div>
                         {isSel && <Check size={14} className="text-weg-blue shrink-0" />}
                       </div>
@@ -2914,7 +2921,7 @@ function StructureSection({ data, onChange, panelCount }) {
             </span>
             {((selectedKit4 || kits4[0]) && (selectedKit3 || kits3[0])) && (
               <span className="font-bold text-weg-orange text-sm ml-auto">
-                {fmt(round2(((data.estruturaKit ?? selectedKit4)?.preco || 0) * qty4) + round2(((data.estruturaKit3 ?? selectedKit3)?.preco || 0) * qty3))}
+                {fmt(round2(moneyMul((data.estruturaKit ?? selectedKit4)?.preco, qty4) + moneyMul((data.estruturaKit3 ?? selectedKit3)?.preco, qty3)))}
               </span>
             )}
           </div>
@@ -2971,7 +2978,7 @@ function StructureSection({ data, onChange, panelCount }) {
                         : <p className="text-sm font-bold text-weg-blue">{kit.preco ? fmt(kit.preco) : 'Sob consulta'}</p>}
                       {roofType === 'Solo'
                         ? soloTotal ? <p className="text-xs text-weg-orange font-semibold">{fmt(soloTotal)} total</p> : <p className="text-xs text-gray-400">{panelWp ? '' : 'Selecione painel'}</p>
-                        : kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(kit.preco * autoQty)} total</p> : null}
+                        : kit.preco ? <p className="text-xs text-weg-orange font-semibold">{fmt(moneyMul(kit.preco, autoQty))} total</p> : null}
                     </div>
                     {isSel && <Check size={16} className="text-weg-blue shrink-0" />}
                   </div>
@@ -3016,7 +3023,7 @@ function StructureSection({ data, onChange, panelCount }) {
                 <span className="ml-auto font-bold text-weg-orange text-sm">
                   {roofType === 'Solo'
                     ? soloTotalAdj ? fmt(soloTotalAdj) : (activeKit?.preco ? 'Selecione painel' : 'Sob consulta')
-                    : activeKit?.preco ? fmt(activeKit.preco * qtySingle) : 'Sob consulta'}
+                    : activeKit?.preco ? fmt(moneyMul(activeKit.preco, qtySingle)) : 'Sob consulta'}
                 </span>
               </div>
             )
@@ -3352,7 +3359,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       const rawQty = data.estruturaQty || 1
       const qty = isSolo ? (rawQty % 2 === 0 ? rawQty : rawQty + 1) : rawQty
       const prod = isSolo
-        ? { ...data.estruturaKit, preco: data.estruturaKit.preco * panelWp, precoFrete: (data.estruturaKit.precoFrete || data.estruturaKit.preco) * panelWp }
+        ? { ...data.estruturaKit, preco: round2(data.estruturaKit.preco * panelWp), precoFrete: round2((data.estruturaKit.precoFrete || data.estruturaKit.preco) * panelWp) }
         : data.estruturaKit
       return { label: 'Estrutura de Fixação', product: prod, qty, unit: isSolo ? 'un' : 'kit' }
     })(),
@@ -3391,13 +3398,13 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const F2 = 0.92   // Fator 2
   const F3 = 0.95   // Fator 3
   const F4 = 0.93   // Fator 4
-  const fatorBase = F1 * F2 * F3 * F4  // ≈ 0.5121
 
   // Subtotal: round each line total to 2 dp before summing (matches Excel ROUND(unit*qty,2) per line)
-  const subtotal    = kitItems.reduce((sum, item) => round2(sum + round2((item.product.preco || 0) * item.qty)), 0)
+  const subtotal    = kitItems.reduce((sum, item) => round2(sum + moneyMul(item.product.preco, item.qty)), 0)
   const freteOpcao  = freteOpcoes.find(f => f.id === freteId) || freteOpcoes[0] || { nome: 'FOB', acrescimo: 1 }
   const fatorDesc   = round2(1 - (desconto / 100))
-  const totalAjust  = round2(subtotal * fatorBase * fatorDesc)
+  // Apply each factor sequentially with round2 after each step — matches Excel ROUND-at-each-factor behaviour
+  const totalAjust  = [F1, F2, F3, F4, fatorDesc].reduce((v, f) => round2(v * f), subtotal)
   const ajusteAmt   = round2(subtotal - totalAjust)
   const freteAmt    = round2(totalAjust * (freteOpcao.acrescimo - 1))
   const totalFinal  = round2(totalAjust * freteOpcao.acrescimo)
@@ -3427,7 +3434,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     qty:        item.qty,
     unit:       item.unit,
     preco_unit: item.product.preco || 0,
-    total:      round2((item.product.preco || 0) * item.qty),
+    total:      moneyMul(item.product.preco, item.qty),
   }))
 
   // ── Save quote to Supabase (usa supabaseAdmin para bypassar RLS recursivo) ──
@@ -3820,7 +3827,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                       : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">
-                    {item.product.preco ? fmt(round2(item.product.preco * item.qty)) : '—'}
+                    {item.product.preco ? fmt(moneyMul(item.product.preco, item.qty)) : '—'}
                   </td>
                   <td className="px-4 py-3 print:hidden">
                     {item.avulso && (
