@@ -1066,8 +1066,45 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     <div id={isPrinting ? 'kit-print' : undefined} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:p-0 print:bg-white">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto print:rounded-none print:shadow-none print:max-h-none">
 
-        {/* Header */}
-        <div className="sticky top-0 bg-weg-blue text-white px-6 py-4 flex items-start justify-between gap-3 print:static">
+        {/* Print-only header: logo + quote reference */}
+        <div className="hidden print:flex items-center justify-between px-6 py-4" style={{backgroundColor:'#1B3A8A'}}>
+          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:44,objectFit:'contain'}}
+            onError={e => { e.target.style.display = 'none' }} />
+          <div style={{textAlign:'right',color:'white'}}>
+            {kitData.numero_orcamento && (
+              <p style={{fontSize:13,fontWeight:700,margin:0}}>
+                {kitData.numero_orcamento}{(kitData.revisao||0)>0?` · Rev. ${kitData.revisao}`:''}
+              </p>
+            )}
+            <p style={{fontSize:11,opacity:0.8,margin:'2px 0 0'}}>{quote.nome_projeto}</p>
+            <p style={{fontSize:10,opacity:0.6,margin:'2px 0 0'}}>
+              {new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}
+            </p>
+          </div>
+        </div>
+
+        {/* Print-only kit info bar */}
+        {kitData.panel && (
+          <div className="hidden print:flex items-start justify-between px-6 py-3 border-b border-gray-200" style={{background:'#f8f9fa'}}>
+            <div>
+              <p style={{fontSize:15,fontWeight:800,color:'#1B3A8A',margin:0}}>{quote.nome_projeto}</p>
+              {kitData.clienteNome && (
+                <p style={{fontSize:11,color:'#555',margin:'4px 0 0'}}>Cliente: <strong>{kitData.clienteNome}</strong></p>
+              )}
+            </div>
+            <div style={{textAlign:'right'}}>
+              <p style={{fontSize:22,fontWeight:800,color:'#1B3A8A',margin:0}}>
+                {(((kitData.panelQty||1)*(kitData.panel?.potencia||1))/1000).toFixed(2)} kWp
+              </p>
+              <p style={{fontSize:10,color:'#666',margin:'2px 0 0'}}>
+                {kitData.panelQty} painéis × {kitData.panel?.potencia} Wp
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Screen header — hidden when printing */}
+        <div className="sticky top-0 bg-weg-blue text-white px-6 py-4 flex items-start justify-between gap-3 print:hidden">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-1">
               {kitData.numero_orcamento && (
@@ -1109,7 +1146,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs">Item</th>
-                    <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs hidden sm:table-cell">Produto / SAP</th>
+                    <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs hidden sm:table-cell print:table-cell">Produto / SAP</th>
                     <th className="text-center px-3 py-2.5 font-semibold text-gray-500 text-xs">Qtd</th>
                     <th className="text-right px-3 py-2.5 font-semibold text-gray-500 text-xs">Unitário</th>
                     <th className="text-right px-4 py-2.5 font-semibold text-gray-500 text-xs">Total</th>
@@ -1121,7 +1158,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                   ) : items.map((item, i) => (
                     <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
                       <td className="px-4 py-2.5 font-medium text-gray-800 text-xs">{item.label}</td>
-                      <td className="px-4 py-2.5 text-gray-500 text-xs hidden sm:table-cell">
+                      <td className="px-4 py-2.5 text-gray-500 text-xs hidden sm:table-cell print:table-cell">
                         <div className="truncate max-w-[200px]">{item.produto}</div>
                         <div className="font-mono text-gray-400">{item.codigo_sap}</div>
                       </td>
