@@ -1186,50 +1186,38 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             Preços {quote.frete_pct > 1 ? quote.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.
           </p>
 
-          {/* Composição da Estrutura — segunda folha */}
+          {/* Composição da Estrutura — logo abaixo do total */}
           {structureComposition.length > 0 && (
-            <div style={{pageBreakBefore:'always', breakBefore:'page'}}>
-              {/* Repeat logo header on page 2 */}
-              <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
-                <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
-                  onError={e => { e.target.style.display = 'none' }} />
-                <div className="text-right">
-                  <p className="text-white/70 text-xs">{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
-                  <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
-                </div>
-              </div>
-
-              <div className="px-8 py-4">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Composição da Estrutura de Fixação</p>
-                {kitData.estruturaKit && (
-                  <p className="text-xs text-gray-400 mb-3">
-                    {kitData.estruturaKit && <span className="mr-4">Kit 4 mod: {kitData.estruturaKit.nome}</span>}
-                    {kitData.estruturaKit3 && <span>Kit 3 mod: {kitData.estruturaKit3.nome}</span>}
-                  </p>
-                )}
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b-2 border-gray-200">
-                      <th className="py-2 text-left text-xs font-bold text-gray-500 uppercase w-8">#</th>
-                      <th className="py-2 text-left text-xs font-bold text-gray-500 uppercase">Componente</th>
-                      <th className="py-2 text-left text-xs font-mono font-bold text-gray-500 uppercase">SAP</th>
-                      <th className="py-2 text-center text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
+            <div className="px-8 py-4 border-t border-dashed border-gray-200">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Composição da Estrutura de Fixação</p>
+              {kitData.estruturaKit && (
+                <p className="text-xs text-gray-400 mb-3">
+                  {kitData.estruturaKit && <span className="mr-4">Kit 4 mod: {kitData.estruturaKit.nome}</span>}
+                  {kitData.estruturaKit3 && <span>Kit 3 mod: {kitData.estruturaKit3.nome}</span>}
+                </p>
+              )}
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b-2 border-gray-200">
+                    <th className="py-2 text-left text-xs font-bold text-gray-500 uppercase w-8">#</th>
+                    <th className="py-2 text-left text-xs font-bold text-gray-500 uppercase">Componente</th>
+                    <th className="py-2 text-left text-xs font-mono font-bold text-gray-500 uppercase">SAP</th>
+                    <th className="py-2 text-center text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {structureComposition.map((comp, idx) => (
+                    <tr key={comp.sap} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'}`}>
+                      <td className="py-2.5 text-xs text-gray-400">{idx + 1}</td>
+                      <td className="py-2.5 text-sm font-semibold text-gray-800">{comp.descricao}</td>
+                      <td className="py-2.5 text-xs font-mono text-gray-400">{comp.sap}</td>
+                      <td className="py-2.5 text-center">
+                        <span className="bg-blue-50 text-blue-700 rounded px-3 py-0.5 text-sm font-bold">{comp.qty} un</span>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {structureComposition.map((comp, idx) => (
-                      <tr key={comp.sap} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'}`}>
-                        <td className="py-2.5 text-xs text-gray-400">{idx + 1}</td>
-                        <td className="py-2.5 text-sm font-semibold text-gray-800">{comp.descricao}</td>
-                        <td className="py-2.5 text-xs font-mono text-gray-400">{comp.sap}</td>
-                        <td className="py-2.5 text-center">
-                          <span className="bg-blue-50 text-blue-700 rounded px-3 py-0.5 text-sm font-bold">{comp.qty} un</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
