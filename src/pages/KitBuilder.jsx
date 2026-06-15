@@ -3401,9 +3401,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   // Subtotal: sum raw price×qty for all lines, round only the total (Excel: ROUND(SOMARPRODUTO(preços,qtds),2))
   const subtotal    = round2(kitItems.reduce((sum, item) => sum + (item.product.preco || 0) * item.qty, 0))
   const freteOpcao  = freteOpcoes.find(f => f.id === freteId) || freteOpcoes[0] || { nome: 'FOB', acrescimo: 1 }
-  const fatorDesc   = round2(1 - (desconto / 100))
-  // Apply each factor sequentially with round2 after each step — matches Excel ROUND-at-each-factor behaviour
-  const totalAjust  = [F1, F2, F3, F4, fatorDesc].reduce((v, f) => round2(v * f), subtotal)
+  const fatorDesc   = 1 - (desconto / 100)
+  // Excel: ROUND(subtotal × F1 × F2 × F3 × F4 × fatorDesc, 2) — one multiplication, one round
+  const totalAjust  = round2(subtotal * F1 * F2 * F3 * F4 * fatorDesc)
   const ajusteAmt   = round2(subtotal - totalAjust)
   const freteAmt    = round2(totalAjust * (freteOpcao.acrescimo - 1))
   const totalFinal  = round2(totalAjust * freteOpcao.acrescimo)
