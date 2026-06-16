@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
-import { products as defaultProducts, fixedProducts as defaultFixed, assignKitRole } from '../data/products'
+import { products as defaultProducts, assignKitRole } from '../data/products'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 
 const ProductsContext = createContext()
@@ -62,15 +62,10 @@ function loadActiveListCodes() {
   } catch { return null }
 }
 
-// Usa notação exponencial para evitar drift de float (Math.round(1.005*100)/100 = 1.00, errado)
-const r2 = v => v != null ? Number(Math.round(Number(String(+v) + 'e2')) + 'e-2') : v
+const r2 = v => v != null ? Math.round(v * 100) / 100 : v
 
 function normalizeProduct(p) {
-  return {
-    ...p,
-    preco:      p.preco      != null ? r2(p.preco)      : p.preco,
-    precoFrete: p.precoFrete != null ? r2(p.precoFrete) : p.precoFrete,
-  }
+  return { ...p }
 }
 
 function loadProducts() {
@@ -81,21 +76,10 @@ function loadProducts() {
     const parsed = JSON.parse(saved)
     const savedCodes = new Set(parsed.map(p => p.codigo))
 
-    // Índice de fixedProducts por código para patch de preço em branco
-    const fixedByCode = {}
-    defaultFixed.forEach(f => { if (f.preco != null) fixedByCode[f.codigo] = f })
-
-    const savedList = parsed.map(p => {
-      const base = { ...p, kitRole: p.kitRole !== undefined ? p.kitRole : assignKitRole(p) }
-      // Se o produto salvo não tem preço mas o default fixo tem, aplica o default
-      const fix = fixedByCode[p.codigo]
-      if (fix && (p.preco == null || p.preco === 0)) {
-        base.preco = fix.preco
-        base.precoFrete = fix.precoFrete ?? fix.preco
-        base.estoque = 'Disponível'
-      }
-      return normalizeProduct(base)
-    })
+    const savedList = parsed.map(p => normalizeProduct({
+      ...p,
+      kitRole: p.kitRole !== undefined ? p.kitRole : assignKitRole(p),
+    }))
 
     const newProducts = defaultProducts
       .filter(p => !savedCodes.has(p.codigo))
@@ -169,15 +153,10 @@ export function ProductsProvider({ children }) {
     }).catch(e => console.warn('[catalog] restore error:', e?.message))
   }, [])
 
-  const fixedIds   = React.useMemo(() => new Set(defaultFixed.map(f => f.id)),     [])
-  const fixedCodes = React.useMemo(() => new Set(defaultFixed.map(f => f.codigo)), [])
-
   const catalogProducts = React.useMemo(() => {
     if (!activeListCodes || activeListCodes.size === 0) return products
-    // fixedProducts (SmartHome, Solo, micro acessórios) sempre visíveis independente da whitelist
-    // Checa por ID (produto original de products.js) OU por SAP (produto importado com mesmo código)
-    return products.filter(p => fixedIds.has(p.id) || fixedCodes.has(p.codigo) || activeListCodes.has(p.codigo))
-  }, [products, activeListCodes, fixedIds, fixedCodes])
+    return products.filter(p => activeListCodes.has(p.codigo))
+  }, [products, activeListCodes])
 
   const saveProducts = useCallback((newProducts) => {
     setProducts(newProducts)
