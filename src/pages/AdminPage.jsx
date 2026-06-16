@@ -2387,87 +2387,121 @@ function QuoteManagement() {
       const freteAmt  = r2(q.total_final - totalBase)
       const ajusteAmt = r2((q.subtotal || 0) - totalBase)
       return (
-        <div id="kit-print" className="fixed top-0 left-0 w-full bg-white z-[9999] overflow-auto" style={{minHeight:'100vh'}}>
-          {/* Header azul */}
-          <div style={{background:'#1B3A8A', color:'white', padding:'20px 32px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:44, objectFit:'contain'}}
-              onError={e => { e.target.style.display = 'none' }} />
-            <div style={{textAlign:'right'}}>
-              <p style={{fontSize:10, opacity:0.7}}>{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
-              <p style={{fontSize:10, opacity:0.6}}>{tableInfo?.nome}</p>
+        /* Fundo escuro + papel A4 centralizado — na impressão vira bloco estático */
+        <div id="kit-print" style={{
+          position:'fixed', inset:0, zIndex:9999,
+          background:'rgba(17,24,39,0.82)', overflowY:'auto',
+          display:'flex', justifyContent:'center', alignItems:'flex-start', padding:'32px 16px',
+        }}>
+          {/* Papel A4 (794px ≈ 210mm @96dpi) */}
+          <div className="print-paper" style={{
+            background:'white', width:'100%', maxWidth:794,
+            boxShadow:'0 32px 64px rgba(0,0,0,0.45)', borderRadius:6,
+            overflow:'hidden', flexShrink:0,
+          }}>
+            {/* ── Cabeçalho azul ── */}
+            <div style={{background:'#1B3A8A', color:'white', padding:'14px 28px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:38, objectFit:'contain'}}
+                onError={e => { e.target.style.display='none' }} />
+              <div style={{textAlign:'right', lineHeight:1.5}}>
+                <p style={{margin:0, fontSize:10, opacity:0.75}}>{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
+                <p style={{margin:0, fontSize:9, opacity:0.55}}>{tableInfo?.nome}</p>
+              </div>
             </div>
-          </div>
 
-          {/* Info do kit */}
-          <div style={{background:'#f8f9fa', padding:'16px 32px', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
-            <div>
-              <p style={{fontSize:15, fontWeight:800, color:'#1B3A8A', margin:0}}>
-                {kd.numero_orcamento || ''} — {q.nome_projeto || `Kit ${q.kwp} kWp`}
-                {(kd.revisao || 0) > 0 && <span style={{fontSize:11, color:'#d97706', marginLeft:8}}>Rev. {kd.revisao}</span>}
-              </p>
-              {q.profiles?.nome      && <p style={{fontSize:11, color:'#555', margin:'6px 0 0'}}>Cliente: <strong>{q.profiles.nome}</strong></p>}
-              {q.profiles?.empresa   && <p style={{fontSize:10, color:'#777', margin:'2px 0 0'}}>{q.profiles.empresa}</p>}
-              {q.profiles?.cnpj      && <p style={{fontSize:10, color:'#777', margin:'1px 0 0', fontFamily:'monospace'}}>CNPJ: {q.profiles.cnpj}</p>}
-              {q.profiles?.telefone  && <p style={{fontSize:10, color:'#777', margin:'1px 0 0'}}>Tel: {q.profiles.telefone}</p>}
+            {/* ── Info do kit / cliente ── */}
+            <div style={{padding:'10px 28px 12px', background:'#f8fafc', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16}}>
+              <div style={{minWidth:0}}>
+                <p style={{margin:0, fontSize:14, fontWeight:800, color:'#1B3A8A', lineHeight:1.3}}>
+                  {kd.numero_orcamento ? `${kd.numero_orcamento} — ` : ''}{q.nome_projeto || `Kit ${q.kwp} kWp`}
+                  {(kd.revisao||0)>0 && <span style={{fontSize:10, color:'#d97706', marginLeft:8, fontWeight:600}}>Rev. {kd.revisao}</span>}
+                </p>
+                <div style={{display:'flex', flexWrap:'wrap', columnGap:16, rowGap:2, marginTop:5, fontSize:10, color:'#555', lineHeight:1.4}}>
+                  {q.profiles?.nome     && <span>Cliente: <strong style={{color:'#111'}}>{q.profiles.nome}</strong></span>}
+                  {q.profiles?.empresa  && <span style={{color:'#777'}}>{q.profiles.empresa}</span>}
+                  {q.profiles?.cnpj     && <span style={{fontFamily:'monospace', color:'#777'}}>CNPJ: {q.profiles.cnpj}</span>}
+                  {q.profiles?.telefone && <span style={{color:'#777'}}>Tel: {q.profiles.telefone}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:'right', flexShrink:0}}>
+                <p style={{margin:0, fontSize:22, fontWeight:900, color:'#1B3A8A', whiteSpace:'nowrap'}}>{q.kwp} kWp</p>
+                {kd.panelQty && kd.panel && <p style={{margin:0, fontSize:9, color:'#888'}}>{kd.panelQty} painéis × {kd.panel.potencia} Wp</p>}
+                <p style={{margin:'4px 0 0', fontSize:9, color:'#1B3A8A', fontWeight:600}}>Validade: {kd.validade||7} dias</p>
+              </div>
             </div>
-            <div style={{textAlign:'right'}}>
-              <p style={{fontSize:22, fontWeight:900, color:'#1B3A8A', margin:0}}>{q.kwp} kWp</p>
-              {kd.panelQty && kd.panel && <p style={{fontSize:10, color:'#888', margin:0}}>{kd.panelQty} painéis × {kd.panel.potencia} Wp</p>}
-              <p style={{fontSize:10, color:'#1B3A8A', margin:'6px 0 0', fontWeight:600}}>Validade: {kd.validade || 7} dias</p>
-            </div>
-          </div>
 
-          {/* Tabela de itens */}
-          {items.length > 0 && (
-            <div style={{padding:'0 32px'}}>
-              <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
-                <thead>
-                  <tr style={{borderBottom:'2px solid #e5e7eb', background:'#f9fafb'}}>
-                    <th style={{padding:'8px 4px', textAlign:'left', color:'#6b7280', fontSize:10, fontWeight:600}}>Item</th>
-                    <th style={{padding:'8px 4px', textAlign:'left', color:'#6b7280', fontSize:10, fontWeight:600}}>Produto / SAP</th>
-                    <th style={{padding:'8px 4px', textAlign:'center', color:'#6b7280', fontSize:10, fontWeight:600}}>Qtd</th>
-                    <th style={{padding:'8px 4px', textAlign:'right', color:'#6b7280', fontSize:10, fontWeight:600}}>Unit.</th>
-                    <th style={{padding:'8px 4px', textAlign:'right', color:'#6b7280', fontSize:10, fontWeight:600}}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it, i) => (
-                    <tr key={i} style={{borderBottom:'1px solid #f3f4f6'}}>
-                      <td style={{padding:'7px 4px', color:'#6b7280', fontSize:11}}>{i+1}</td>
-                      <td style={{padding:'7px 4px'}}>
-                        <p style={{margin:0, fontWeight:600, color:'#111827', fontSize:12}}>{it.label}</p>
-                        <p style={{margin:0, color:'#9ca3af', fontSize:10}}>{it.produto} {it.codigo_sap ? `— SAP ${it.codigo_sap}` : ''}</p>
-                      </td>
-                      <td style={{padding:'7px 4px', textAlign:'center', fontWeight:700, color:'#374151'}}>{it.qty} {it.unit}</td>
-                      <td style={{padding:'7px 4px', textAlign:'right', color:'#6b7280', fontSize:11}}>{fmt(it.preco_unit)}</td>
-                      <td style={{padding:'7px 4px', textAlign:'right', fontWeight:700, color:'#111827'}}>{fmt(it.total)}</td>
+            {/* ── Tabela de itens ── */}
+            {items.length > 0 && (
+              <div style={{padding:'0 28px'}}>
+                <table style={{width:'100%', borderCollapse:'collapse', fontSize:11, tableLayout:'fixed'}}>
+                  <colgroup>
+                    <col style={{width:24}} />
+                    <col />
+                    <col style={{width:64}} />
+                    <col style={{width:90}} />
+                    <col style={{width:96}} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{borderBottom:'2px solid #e5e7eb'}}>
+                      <th style={{padding:'7px 4px 7px 0', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}>#</th>
+                      <th style={{padding:'7px 4px', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}>Produto / SAP</th>
+                      <th style={{padding:'7px 4px', textAlign:'center', color:'#9ca3af', fontSize:9, fontWeight:600}}>Qtd</th>
+                      <th style={{padding:'7px 4px', textAlign:'right', color:'#9ca3af', fontSize:9, fontWeight:600}}>Unitário</th>
+                      <th style={{padding:'7px 4px 7px 0', textAlign:'right', color:'#9ca3af', fontSize:9, fontWeight:600}}>Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {items.map((it, i) => (
+                      <tr key={i} style={{borderBottom:'1px solid #f3f4f6'}}>
+                        <td style={{padding:'5px 4px 5px 0', color:'#9ca3af', fontSize:10, verticalAlign:'middle'}}>{i+1}</td>
+                        <td style={{padding:'5px 4px', verticalAlign:'middle'}}>
+                          <p style={{margin:0, fontWeight:600, color:'#111827', fontSize:11, lineHeight:1.3}}>{it.label}</p>
+                          <p style={{margin:0, color:'#9ca3af', fontSize:9, lineHeight:1.3}}>{it.produto}{it.codigo_sap ? ` — SAP ${it.codigo_sap}` : ''}</p>
+                        </td>
+                        <td style={{padding:'5px 4px', textAlign:'center', fontWeight:700, color:'#374151', fontSize:11, verticalAlign:'middle'}}>{it.qty} {it.unit}</td>
+                        <td style={{padding:'5px 4px', textAlign:'right', color:'#6b7280', fontSize:10, verticalAlign:'middle'}}>{fmt(it.preco_unit)}</td>
+                        <td style={{padding:'5px 4px 5px 0', textAlign:'right', fontWeight:700, color:'#111827', fontSize:11, verticalAlign:'middle'}}>{fmt(it.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* ── Resumo financeiro ── */}
+            <div style={{padding:'8px 28px 6px', borderTop:'2px solid #e5e7eb', background:'#f9fafb'}}>
+              {q.subtotal > 0 && (
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', padding:'3px 0'}}>
+                  <span>Subtotal (preço de tabela)</span><span style={{fontWeight:600}}>{fmt(q.subtotal)}</span>
+                </div>
+              )}
+              {ajusteAmt > 0 && (
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#16a34a', padding:'3px 0'}}>
+                  <span>Ajuste comercial</span><span style={{fontWeight:600}}>− {fmt(ajusteAmt)}</span>
+                </div>
+              )}
+              {freteAmt > 0 && (
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', padding:'3px 0'}}>
+                  <span>{q.frete_nome}</span><span style={{fontWeight:600}}>+ {fmt(freteAmt)}</span>
+                </div>
+              )}
             </div>
-          )}
+            <div style={{background:'#1B3A8A', color:'white', padding:'12px 28px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+              <span style={{fontWeight:700, fontSize:11, letterSpacing:'0.07em', textTransform:'uppercase', opacity:0.85}}>Total do Kit</span>
+              <span style={{fontWeight:900, fontSize:22}}>{fmt(q.total_final)}</span>
+            </div>
 
-          {/* Resumo financeiro */}
-          <div style={{padding:'8px 32px 4px', borderTop:'1px solid #e5e7eb'}}>
-            {q.subtotal > 0 && <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'#6b7280', padding:'4px 0'}}><span>Subtotal (preço de tabela)</span><span style={{fontWeight:600}}>{fmt(q.subtotal)}</span></div>}
-            {ajusteAmt > 0 && <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'#16a34a', padding:'4px 0'}}><span>Ajuste</span><span style={{fontWeight:600}}>− {fmt(ajusteAmt)}</span></div>}
-            {freteAmt > 0 && <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'#6b7280', padding:'4px 0'}}><span>{q.frete_nome}</span><span style={{fontWeight:600}}>+ {fmt(freteAmt)}</span></div>}
-          </div>
-          <div style={{background:'#1B3A8A', color:'white', padding:'14px 32px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-            <span style={{fontWeight:800, fontSize:13, letterSpacing:'0.05em', textTransform:'uppercase'}}>Total do Kit</span>
-            <span style={{fontWeight:900, fontSize:20}}>{fmt(q.total_final)}</span>
-          </div>
-
-          {/* Footer */}
-          <div style={{padding:'12px 32px', textAlign:'center', fontSize:10, color:'#9ca3af', borderTop:'1px solid #f3f4f6'}}>
-            <p style={{margin:0}}>Preços {q.frete_pct > 1 ? q.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.</p>
-            <p style={{margin:'4px 0 0'}}>Ernaniff Representações · 94 9209-0380 · vendas@ernaniff.com.br · Folha 22, Quadra 17 – Lote 38, Sala 05, 2º Andar, Nova Marabá – PA</p>
-          </div>
+            {/* ── Rodapé ── */}
+            <div style={{padding:'10px 28px', textAlign:'center', fontSize:9, color:'#9ca3af', lineHeight:1.6}}>
+              <p style={{margin:0}}>Preços {q.frete_pct>1 ? q.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.</p>
+              <p style={{margin:0}}>Ernaniff Representações · 94 9209-0380 · vendas@ernaniff.com.br · Folha 22, Quadra 17 – Lote 38, Sala 05, 2º Andar, Nova Marabá – PA</p>
+            </div>
+          </div>{/* /print-paper */}
 
           {/* Botão fechar (oculto na impressão) */}
           <button onClick={() => setPrintingQuote(null)}
-            className="print:hidden fixed top-4 right-4 bg-white border border-gray-300 rounded-xl px-4 py-2 text-sm font-semibold text-gray-700 shadow hover:bg-gray-50 flex items-center gap-2">
+            className="print:hidden"
+            style={{position:'fixed', top:16, right:16, background:'white', border:'1px solid #d1d5db', borderRadius:12, padding:'8px 18px', fontSize:13, fontWeight:600, color:'#374151', cursor:'pointer', boxShadow:'0 4px 12px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:6}}>
             <X size={14} /> Fechar
           </button>
         </div>

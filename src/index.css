@@ -15,30 +15,36 @@
     print-color-adjust: exact !important;
   }
 
-  /* Isolate the print area — kit-print is rendered via portal as direct body child */
-  /* Hide all other body children from layout (display:none removes ghost pages) */
+  /* Kit-print é renderizado via portal como filho direto do body */
+  /* display:none elimina ghost pages do DOM longo da página de admin */
   body > *:not(#kit-print) {
     display: none !important;
   }
-  /* Make kit-print flow naturally so content dictates page count */
+
+  /* Outer wrapper: vira bloco estático, sem fundo escuro */
   body > #kit-print {
     display: block !important;
     position: static !important;
-    top: auto !important;
-    left: auto !important;
+    inset: auto !important;
     width: 100% !important;
     height: auto !important;
     max-height: none !important;
     min-height: 0 !important;
-    bottom: auto !important;
     margin: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
+    padding: 0 !important;
     background: white !important;
     overflow: visible !important;
     z-index: auto !important;
   }
+
+  /* Paper card: ocupa toda a largura, sem sombra nem borda */
+  body > #kit-print .print-paper {
+    max-width: none !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
   body > #kit-print,
   body > #kit-print * {
     visibility: visible !important;
