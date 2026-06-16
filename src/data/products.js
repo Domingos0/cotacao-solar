@@ -159,10 +159,15 @@ const soloFixoProducts = [
   { id: 8024, codigo: '15288210', nome: 'Região 4 e 5 - ESP-50-G20 (625 Wp - JA BIFACIAL [CD Nordeste])', modelo: 'ESP-50-G20', categoria: CATEGORIES.ESTRUTURAS, tipo: 'Estrutura para solo fixo', fabricante: 'WEG', preco: 0.76, precoFrete: 0.84, estoque: 'Disponível', potencia: 1, unidadePotencia: 'módulo', soloTier: 'acima20' },
 ]
 
-// Produtos fixos hardcoded — nunca vêm de importação Excel, sempre preservados
-export const fixedProducts = [...smartHomeProducts, ...soloFixoProducts]
+// Acessórios de microinversor — sempre presentes, preço atualizado pelo import
+const microAcessoriosProducts = [
+  { id: 9501, codigo: '17707221', nome: 'CABO MP FLEX HEPR/NH 3X4mm² 90°C PT 1kV', modelo: 'CABO MP FLEX HEPR/NH 3X4mm²', categoria: CATEGORIES.CABOS_CONECTORES, tipo: 'Cabo CA', fabricante: 'WEG', preco: 32.73, precoFrete: 32.73, estoque: 'Disponível', potencia: null, unidadePotencia: '' },
+]
 
-// Combined final list: processed raw + smart home + solo fixo
+// Produtos fixos hardcoded — nunca vêm de importação Excel, sempre preservados
+export const fixedProducts = [...smartHomeProducts, ...soloFixoProducts, ...microAcessoriosProducts]
+
+// Combined final list: processed raw + smart home + solo fixo + micro acessórios
 export const products = [...processed, ...fixedProducts]
 
 export const getCategoryIcon = (cat) => {
