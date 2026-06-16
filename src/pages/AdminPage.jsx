@@ -2386,7 +2386,7 @@ function QuoteManagement() {
       const freteAmt  = r2(q.total_final - totalBase)
       const ajusteAmt = r2((q.subtotal || 0) - totalBase)
       return (
-        <div className="fixed inset-0 bg-white z-[9999] overflow-auto print:static">
+        <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
           {/* Header azul */}
           <div style={{background:'#1B3A8A', color:'white', padding:'20px 32px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
             <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:44, objectFit:'contain'}}
