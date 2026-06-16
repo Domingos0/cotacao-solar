@@ -746,7 +746,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
   const { tableInfo } = useProducts()
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useAuth()
 
   // Build structure composition (mirrors KitBuilder logic)
   const structureComposition = useMemo(() => {
@@ -1082,11 +1082,13 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             <p className="text-sm text-gray-400 italic">Itens do kit não disponíveis para esta revisão.</p>
           )}
           <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between text-gray-500">
-              <span>Frete — {printRevision.frete}</span>
-              <span className="text-green-600 font-medium">Incluso</span>
-            </div>
-            <div className="border-t border-gray-200 pt-2 flex justify-between font-extrabold text-gray-900">
+            {isAdmin && (
+              <div className="flex justify-between text-gray-500">
+                <span>Frete — {printRevision.frete}</span>
+                <span className="text-green-600 font-medium">Incluso</span>
+              </div>
+            )}
+            <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
               <span>Total Final</span>
               <span className="text-[#1B3A8A] text-lg">{fmt(printRevision.total_final)}</span>
             </div>
@@ -1176,27 +1178,29 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           </div>
 
           {/* Financial summary — right after items table */}
-          <div className="px-8 py-3 space-y-1.5 border-t border-gray-200">
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>Subtotal (preço de tabela)</span>
-              <span className="font-semibold">{fmt(quote.subtotal)}</span>
-            </div>
-            {ajusteAmt > 0 && (
-              <div className="flex justify-between text-sm text-green-600 font-medium">
-                <span>Ajuste</span>
-                <span>– {fmt(ajusteAmt)}</span>
-              </div>
-            )}
-            {freteAmt > 0 && (
+          {isAdmin && (
+            <div className="px-8 py-3 space-y-1.5 border-t border-gray-200">
               <div className="flex justify-between text-sm text-gray-500">
-                <span>{quote.frete_nome}</span>
-                <span className="font-medium">+ {fmt(freteAmt)}</span>
+                <span>Subtotal (preço de tabela)</span>
+                <span className="font-semibold">{fmt(quote.subtotal)}</span>
               </div>
-            )}
-          </div>
+              {ajusteAmt > 0 && (
+                <div className="flex justify-between text-sm text-green-600 font-medium">
+                  <span>Ajuste</span>
+                  <span>– {fmt(ajusteAmt)}</span>
+                </div>
+              )}
+              {freteAmt > 0 && (
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>{quote.frete_nome}</span>
+                  <span className="font-medium">+ {fmt(freteAmt)}</span>
+                </div>
+              )}
+            </div>
+          )}
           <div className="bg-[#003087] mx-0 px-8 py-4 flex justify-between items-center">
             <span className="text-white font-extrabold text-sm uppercase tracking-widest">
-              {freteAmt > 0 ? 'Total com Frete' : 'Total do Kit'}
+              Total do Kit
             </span>
             <span className="text-white font-extrabold text-xl">{fmt(quote.total_final)}</span>
           </div>
@@ -1355,29 +1359,31 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
 
           {/* Financial summary */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>Valor de tabela (bruto)</span>
-              <span className="font-medium">{fmt(quote.subtotal)}</span>
-            </div>
-            {quote.desconto_pct > 0 && (
+            {isAdmin && (
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>Valor de tabela (bruto)</span>
+                <span className="font-medium">{fmt(quote.subtotal)}</span>
+              </div>
+            )}
+            {isAdmin && quote.desconto_pct > 0 && (
               <div className="flex justify-between text-sm text-green-600">
                 <span>Desconto comercial ({quote.desconto_pct}%)</span>
                 <span className="font-medium">−{fmt((quote.subtotal || 0) * (quote.desconto_pct / 100))}</span>
               </div>
             )}
-            {freteAmt > 0 && (
+            {isAdmin && freteAmt > 0 && (
               <div className="flex justify-between text-sm text-gray-500">
                 <span>Frete — {quote.frete_nome}</span>
                 <span className="font-medium">+{fmt(freteAmt)}</span>
               </div>
             )}
-            {freteAmt === 0 && quote.frete_nome && (
+            {isAdmin && freteAmt === 0 && quote.frete_nome && (
               <div className="flex justify-between text-sm text-gray-400">
                 <span>Frete — {quote.frete_nome}</span>
                 <span className="text-green-600 font-medium">Incluso (FOB)</span>
               </div>
             )}
-            <div className="border-t border-gray-200 pt-2 flex justify-between font-extrabold text-gray-900">
+            <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
               <span>Total Final</span>
               <span className="text-weg-blue text-lg">{fmt(quote.total_final)}</span>
             </div>
@@ -1594,11 +1600,13 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
               <p className="text-sm text-gray-400 italic">Itens do kit não disponíveis para esta revisão.</p>
             )}
             <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-500">
-                <span>Frete — {r.frete}</span>
-                <span className="text-green-600 font-medium">Incluso</span>
-              </div>
-              <div className="border-t border-gray-200 pt-2 flex justify-between font-extrabold text-gray-900">
+              {isAdmin && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Frete — {r.frete}</span>
+                  <span className="text-green-600 font-medium">Incluso</span>
+                </div>
+              )}
+              <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
                 <span>Total Final</span>
                 <span className="text-[#1B3A8A] text-lg">{fmt(r.total_final)}</span>
               </div>
