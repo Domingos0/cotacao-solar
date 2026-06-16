@@ -3933,31 +3933,32 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               ))}
             </tbody>
             <tfoot>
-              {/* Subtotal tabela */}
-              <tr className="border-t-2 border-gray-200 bg-gray-50">
-                <td colSpan="4" className="px-4 py-2.5 text-right text-sm font-semibold text-gray-500">
-                  Subtotal (preço de tabela)
-                </td>
-                <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-700">
-                  {fmt(subtotal)}
-                </td>
-              </tr>
-              {/* Ajuste de preço — fatores + desconto */}
-              <tr className="bg-green-50">
-                <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-green-700">
-                  Ajuste
-                  {isAdmin && (
+              {/* Subtotal e Ajuste — visível só para admin */}
+              {isAdmin && (
+                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                  <td colSpan="4" className="px-4 py-2.5 text-right text-sm font-semibold text-gray-500">
+                    Subtotal (preço de tabela)
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-700">
+                    {fmt(subtotal)}
+                  </td>
+                </tr>
+              )}
+              {isAdmin && (
+                <tr className="bg-green-50">
+                  <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-green-700">
+                    Ajuste
                     <span className="font-normal text-green-600 ml-1">
                       (×{F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × ${fatorDesc.toFixed(4)}` : ''})
                     </span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-right text-sm font-bold text-green-700">
-                  − {fmt(ajusteAmt)}
-                </td>
-              </tr>
-              {/* Freight row */}
-              {freteOpcao.acrescimo !== 1 && (
+                  </td>
+                  <td className="px-4 py-2 text-right text-sm font-bold text-green-700">
+                    − {fmt(ajusteAmt)}
+                  </td>
+                </tr>
+              )}
+              {/* Freight row — visível só para admin */}
+              {isAdmin && freteOpcao.acrescimo !== 1 && (
                 <tr className="bg-gray-50">
                   <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
                     {freteOpcao.nome}
@@ -3970,7 +3971,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               {/* Grand total */}
               <tr className="bg-weg-blue text-white">
                 <td colSpan="4" className="px-4 py-4 text-right font-bold uppercase tracking-wide">
-                  Total {freteOpcao.acrescimo === 1 ? 'do Kit' : 'com Frete'}
+                  Total do Kit
                 </td>
                 <td className="px-4 py-4 text-right text-xl font-extrabold">
                   {fmt(totalFinal)}
