@@ -15,22 +15,21 @@
     print-color-adjust: exact !important;
   }
 
-  /* Isolate the print area: everything invisible except #kit-print */
-  body * {
-    visibility: hidden;
+  /* Isolate the print area — kit-print is rendered via portal as direct body child */
+  /* Hide all other body children from layout (display:none removes ghost pages) */
+  body > *:not(#kit-print) {
+    display: none !important;
   }
-  #kit-print,
-  #kit-print * {
-    visibility: visible;
-  }
-  #kit-print {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    /* height auto evita páginas em branco quando o conteúdo é curto */
+  /* Make kit-print flow naturally so content dictates page count */
+  body > #kit-print {
+    display: block !important;
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    width: 100% !important;
     height: auto !important;
     max-height: none !important;
+    min-height: 0 !important;
     bottom: auto !important;
     margin: 0 !important;
     border-radius: 0 !important;
@@ -38,6 +37,11 @@
     border: none !important;
     background: white !important;
     overflow: visible !important;
+    z-index: auto !important;
+  }
+  body > #kit-print,
+  body > #kit-print * {
+    visibility: visible !important;
   }
 
   /* Avoid breaking rows across pages */

@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
+import { createPortal } from 'react-dom'
 import * as XLSX from 'xlsx'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
@@ -2377,8 +2378,8 @@ function QuoteManagement() {
 
   return (
     <>
-    {/* ── Overlay de impressão ── */}
-    {printingQuote && (() => {
+    {/* ── Overlay de impressão (portal no body para evitar páginas em branco) ── */}
+    {printingQuote && createPortal((() => {
       const q  = printingQuote
       const kd = q.data || {}
       const items = q.quote_items || []
@@ -2471,7 +2472,7 @@ function QuoteManagement() {
           </button>
         </div>
       )
-    })()}
+    })(), document.body)}
     <div className="space-y-4">
 
       {/* ── Toolbar ── */}
