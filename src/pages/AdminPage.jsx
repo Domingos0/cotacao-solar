@@ -2077,6 +2077,7 @@ function AdminKitItems({ items }) {
 
 // ─── Quote Management ─────────────────────────────────────────────────────────
 function QuoteManagement() {
+  const { tableInfo } = useProducts()
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -2085,6 +2086,13 @@ function QuoteManagement() {
   const [approveMsg, setApproveMsg] = useState('')
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectMsg, setRejectMsg] = useState('')
+  const [printingQuote, setPrintingQuote] = useState(null)
+
+  useEffect(() => {
+    if (!printingQuote) return
+    const t = setTimeout(() => { window.print(); setPrintingQuote(null) }, 300)
+    return () => clearTimeout(t)
+  }, [printingQuote])
 
   const fetchQuotes = async () => {
     setLoading(true)
@@ -2365,8 +2373,105 @@ function QuoteManagement() {
   ]
 
   const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+  const r2 = v => Number(Math.round(Number(String(+v) + 'e2')) + 'e-2')
 
   return (
+    <>
+    {/* ── Overlay de impressão ── */}
+    {printingQuote && (() => {
+      const q  = printingQuote
+      const kd = q.data || {}
+      const items = q.quote_items || []
+      const totalBase = q.frete_pct > 1 ? r2(q.total_final / q.frete_pct) : q.total_final
+      const freteAmt  = r2(q.total_final - totalBase)
+      const ajusteAmt = r2((q.subtotal || 0) - totalBase)
+      return (
+        <div className="fixed inset-0 bg-white z-[9999] overflow-auto print:static">
+          {/* Header azul */}
+          <div style={{background:'#1B3A8A', color:'white', padding:'20px 32px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:44, objectFit:'contain'}}
+              onError={e => { e.target.style.display = 'none' }} />
+            <div style={{textAlign:'right'}}>
+              <p style={{fontSize:10, opacity:0.7}}>{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
+              <p style={{fontSize:10, opacity:0.6}}>{tableInfo?.nome}</p>
+            </div>
+          </div>
+
+          {/* Info do kit */}
+          <div style={{background:'#f8f9fa', padding:'16px 32px', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+            <div>
+              <p style={{fontSize:15, fontWeight:800, color:'#1B3A8A', margin:0}}>
+                {kd.numero_orcamento || ''} — {q.nome_projeto || `Kit ${q.kwp} kWp`}
+                {(kd.revisao || 0) > 0 && <span style={{fontSize:11, color:'#d97706', marginLeft:8}}>Rev. {kd.revisao}</span>}
+              </p>
+              {q.profiles?.nome      && <p style={{fontSize:11, color:'#555', margin:'6px 0 0'}}>Cliente: <strong>{q.profiles.nome}</strong></p>}
+              {q.profiles?.empresa   && <p style={{fontSize:10, color:'#777', margin:'2px 0 0'}}>{q.profiles.empresa}</p>}
+              {q.profiles?.cnpj      && <p style={{fontSize:10, color:'#777', margin:'1px 0 0', fontFamily:'monospace'}}>CNPJ: {q.profiles.cnpj}</p>}
+              {q.profiles?.telefone  && <p style={{fontSize:10, color:'#777', margin:'1px 0 0'}}>Tel: {q.profiles.telefone}</p>}
+            </div>
+            <div style={{textAlign:'right'}}>
+              <p style={{fontSize:22, fontWeight:900, color:'#1B3A8A', margin:0}}>{q.kwp} kWp</p>
+              {kd.panelQty && kd.panel && <p style={{fontSize:10, color:'#888', margin:0}}>{kd.panelQty} painéis × {kd.panel.potencia} Wp</p>}
+              <p style={{fontSize:10, color:'#1B3A8A', margin:'6px 0 0', fontWeight:600}}>Validade: {kd.validade || 7} dias</p>
+            </div>
+          </div>
+
+          {/* Tabela de itens */}
+          {items.length > 0 && (
+            <div style={{padding:'0 32px'}}>
+              <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
+                <thead>
+                  <tr style={{borderBottom:'2px solid #e5e7eb', background:'#f9fafb'}}>
+                    <th style={{padding:'8px 4px', textAlign:'left', color:'#6b7280', fontSize:10, fontWeight:600}}>Item</th>
+                    <th style={{padding:'8px 4px', textAlign:'left', color:'#6b7280', fontSize:10, fontWeight:600}}>Produto / SAP</th>
+                    <th style={{padding:'8px 4px', textAlign:'center', color:'#6b7280', fontSize:10, fontWeight:600}}>Qtd</th>
+                    <th style={{padding:'8px 4px', textAlign:'right', color:'#6b7280', fontSize:10, fontWeight:600}}>Unit.</th>
+                    <th style={{padding:'8px 4px', textAlign:'right', color:'#6b7280', fontSize:10, fontWeight:600}}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it, i) => (
+                    <tr key={i} style={{borderBottom:'1px solid #f3f4f6'}}>
+                      <td style={{padding:'7px 4px', color:'#6b7280', fontSize:11}}>{i+1}</td>
+                      <td style={{padding:'7px 4px'}}>
+                        <p style={{margin:0, fontWeight:600, color:'#111827', fontSize:12}}>{it.label}</p>
+                        <p style={{margin:0, color:'#9ca3af', fontSize:10}}>{it.produto} {it.codigo_sap ? `— SAP ${it.codigo_sap}` : ''}</p>
+                      </td>
+                      <td style={{padding:'7px 4px', textAlign:'center', fontWeight:700, color:'#374151'}}>{it.qty} {it.unit}</td>
+                      <td style={{padding:'7px 4px', textAlign:'right', color:'#6b7280', fontSize:11}}>{fmt(it.preco_unit)}</td>
+                      <td style={{padding:'7px 4px', textAlign:'right', fontWeight:700, color:'#111827'}}>{fmt(it.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Resumo financeiro */}
+          <div style={{padding:'8px 32px 4px', borderTop:'1px solid #e5e7eb'}}>
+            {q.subtotal > 0 && <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'#6b7280', padding:'4px 0'}}><span>Subtotal (preço de tabela)</span><span style={{fontWeight:600}}>{fmt(q.subtotal)}</span></div>}
+            {ajusteAmt > 0 && <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'#16a34a', padding:'4px 0'}}><span>Ajuste</span><span style={{fontWeight:600}}>− {fmt(ajusteAmt)}</span></div>}
+            {freteAmt > 0 && <div style={{display:'flex', justifyContent:'space-between', fontSize:12, color:'#6b7280', padding:'4px 0'}}><span>{q.frete_nome}</span><span style={{fontWeight:600}}>+ {fmt(freteAmt)}</span></div>}
+          </div>
+          <div style={{background:'#1B3A8A', color:'white', padding:'14px 32px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <span style={{fontWeight:800, fontSize:13, letterSpacing:'0.05em', textTransform:'uppercase'}}>Total do Kit</span>
+            <span style={{fontWeight:900, fontSize:20}}>{fmt(q.total_final)}</span>
+          </div>
+
+          {/* Footer */}
+          <div style={{padding:'12px 32px', textAlign:'center', fontSize:10, color:'#9ca3af', borderTop:'1px solid #f3f4f6'}}>
+            <p style={{margin:0}}>Preços {q.frete_pct > 1 ? q.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.</p>
+            <p style={{margin:'4px 0 0'}}>Ernaniff Representações · 94 9209-0380 · vendas@ernaniff.com.br · Folha 22, Quadra 17 – Lote 38, Sala 05, 2º Andar, Nova Marabá – PA</p>
+          </div>
+
+          {/* Botão fechar (oculto na impressão) */}
+          <button onClick={() => setPrintingQuote(null)}
+            className="print:hidden fixed top-4 right-4 bg-white border border-gray-300 rounded-xl px-4 py-2 text-sm font-semibold text-gray-700 shadow hover:bg-gray-50 flex items-center gap-2">
+            <X size={14} /> Fechar
+          </button>
+        </div>
+      )
+    })()}
     <div className="space-y-4">
 
       {/* ── Toolbar ── */}
@@ -2508,6 +2613,13 @@ function QuoteManagement() {
                         <p className="text-xs text-gray-400 mb-0.5">Total</p>
                         <p className="font-extrabold text-gray-900 text-base">{fmt(q.total_final)}</p>
                       </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); setPrintingQuote(q) }}
+                        title="Baixar proposta"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50 transition-colors ml-1"
+                      >
+                        <Download size={15} />
+                      </button>
                       <div className="text-gray-300 ml-1">
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </div>
@@ -2630,6 +2742,7 @@ function QuoteManagement() {
         </div>
       )}
     </div>
+    </>
   )
 }
 
