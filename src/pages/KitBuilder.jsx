@@ -110,8 +110,9 @@ const KIT_SAPS = {
   KIT_DETECT:  '14987105',  // Kit acessórios Módulo Detecção Solar CFW500-KDS
   KIT_SOLAR5W: '18753608',  // Kit acessórios Módulo Solar 5W 17mm RESUN
   // Microinversor
-  KIT_CONN_MI: '18460783',  // Kit conector CA SIW100G W10
-  CABO_CA_3F:  '18512552',  // Cabo CA MP Flex HEPR/NH 3X6mm² 90°C PT 1kV
+  KIT_CONN_MI:    '18460783',  // Kit conector CA SIW100G W10
+  CABO_CA_M010:   '17707221',  // Cabo CA SIW100G M010 (monofásico)
+  CABO_CA_M024:   '18512552',  // Cabo CA MP Flex HEPR/NH 3X6mm² 90°C PT 1kV (M024)
   // Bombeamento — Chaves de transferência CA
   CHAVE_CA_2P: '17717300',  // Chave CA S6-02002DS0 (monofásico 220V)
   CHAVE_CA_4P: '17717302',  // Chave CA S6-04002DS0 (trifásico 380V)
@@ -361,9 +362,12 @@ function BombDimStep({ data, onChange, products }) {
 
   const [selPanel, setSelPanel] = useState(() => data.panel || modulos[0] || null)
 
+  const BOMB_OL_MAX = 0.70  // overload máximo permitido para drives de bombeamento
+
   const autoInverter = useMemo(() => {
     if (form.metodo === 'cv' && pMotorKw > 0) {
-      return bombInvs.find(p => (p.potencia || 0) >= pMotorKw) || bombInvs[bombInvs.length - 1] || null
+      // Inversor mínimo = motor / 1.7 (aceita até 70% de overload)
+      return bombInvs.find(p => (p.potencia || 0) >= pMotorKw / (1 + BOMB_OL_MAX)) || bombInvs[bombInvs.length - 1] || null
     }
     if (form.metodo === 'corrente' && iMinInv > 0) {
       const vFactor = form.tensao === '380' ? 0.9 : 1.8
@@ -680,20 +684,40 @@ function BombDimStep({ data, onChange, products }) {
           {invFinal && <span className="text-xs text-gray-500 font-mono">{invFinal.codigo}</span>}
         </div>
         <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1">
-          {bombInvs.map(inv => (
-            <button key={inv.id} onClick={() => setSelInv(inv)}
-              className={`text-left text-sm rounded-lg border p-2.5 transition-all ${
-                invFinal?.id === inv.id ? 'border-cyan-500 bg-cyan-50' : 'border-gray-200 hover:border-cyan-300'
-              }`}>
-              <div className="flex justify-between items-center">
-                <span className="font-semibold">{inv.nome}</span>
-                <span className="text-weg-orange font-bold">{fmt(inv.preco)}</span>
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                {inv.potencia ? `${inv.potencia} kW` : ''}{inv.entradas ? ` · ${inv.entradas} entradas` : ''}{inv.tipo ? ` · ${inv.tipo}` : ''}
-              </div>
-            </button>
-          ))}
+          {bombInvs.map(inv => {
+            const olPct = (form.metodo === 'cv' && pMotorKw > 0 && inv.potencia)
+              ? (pMotorKw / inv.potencia - 1) * 100 : null
+            const olOk  = olPct !== null && olPct <= BOMB_OL_MAX * 100
+            const olOver = olPct !== null && olPct > BOMB_OL_MAX * 100
+            return (
+              <button key={inv.id} onClick={() => setSelInv(inv)}
+                className={`text-left text-sm rounded-lg border p-2.5 transition-all ${
+                  invFinal?.id === inv.id ? 'border-cyan-500 bg-cyan-50' : 'border-gray-200 hover:border-cyan-300'
+                }`}>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="font-semibold">{inv.nome}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {olPct !== null && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        olOver  ? 'bg-red-100 text-red-600' :
+                        olOk && olPct >= 0 ? 'bg-green-100 text-green-700' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {olPct > 0 ? `OL ${olPct.toFixed(0)}%` : `Sub ${(-olPct).toFixed(0)}%`}
+                      </span>
+                    )}
+                    <span className="text-weg-orange font-bold">{fmt(inv.preco)}</span>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {inv.potencia ? `${inv.potencia} kW` : ''}{inv.entradas ? ` · ${inv.entradas} entradas` : ''}{inv.tipo ? ` · ${inv.tipo}` : ''}
+                  {olPct !== null && <span className={`ml-1 font-medium ${olOver ? 'text-red-500' : olOk && olPct >= 0 ? 'text-green-600' : ''}`}>
+                    {olOver ? `· excede máx. 70%` : olOk && olPct >= 0 ? `· dentro do overload` : ''}
+                  </span>}
+                </div>
+              </button>
+            )
+          })}
           {bombInvs.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-3">Nenhum inversor de bombeamento no catálogo. Importe a tabela com inversores CFW.</p>
           )}
@@ -733,18 +757,29 @@ function BombDimStep({ data, onChange, products }) {
             <span>Nenhum inversor de bombeamento encontrado. Importe a tabela com inversores CFW.</span>
           </div>
         )}
-        {invFinal && form.metodo === 'cv' && pMotorKw > 0 && (invFinal.potencia || 0) >= pMotorKw && (
-          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-green-700 flex items-center gap-2">
-            <Check size={14} />
-            <span>Inversor compatível: {invFinal.potencia} kW ≥ motor {round2(pMotorKw)} kW ✓</span>
-          </div>
-        )}
-        {invFinal && form.metodo === 'cv' && pMotorKw > 0 && (invFinal.potencia || 0) < pMotorKw && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 flex items-center gap-2">
-            <AlertTriangle size={14} />
-            <span>Inversor selecionado ({invFinal.potencia} kW) abaixo da potência do motor ({round2(pMotorKw)} kW). Revise.</span>
-          </div>
-        )}
+        {invFinal && form.metodo === 'cv' && pMotorKw > 0 && invFinal.potencia > 0 && (() => {
+          const ol = (pMotorKw / invFinal.potencia - 1) * 100
+          if (ol <= BOMB_OL_MAX * 100) {
+            return (
+              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-green-700 flex items-center gap-2">
+                <Check size={14} />
+                <span>
+                  Inversor compatível: {invFinal.potencia} kW · motor {round2(pMotorKw)} kW
+                  {ol > 0 ? ` · overload ${ol.toFixed(0)}% (máx. 70%)` : ` · superdimensionado ${(-ol).toFixed(0)}%`}
+                </span>
+              </div>
+            )
+          }
+          return (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 flex items-center gap-2">
+              <AlertTriangle size={14} />
+              <span>
+                Overload {ol.toFixed(0)}% excede o máximo de 70%.
+                Motor {round2(pMotorKw)} kW requer inversor ≥ {round2(pMotorKw / (1 + BOMB_OL_MAX))} kW.
+              </span>
+            </div>
+          )
+        })()}
       </div>
 
       <div className="flex justify-between pt-2">
@@ -2104,10 +2139,13 @@ function Step4({ data, onChange, products }) {
     ? Math.max(2, data.inverters.reduce((s, i) => s + (i.inverter?.entradas || 2) * i.qty, 0))
     : (inv?.entradas || 2)
 
-  // Microinversores: quantidade de inversores = ceil(potência total / potência do micro)
-  const microCount = (isMicro && inv && data.panel)
-    ? Math.max(1, Math.ceil((panelCount * data.panel.potencia) / (inv.potencia * 1000)))
+  // Microinversores: quantidade = ceil(painéis / entradas por micro) — M010÷2, M024÷4
+  const microCount = (isMicro && inv)
+    ? Math.max(1, Math.ceil(panelCount / (inv.entradas || 2)))
     : 1
+  const microMaxSeries = isMicro ? (inv?.entradas === 4 ? 2 : 5) : 1
+  const microSeries    = isMicro ? Math.min(data.microSeries || 1, microMaxSeries) : 1
+  const microStrings   = isMicro ? Math.ceil(microCount / microSeries) : 1
 
   const set  = (k, v) => onChange({ ...data, [k]: v })
   const bySAP = sap => products.find(p => p.codigo === sap)
@@ -2140,7 +2178,16 @@ function Step4({ data, onChange, products }) {
 
   // ── Produtos Microinversor ───────────────────────────────────────────────
   const kitConnMiP  = bySAP(KIT_SAPS.KIT_CONN_MI)
-  const cableCAP    = bySAP(KIT_SAPS.CABO_CA_3F)
+  const cableCAP    = isMicro
+    ? (bySAP(inv?.entradas === 4 ? KIT_SAPS.CABO_CA_M024 : KIT_SAPS.CABO_CA_M010) || bySAP(KIT_SAPS.CABO_CA_M024))
+    : bySAP(KIT_SAPS.CABO_CA_M024)
+  const MICRO_BREAKERS_TABLE = isMicro
+    ? (inv?.entradas === 4
+      ? { 1: 'MDWP-C20-2', 2: 'MDWP-C40-2' }
+      : { 1: 'MDWP-C10-2', 2: 'MDWP-C16-2', 3: 'MDWP-C20-2', 4: 'MDWP-C32-2', 5: 'MDWP-C40-2' })
+    : {}
+  const microBreakerCode = isMicro ? (MICRO_BREAKERS_TABLE[microSeries] || MICRO_BREAKERS_TABLE[1]) : null
+  const breakerMicroP    = isMicro ? findBreakerProduct(products, microBreakerCode) : null
 
   // Total de inversores no kit (1 para modo único, soma das qtds no modo mix)
   const totalInvCount = Array.isArray(data.inverters)
@@ -2149,9 +2196,11 @@ function Step4({ data, onChange, products }) {
 
   // ── Defaults por tipo de kit ─────────────────────────────────────────────
   const defaults = isMicro ? {
-    inclKitConnMi: true,  cableCAMeters: 10 * microCount,
-    inclSurgeCA:   true,  surgeACQty: 2 * totalInvCount,
-    inclBreaker:   true,  breakerQty: totalInvCount,
+    microSeries:   1,
+    inclKitConnMi: true,  kitConnMiQty: microStrings,
+    cableCAMeters: 10 * microStrings,
+    inclSurgeCA:   true,  surgeACQty: 2,
+    inclBreaker:   true,  breakerQty: 1,
   } : isBomb ? {
     mc4Qty:        entradas,  cablePosMeters: 25 * entradas, cableNegMeters: 25 * entradas,
     inclFusivel:   true,  fusilvelQty: entradas,
@@ -2205,10 +2254,32 @@ function Step4({ data, onChange, products }) {
         <Info size={15} className="shrink-0" />
         <span>Kit Microinversor: <strong>{microCount}×</strong> {inv?.nome} | {panelCount} módulos</span>
       </div>
+
+      {/* Seletor: micros em série por string */}
+      <div className="bg-white border border-purple-200 rounded-xl p-4 max-w-2xl mx-auto">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">Micros em série por string</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {microStrings} string{microStrings !== 1 ? 's' : ''} &bull; Disjuntor:{' '}
+              <span className="font-mono font-medium text-purple-700">{microBreakerCode || '–'}</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {Array.from({ length: microMaxSeries }, (_, i) => i + 1).map(n => (
+              <button key={n}
+                onClick={() => onChange({ ...data, microSeries: n, kitConnMiQty: Math.ceil(microCount / n), cableCAMeters: 10 * Math.ceil(microCount / n), selectedBreaker: undefined })}
+                className={`w-9 h-9 rounded-lg text-sm font-bold border-2 transition-colors ${microSeries === n ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-300 text-gray-600 hover:border-purple-400'}`}
+              >{n}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-3 max-w-2xl mx-auto">
         <AccessoryRow icon={Link2}    label="Kit conector CA (microinversor)"
           product={kitConnMiP} included={d('inclKitConnMi')} onToggle={() => set('inclKitConnMi', !d('inclKitConnMi'))}
-          qty={d('kitConnMiQty') ?? microCount} onQtyChange={v => set('kitConnMiQty', v)} />
+          qty={d('kitConnMiQty') ?? microStrings} onQtyChange={v => set('kitConnMiQty', v)} />
 
         <div className={`rounded-xl border-2 p-4 ${d('cableCAMeters') > 0 ? 'border-green-500 bg-green-50' : 'border-gray-200 opacity-60'}`}>
           <div className="flex items-center gap-2 mb-3">
@@ -2232,12 +2303,12 @@ function Step4({ data, onChange, products }) {
 
         <BreakerRow
           products={products}
-          selectedBreaker={d('selectedBreaker') ?? breakerP}
+          selectedBreaker={data.selectedBreaker ?? breakerMicroP ?? breakerP}
           onSelect={brk => set('selectedBreaker', brk)}
           included={d('inclBreaker') ?? true}
           onToggle={() => set('inclBreaker', !d('inclBreaker'))}
           isTri={false}
-          qty={d('breakerQty') ?? totalInvCount}
+          qty={d('breakerQty') ?? 1}
           onQtyChange={v => set('breakerQty', v)}
         />
 
@@ -3092,7 +3163,7 @@ function RevisionHistory({ revisoes, numeroOrcamento }) {
 // ─── Step 6: Resumo / Orçamento ──────────────────────────────────────────────
 function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, onGoToQuotes }) {
   const { freteOpcoes, desconto } = useProducts()
-  const { session, isAdmin } = useAuth()
+  const { session, isAdmin, profile } = useAuth()
   const [freteId, setFreteId] = useState(() => {
     if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) return data.freteAutoId
     return freteOpcoes[0]?.id ?? 1
@@ -3250,9 +3321,19 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     : (inv?.entradas || 2)
   const panelCount = data.panelQty || 1
 
-  const microCount = (isMicro && inv && data.panel)
-    ? Math.max(1, Math.ceil((panelCount * data.panel.potencia) / (inv.potencia * 1000)))
+  const microCount = (isMicro && inv)
+    ? Math.max(1, Math.ceil(panelCount / (inv.entradas || 2)))
     : 1
+  const microMaxSeries2 = isMicro ? (inv?.entradas === 4 ? 2 : 5) : 1
+  const microSeries2    = isMicro ? Math.min(data.microSeries || 1, microMaxSeries2) : 1
+  const microStrings2   = isMicro ? Math.ceil(microCount / microSeries2) : 1
+  const MICRO_BRK_TBL   = isMicro
+    ? (inv?.entradas === 4
+      ? { 1: 'MDWP-C20-2', 2: 'MDWP-C40-2' }
+      : { 1: 'MDWP-C10-2', 2: 'MDWP-C16-2', 3: 'MDWP-C20-2', 4: 'MDWP-C32-2', 5: 'MDWP-C40-2' })
+    : {}
+  const microBrkCode2    = isMicro ? (MICRO_BRK_TBL[microSeries2] || MICRO_BRK_TBL[1]) : null
+  const breakerMicroAutoP = isMicro ? findBreakerProduct(products, microBrkCode2) : null
 
   const totalInvCount = mixInverters
     ? mixInverters.reduce((s, i) => s + i.qty, 0)
@@ -3342,13 +3423,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
     // Microinversor
     isMicro && d('inclKitConnMi', true) && bySAP(KIT_SAPS.KIT_CONN_MI) &&
-      { label: 'Kit conector CA SIW100G W10', product: bySAP(KIT_SAPS.KIT_CONN_MI), qty: d('kitConnMiQty', microCount), unit: 'un' },
-    isMicro && (d('cableCAMeters', 10*microCount) > 0) && bySAP(KIT_SAPS.CABO_CA_3F) &&
-      { label: 'Cabo CA 3×6mm²', product: bySAP(KIT_SAPS.CABO_CA_3F), qty: d('cableCAMeters', 10*microCount), unit: 'm' },
+      { label: 'Kit conector CA SIW100G W10', product: bySAP(KIT_SAPS.KIT_CONN_MI), qty: d('kitConnMiQty', microStrings2), unit: 'un' },
+    isMicro && (d('cableCAMeters', 10*microStrings2) > 0) && (() => {
+      const caP = bySAP(inv?.entradas === 4 ? KIT_SAPS.CABO_CA_M024 : KIT_SAPS.CABO_CA_M010) || bySAP(KIT_SAPS.CABO_CA_M024)
+      return caP ? { label: 'Cabo CA 3×6mm²', product: caP, qty: d('cableCAMeters', 10*microStrings2), unit: 'm' } : null
+    })(),
     isMicro && d('inclSurgeCA', true) && surgeCAP &&
-      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', 2 * totalInvCount), unit: 'un' },
-    isMicro && d('inclBreaker', true) && breakerP &&
-      { label: 'Minidisjuntor CA', product: breakerP, qty: d('breakerQty', totalInvCount), unit: 'un' },
+      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', 2), unit: 'un' },
+    isMicro && d('inclBreaker', true) && (data.selectedBreaker || breakerMicroAutoP || autoBreaker) &&
+      { label: 'Minidisjuntor CA', product: data.selectedBreaker || breakerMicroAutoP || autoBreaker, qty: d('breakerQty', 1), unit: 'un' },
 
     // Estrutura (todos os tipos) — kit 4-mod
     data.wantsEstrutura && data.estruturaKit && (data.estruturaQty || 0) > 0 && (() => {
@@ -3783,6 +3866,14 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               <p style={{fontSize:22, fontWeight:900, color:'#1B3A8A', margin:0}}>{realKwp.toFixed(2)} kWp</p>
               <p style={{fontSize:10, color:'#888', margin:0}}>{data.panelQty} painéis × {data.panel?.potencia} Wp</p>
               {prop.responsavel && <p style={{fontSize:10, color:'#555', margin:'4px 0 0'}}>Resp: {prop.responsavel}</p>}
+              {(profile?.numero_usuario || profile?.nome) && (
+                <p style={{fontSize:10, color:'#555', margin:'2px 0 0'}}>
+                  Vendedor: <strong style={{fontFamily: profile?.numero_usuario ? 'monospace' : 'inherit'}}>
+                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  </strong>
+                </p>
+              )}
+              {profile?.cnpj && <p style={{fontSize:10, color:'#777', margin:'1px 0 0', fontFamily:'monospace'}}>CNPJ: {profile.cnpj}</p>}
               <p style={{fontSize:10, color:'#1B3A8A', margin:'2px 0 0', fontWeight:600}}>
                 Validade: {prop.validade || 7} dias
               </p>
@@ -4055,7 +4146,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         {/* Print-only footer */}
         <div className="hidden print:flex items-center justify-between px-6 py-2 border-t border-gray-300" style={{background:'#1B3A8A'}}>
           <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome} — Validade: {prop.validade || 7} dias</span>
-          <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>0800 727 0800 · energia.solar@weg.net</span>
+          <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>
         </div>
       </div>
 

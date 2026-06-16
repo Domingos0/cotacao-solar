@@ -27,11 +27,11 @@ export default function Footer() {
             <ul className="space-y-3">
               <li className="flex items-start gap-2 text-sm text-white/70">
                 <Phone size={15} className="mt-0.5 text-weg-orange shrink-0" />
-                <span>0800 727 0800 (Brasil)</span>
+                <span>94 9209-0380</span>
               </li>
               <li className="flex items-start gap-2 text-sm text-white/70">
                 <Mail size={15} className="mt-0.5 text-weg-orange shrink-0" />
-                <span>energia.solar@weg.net</span>
+                <span>vendas@ernaniff.com.br</span>
               </li>
               <li className="flex items-start gap-2 text-sm text-white/70">
                 <Globe size={15} className="mt-0.5 text-weg-orange shrink-0" />
@@ -39,22 +39,31 @@ export default function Footer() {
               </li>
               <li className="flex items-start gap-2 text-sm text-white/70">
                 <MapPin size={15} className="mt-0.5 text-weg-orange shrink-0" />
-                <span>Jaraguá do Sul – SC, Brasil</span>
+                <span>Folha 22, Quadra 17 – Lote 38, Sala 05, 2º Andar<br />Nova Marabá, Marabá – PA, CEP 68511-395</span>
               </li>
             </ul>
           </div>
 
-          {/* Categories */}
+          {/* Support */}
           <div>
-            <h3 className="font-semibold text-white mb-4 border-b border-white/20 pb-2">Linha de Produtos</h3>
-            <ul className="space-y-2 text-sm text-white/70">
-              <li>☀️ Módulos Fotovoltaicos</li>
-              <li>⚡ Inversores On-Grid (Mono e Tri)</li>
-              <li>🔌 Microinversores</li>
-              <li>💧 Inversores de Bombeamento</li>
-              <li>🔋 Baterias e Armazenamento</li>
-              <li>🚗 Estações de Recarga EV</li>
-              <li>🏠 WEG Smart Home</li>
+            <h3 className="font-semibold text-white mb-4 border-b border-white/20 pb-2">Suporte Técnico WEG</h3>
+            <ul className="space-y-3 text-sm text-white/70">
+              <li className="flex items-start gap-2">
+                <Phone size={15} className="mt-0.5 text-weg-orange shrink-0" />
+                <span>0800 701 0 701 / Menu 2 – 2</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Phone size={15} className="mt-0.5 text-weg-orange shrink-0" />
+                <span>WhatsApp <span className="text-white/40 text-xs">(Horário comercial)</span><br />(47) 99646-4800</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Mail size={15} className="mt-0.5 text-weg-orange shrink-0" />
+                <span>0800@weg.net</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Phone size={15} className="mt-0.5 text-weg-orange shrink-0" />
+                <span>Plantão 24h: (47) 3276 7001</span>
+              </li>
             </ul>
           </div>
         </div>

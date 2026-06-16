@@ -136,7 +136,7 @@ function toNum(cell) {
   return parseFloat(s)
 }
 
-function parseComposicaoPrecos(workbook) {
+function parseComposicaoPrecos(workbook, mustIncludeSAPs = new Set()) {
   // Localiza a aba pelo nome
   const sheetName = workbook.SheetNames.find(n =>
     /composição|composicao|composiçao/i.test(n)
@@ -207,7 +207,8 @@ function parseComposicaoPrecos(workbook) {
     if (isNaN(preco) || preco <= 0) continue
 
     // Pula linhas de preço por Wp/Wc (estrutura solo): preço < 5 → R$/unidade
-    if (preco < 5) continue
+    // Exceção: SAPs de fixedProducts sempre importados independente do preço
+    if (preco < 5 && !mustIncludeSAPs.has(sap)) continue
 
     const precoFrete = toNum(row[4])
     const potRaw     = typeof row[5] === 'number' ? row[5] : toNum(row[5])
@@ -287,7 +288,8 @@ function ImportModal({ onClose, onImport }) {
     try {
       const buf = await file.arrayBuffer()
       const wb  = XLSX.read(buf, { type: 'array' })
-      const result = parseComposicaoPrecos(wb)
+      const fixedSAPs = new Set(fixedProducts.map(f => f.codigo))
+      const result = parseComposicaoPrecos(wb, fixedSAPs)
       if (result.products.length === 0) throw new Error('Nenhum produto encontrado na planilha.')
       setParsed(result)
       setStep('preview')
@@ -634,8 +636,8 @@ function ProductRow({ product, onUpdate, onDelete }) {
               <select value={form.estoque} onChange={e => setForm(f => ({ ...f, estoque: e.target.value }))}
                 className="w-full border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-weg-blue">
                 <option>Disponível</option>
-                <option>Sob consulta</option>
-                <option>Sem estoque</option>
+                <option>Previsão</option>
+                <option>Esgotado</option>
               </select>
             </div>
           </div>
@@ -682,10 +684,10 @@ function ProductRow({ product, onUpdate, onDelete }) {
       <td className="px-3 py-2.5">
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
           product.estoque === 'Disponível' ? 'bg-green-100 text-green-700' :
-          product.estoque === 'Sem estoque' ? 'bg-red-100 text-red-700' :
+          product.estoque === 'Esgotado' || product.estoque === 'Sem estoque' ? 'bg-red-100 text-red-600' :
           'bg-yellow-100 text-yellow-700'
         }`}>
-          {product.estoque}
+          {product.estoque === 'Sem estoque' ? 'Esgotado' : (product.estoque || 'Disponível')}
         </span>
       </td>
       <td className="px-3 py-2.5">
@@ -801,8 +803,8 @@ function AddProductModal({ onAdd, onClose }) {
               <select value={form.estoque} onChange={e => setForm(f => ({ ...f, estoque: e.target.value }))}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue">
                 <option>Disponível</option>
-                <option>Sob consulta</option>
-                <option>Sem estoque</option>
+                <option>Previsão</option>
+                <option>Esgotado</option>
               </select>
             </div>
             <div className="sm:col-span-2">
@@ -822,6 +824,375 @@ function AddProductModal({ onAdd, onClose }) {
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+// ─── Disponibilidade de Materiais ────────────────────────────────────────────
+const DISP_STATUS = {
+  'Disponível': { dot: 'bg-green-500', badge: 'bg-green-100 text-green-700 border-green-300', pdfBg: '#f0fdf4', pdfColor: '#16a34a' },
+  'Previsão':   { dot: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-700 border-yellow-300', pdfBg: '#fefce8', pdfColor: '#d97706' },
+  'Esgotado':   { dot: 'bg-red-500',   badge: 'bg-red-100 text-red-600 border-red-300',     pdfBg: '#fef2f2', pdfColor: '#dc2626' },
+}
+const DISP_KEYS = ['Disponível', 'Previsão', 'Esgotado']
+
+// Lê PDF e agrupa itens de texto por linha (usando posição Y)
+async function extractPdfLines(file) {
+  const pdfjsLib = await import('pdfjs-dist')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href
+  const buffer = await file.arrayBuffer()
+  const pdf    = await pdfjsLib.getDocument({ data: buffer }).promise
+  const allLines = []
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page    = await pdf.getPage(p)
+    const content = await page.getTextContent()
+
+    // Agrupa itens pelo Y arredondado (tolerância 3pt = mesma linha)
+    const byY = {}
+    content.items.forEach(it => {
+      if (!it.str?.trim()) return
+      const y = Math.round(it.transform[5] / 3) * 3
+      ;(byY[y] = byY[y] || []).push({ x: it.transform[4], str: it.str })
+    })
+
+    Object.entries(byY)
+      .sort(([a], [b]) => Number(b) - Number(a)) // Y decrescente = topo → base
+      .forEach(([, items]) => {
+        const line = items.sort((a, b) => a.x - b.x).map(i => i.str).join(' ').trim()
+        if (line) allLines.push(line)
+      })
+  }
+  return allLines
+}
+
+// Classifica a linha da tabela WEG:
+//   Disponível (ou Disponível (CD PE))  → 'Disponível'
+//   Indisponível + data DD/MM/YYYY      → 'Previsão'
+//   Indisponível + * (prazo 30 dias)    → 'Previsão'
+//   Indisponível + ***                  → 'Esgotado'
+//   Indisponível sem previsão           → 'Esgotado'
+function classifyLine(line) {
+  if (/disponiv/i.test(line) && !/indisponiv/i.test(line)) return 'Disponível'
+  if (/indisponiv/i.test(line)) {
+    if (/\d{2}\/\d{2}\/\d{4}/.test(line)) return 'Previsão'  // tem data
+    if (/\*{3}/.test(line))                return 'Esgotado'  // *** sem alternativa
+    if (/\*/.test(line))                   return 'Previsão'  // * prazo fabricação
+    return 'Esgotado'
+  }
+  return null
+}
+
+// Extrai { sap → status } das linhas do PDF
+function parsePdfLines(lines, knownSAPs) {
+  const sapSet  = new Set(knownSAPs)
+  const results = {}
+
+  lines.forEach((line, i) => {
+    // Cada linha de produto começa com código de 8 dígitos
+    const m = line.match(/^\s*(\d{8})\b/)
+    if (!m) return
+    const sap = m[1]
+    if (!sapSet.has(sap) || results[sap]) return
+
+    // Usa linha atual; se status for inconclusivo, olha próxima (previsão pode vir depois)
+    let status = classifyLine(line)
+    if (!status) {
+      const ctx = [line, lines[i + 1]].filter(Boolean).join(' ')
+      status = classifyLine(ctx)
+    }
+    if (status) results[sap] = status
+  })
+  return results
+}
+
+function DisponibilidadeCard() {
+  const { products, updateProduct } = useProducts()
+  const [open, setOpen]           = useState(false)
+  const [catFilter, setCatFilter] = useState('Todos')
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null) // { matched, updates }
+  const [importError, setImportError]   = useState(null)
+  const importRef = useRef(null)
+
+  const cats     = useMemo(() => ['Todos', ...Array.from(new Set(products.map(p => p.categoria).filter(Boolean)))], [products])
+  const filtered = useMemo(() => products.filter(p => catFilter === 'Todos' || p.categoria === catFilter), [products, catFilter])
+
+  const counts = useMemo(() =>
+    DISP_KEYS.reduce((acc, k) => ({ ...acc, [k]: products.filter(p => (p.estoque || 'Disponível') === k).length }), {})
+  , [products])
+
+  const handlePdfImport = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImporting(true)
+    setImportResult(null)
+    setImportError(null)
+    try {
+      const lines     = await extractPdfLines(file)
+      const knownSAPs = products.map(p => p.codigo).filter(c => /^\d{8}$/.test(c))
+      const updates   = parsePdfLines(lines, knownSAPs)
+      const matched   = Object.entries(updates).map(([sap, status]) => {
+        const product = products.find(p => p.codigo === sap)
+        return { sap, status, product, changed: product && (product.estoque || 'Disponível') !== status }
+      }).filter(r => r.product)
+      setImportResult({ updates, matched, fileName: file.name, total: Object.keys(updates).length })
+    } catch (err) {
+      setImportError('Erro ao ler o PDF: ' + (err.message || 'verifique se o arquivo é um PDF com texto selecionável.'))
+    }
+    setImporting(false)
+  }
+
+  const applyImport = () => {
+    if (!importResult) return
+    importResult.matched.filter(r => r.changed).forEach(r => {
+      updateProduct(r.product.id, { estoque: r.status })
+    })
+    setImportResult(null)
+  }
+
+  const exportPDF = () => {
+    const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    const rows = filtered.map(p => {
+      const st  = p.estoque || 'Disponível'
+      const cfg = DISP_STATUS[st] || DISP_STATUS['Disponível']
+      return `<tr>
+        <td>${esc(p.nome)}</td>
+        <td style="font-family:monospace">${esc(p.codigo)}</td>
+        <td>${esc(p.categoria)}</td>
+        <td style="text-align:center;background:${cfg.pdfBg};color:${cfg.pdfColor};font-weight:700">${esc(st)}</td>
+      </tr>`
+    }).join('')
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Disponibilidade de Materiais</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:11px;margin:24px}
+  h2{color:#003087;margin:0 0 4px}
+  .sub{color:#666;font-size:10px;margin-bottom:12px}
+  .legend{display:flex;gap:20px;margin-bottom:14px;font-size:11px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  table{width:100%;border-collapse:collapse}
+  th{background:#003087;color:#fff;padding:6px 10px;border:1px solid #ccc;text-align:left;font-size:10px}
+  td{padding:5px 10px;border:1px solid #ddd}
+  tr:nth-child(even) td{background:#f8f9fa}
+  @media print{body{margin:10px}}
+</style></head><body>
+<h2>Disponibilidade de Materiais</h2>
+<p class="sub">Gerado em ${new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'long',year:'numeric'})} · ${filtered.length} item${filtered.length!==1?'s':''}</p>
+<div class="legend">
+  <span><span class="dot" style="background:#16a34a"></span>Disponível (${counts['Disponível']})</span>
+  <span><span class="dot" style="background:#d97706"></span>Previsão (${counts['Previsão']})</span>
+  <span><span class="dot" style="background:#dc2626"></span>Esgotado (${counts['Esgotado']})</span>
+</div>
+<table>
+  <thead><tr><th>Produto</th><th>SAP</th><th>Categoria</th><th style="width:100px;text-align:center">Disponibilidade</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+</body></html>`
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) return
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 600)
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
+      {/* input oculto para PDF */}
+      <input ref={importRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfImport} />
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4">
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity"
+        >
+          <div className="flex gap-1.5 shrink-0">
+            <span className="w-3 h-3 rounded-full bg-green-500" />
+            <span className="w-3 h-3 rounded-full bg-yellow-400" />
+            <span className="w-3 h-3 rounded-full bg-red-500" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">Disponibilidade de Materiais</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              <span className="text-green-600 font-semibold">{counts['Disponível']}</span> disponível ·{' '}
+              <span className="text-yellow-600 font-semibold">{counts['Previsão']}</span> previsão ·{' '}
+              <span className="text-red-500 font-semibold">{counts['Esgotado']}</span> esgotado
+            </p>
+          </div>
+        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => importRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-weg-blue hover:bg-weg-blue/90 text-white font-semibold rounded-lg transition-colors disabled:opacity-60"
+          >
+            {importing
+              ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Lendo PDF…</>
+              : <><ArrowUpFromLine size={13} /> Importar PDF</>}
+          </button>
+          <button onClick={() => setOpen(v => !v)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+            <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Import error */}
+      {importError && (
+        <div className="mx-5 mb-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 text-xs text-red-700">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold mb-0.5">Falha na leitura do PDF</p>
+            <p>{importError}</p>
+            <p className="text-red-500 mt-1">Certifique-se de que o PDF tem texto selecionável (não é imagem escaneada) e contém códigos SAP de 8 dígitos.</p>
+          </div>
+          <button onClick={() => setImportError(null)} className="ml-auto shrink-0 hover:text-red-900"><X size={14} /></button>
+        </div>
+      )}
+
+      {/* Import result preview */}
+      {importResult && (
+        <div className="mx-5 mb-3 border border-weg-blue/30 rounded-xl overflow-hidden">
+          <div className="bg-weg-blue/5 px-4 py-3 flex items-center justify-between gap-3 border-b border-weg-blue/20">
+            <div>
+              <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-weg-blue" />
+                PDF lido: <span className="font-mono text-xs text-gray-500 ml-1">{importResult.fileName}</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {importResult.matched.length} produto{importResult.matched.length !== 1 ? 's' : ''} encontrado{importResult.matched.length !== 1 ? 's' : ''} ·{' '}
+                <strong className="text-weg-blue">{importResult.matched.filter(r => r.changed).length}</strong> com status diferente
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={applyImport}
+                disabled={importResult.matched.filter(r => r.changed).length === 0}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-40"
+              >
+                <Check size={13} /> Aplicar {importResult.matched.filter(r => r.changed).length} alteraç{importResult.matched.filter(r => r.changed).length !== 1 ? 'ões' : 'ão'}
+              </button>
+              <button onClick={() => setImportResult(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500">Produto</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-500 hidden md:table-cell">SAP</th>
+                  <th className="px-3 py-2 text-center font-semibold text-gray-500">Atual</th>
+                  <th className="px-3 py-2 text-center font-semibold text-gray-500">PDF</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {importResult.matched.map(r => {
+                  const atual = r.product.estoque || 'Disponível'
+                  const cfgA  = DISP_STATUS[atual]  || DISP_STATUS['Disponível']
+                  const cfgN  = DISP_STATUS[r.status] || DISP_STATUS['Disponível']
+                  return (
+                    <tr key={r.sap} className={r.changed ? 'bg-blue-50/40' : ''}>
+                      <td className="px-3 py-2 text-gray-800 truncate max-w-[180px]">{r.product.nome}</td>
+                      <td className="px-3 py-2 font-mono text-gray-400 hidden md:table-cell">{r.sap}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`px-2 py-0.5 rounded-full border font-semibold text-[10px] ${cfgA.badge}`}>{atual}</span>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`px-2 py-0.5 rounded-full border font-semibold text-[10px] ${cfgN.badge} ${r.changed ? 'ring-1 ring-weg-blue' : 'opacity-50'}`}>{r.status}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {importResult.matched.length === 0 && (
+                  <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">
+                    Nenhum código SAP de 8 dígitos reconhecido no PDF.<br />
+                    <span className="text-xs">Verifique se o PDF contém os códigos SAP dos produtos.</span>
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {open && (
+        <div className="border-t border-gray-100">
+          {/* Legend + filters + PDF */}
+          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-5 text-xs font-medium">
+              {DISP_KEYS.map(k => (
+                <span key={k} className="flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${DISP_STATUS[k].dot}`} />
+                  {k}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={catFilter}
+                onChange={e => setCatFilter(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-weg-blue bg-white"
+              >
+                {cats.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button
+                onClick={exportPDF}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
+              >
+                <Printer size={13} /> Lista em PDF
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="max-h-[420px] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wide">Produto</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">SAP</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Categoria</th>
+                  <th className="px-4 py-2.5 text-center font-semibold text-gray-500 uppercase tracking-wide">Disponibilidade</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map(p => {
+                  const st  = p.estoque || 'Disponível'
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-4 py-2 text-gray-800 font-medium">
+                        <p className="truncate max-w-[220px]" title={p.nome}>{p.nome}</p>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-gray-400 hidden md:table-cell">{p.codigo}</td>
+                      <td className="px-3 py-2 text-gray-500 hidden lg:table-cell truncate max-w-[120px]">{p.categoria}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          {DISP_KEYS.map(key => (
+                            <button
+                              key={key}
+                              onClick={() => updateProduct(p.id, { estoque: key })}
+                              className={`px-2 py-0.5 rounded-full border font-semibold text-[10px] transition-all ${
+                                st === key
+                                  ? DISP_STATUS[key].badge
+                                  : 'bg-white text-gray-300 border-gray-200 hover:border-gray-400 hover:text-gray-500'
+                              }`}
+                            >
+                              {key}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1092,9 +1463,20 @@ function UserManagement() {
     setUsers(u => u.map(p => p.id === id ? { ...p, role } : p))
   }
 
-  const pending  = users.filter(u => u.status === 'pendente')
-  const ativos   = users.filter(u => u.status === 'ativo')
+  const pending   = users.filter(u => u.status === 'pendente')
+  const ativos    = users.filter(u => u.status === 'ativo')
   const recusados = users.filter(u => u.status === 'recusado')
+
+  // Group users by CNPJ digits (normalized) for equipes view
+  const teams = useMemo(() => {
+    const map = {}
+    users.filter(u => u.cnpj).forEach(u => {
+      const key = u.cnpj.replace(/\D/g, '')
+      if (!map[key]) map[key] = { cnpj: u.cnpj, empresa: u.empresa || '', members: [] }
+      map[key].members.push(u)
+    })
+    return Object.values(map).sort((a, b) => a.empresa.localeCompare(b.empresa))
+  }, [users])
 
   const fmtDate = d => d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
   const initials = nome => (nome || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
@@ -1338,6 +1720,82 @@ function UserManagement() {
               )}
             </div>
           </section>
+
+          {/* ── Equipes por CNPJ ── */}
+          {teams.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5">
+                  <Building2 size={15} className="text-indigo-500" /> Equipes por CNPJ
+                </h4>
+                <span className="bg-indigo-100 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  {teams.length} equipe{teams.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {teams.map(team => {
+                  const activeM  = team.members.filter(m => m.status === 'ativo')
+                  const pendingM = team.members.filter(m => m.status === 'pendente')
+                  return (
+                    <div key={team.cnpj} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-sm truncate">
+                            {team.empresa || 'Empresa sem nome'}
+                          </p>
+                          <p className="font-mono text-xs text-gray-400 mt-0.5">{team.cnpj}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">
+                            {activeM.length} ativo{activeM.length !== 1 ? 's' : ''}
+                          </span>
+                          {pendingM.length > 0 && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-semibold animate-pulse">
+                              {pendingM.length} pendente{pendingM.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <ul className="divide-y divide-gray-50 px-4 py-2">
+                        {team.members.map(m => {
+                          const st =
+                            m.status === 'ativo'   ? { cls: 'bg-green-100 text-green-700',   dot: 'bg-green-400'  } :
+                            m.status === 'recusado' ? { cls: 'bg-red-100 text-red-600',       dot: 'bg-red-400'    } :
+                                                      { cls: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-400' }
+                          return (
+                            <li key={m.id} className="flex items-center justify-between py-2 gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">{m.nome || '—'}</p>
+                                  <p className="text-xs text-gray-400 truncate">{emails[m.id] || ''}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${st.cls}`}>
+                                  {m.status === 'ativo' ? 'Ativo' : m.status === 'recusado' ? 'Recusado' : 'Pendente'}
+                                </span>
+                                {m.status === 'pendente' && (
+                                  <button
+                                    onClick={() => setStatus(m.id, 'ativo')}
+                                    disabled={!!acting[m.id]}
+                                    title="Aprovar"
+                                    className="p-1 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 disabled:opacity-50"
+                                  >
+                                    {acting[m.id] ? <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin" /> : <CheckCircle2 size={13} />}
+                                  </button>
+                                )}
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>
@@ -2626,10 +3084,16 @@ function AdminDashboard() {
   const handleImport = (parsed, mode) => {
     const { products: imported, tableName } = parsed
 
-    // Atualiza preços dos fixedProducts por correspondência SAP + nome exato
-    // (Solo tem 24 produtos com o mesmo SAP — match por nome é necessário)
+    // Atualiza preços dos fixedProducts:
+    // - SAP duplicado (ex: Solo tem 24 entradas com 15288210) → match por SAP+nome
+    // - SAP único → match por SAP apenas (nome pode diferir entre planilhas)
+    const sapCountInFixed = {}
+    fixedProducts.forEach(fp => { sapCountInFixed[fp.codigo] = (sapCountInFixed[fp.codigo] || 0) + 1 })
     const updatedFixed = fixedProducts.map(fp => {
-      const match = imported.find(imp => imp.codigo === fp.codigo && imp.nome === fp.nome)
+      const isDupSAP = sapCountInFixed[fp.codigo] > 1
+      const match = isDupSAP
+        ? imported.find(imp => imp.codigo === fp.codigo && imp.nome === fp.nome)
+        : (imported.find(imp => imp.codigo === fp.codigo && imp.nome === fp.nome) || imported.find(imp => imp.codigo === fp.codigo))
       return match ? { ...fp, preco: match.preco, precoFrete: match.precoFrete } : fp
     })
 
@@ -3024,6 +3488,7 @@ function AdminDashboard() {
       {/* Freight + Discount row */}
       <DescontoCard />
       <FreteSection />
+      <DisponibilidadeCard />
 
       {/* Products table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

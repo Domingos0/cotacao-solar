@@ -8,6 +8,7 @@ import {
   FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
+  Users, Building2, AtSign, Phone as PhoneIcon,
 } from 'lucide-react'
 
 // ─── Shared constants (mirror of KitBuilder) ──────────────────────────────────
@@ -745,6 +746,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
   const { tableInfo } = useProducts()
+  const { profile } = useAuth()
 
   // Build structure composition (mirrors KitBuilder logic)
   const structureComposition = useMemo(() => {
@@ -1037,6 +1039,16 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           {kitData.clienteNome && (
             <p className="text-sm text-gray-600"><strong>Cliente:</strong> {kitData.clienteNome}</p>
           )}
+          {(profile?.numero_usuario || profile?.nome || profile?.cnpj) && (
+            <p className="text-xs text-gray-500">
+              {(profile?.numero_usuario || profile?.nome) && (
+                <span>Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                  {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                </strong></span>
+              )}
+              {profile?.cnpj && <span className="ml-3 font-mono">CNPJ: {profile.cnpj}</span>}
+            </p>
+          )}
           {printRevision.items?.length > 0 ? (
             <div>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Composição do Kit</h3>
@@ -1115,6 +1127,14 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               )}
               {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
               {quote.frete_pct > 1 && <p className="text-xs text-gray-500 mt-0.5">{quote.frete_nome}</p>}
+              {(profile?.numero_usuario || profile?.nome) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  </strong>
+                </p>
+              )}
+              {profile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {profile.cnpj}</p>}
               <p className="text-xs text-gray-400 mt-1">Validade: 7 dias</p>
             </div>
             {kwp && (
@@ -1436,15 +1456,17 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
 const CLOSED_STATUSES = ['fechado', 'implantado', 'perdida']
 
 export default function MinhasCotacoesPage({ onLoadQuote }) {
-  const { session } = useAuth()
+  const { session, profile } = useAuth()
   const [quotes, setQuotes]           = useState([])
   const [loading, setLoading]         = useState(true)
   const [selectedQuote, setSelectedQuote] = useState(null)
   const [expandedId, setExpandedId]   = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deletingId, setDeletingId]   = useState(null)
-  const [activeTab, setActiveTab]     = useState('ativas') // 'ativas' | 'fechados'
+  const [activeTab, setActiveTab]     = useState('ativas') // 'ativas' | 'fechados' | 'equipe'
   const [printRevisionData, setPrintRevisionData] = useState(null) // { quote, r }
+  const [teamMembers, setTeamMembers] = useState([])
+  const [teamLoading, setTeamLoading] = useState(false)
 
   const handlePrintRevision = (quote, r) => {
     setPrintRevisionData({ quote, r })
@@ -1470,6 +1492,20 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   }
 
   useEffect(() => { fetchQuotes() }, [session?.user?.id])
+
+  useEffect(() => {
+    const cnpj = profile?.cnpj
+    if (!cnpj || !session?.user?.id) { setTeamMembers([]); return }
+    setTeamLoading(true)
+    supabaseAdmin
+      .from('profiles')
+      .select('id, nome, empresa, telefone, status, created_at')
+      .eq('cnpj', cnpj)
+      .neq('id', session.user.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => { setTeamLoading(false); setTeamMembers(data || []) })
+      .catch(() => { setTeamLoading(false); setTeamMembers([]) })
+  }, [profile?.cnpj, session?.user?.id])
 
   const handleStatusChange = (id, newStatus) => {
     setQuotes(qs => qs.map(q => q.id === id ? { ...q, status: newStatus } : q))
@@ -1514,6 +1550,16 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
           <div className="px-8 py-6 space-y-4">
             {pkd.clienteNome && (
               <p className="text-sm text-gray-600"><strong>Cliente:</strong> {pkd.clienteNome}</p>
+            )}
+            {(profile?.numero_usuario || profile?.nome || profile?.cnpj) && (
+              <p className="text-xs text-gray-500">
+                {(profile?.numero_usuario || profile?.nome) && (
+                  <span>Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  </strong></span>
+                )}
+                {profile?.cnpj && <span className="ml-3 font-mono">CNPJ: {profile.cnpj}</span>}
+              </p>
             )}
             {r.items?.length > 0 ? (
               <div>
@@ -1614,6 +1660,23 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
             </span>
           )}
         </button>
+        {profile?.cnpj && (
+          <button
+            onClick={() => setActiveTab('equipe')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors ${
+              activeTab === 'equipe'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-400'
+            }`}
+          >
+            <Users size={15} /> Minha Equipe
+            {teamMembers.length > 0 && (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${activeTab === 'equipe' ? 'bg-white/20' : 'bg-indigo-100 text-indigo-600'}`}>
+                {teamMembers.length}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* ── KITS FECHADOS TAB ── */}
@@ -1686,6 +1749,78 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
             </div>
           </div>
         )
+      )}
+
+      {/* ── MINHA EQUIPE TAB ── */}
+      {activeTab === 'equipe' && (
+        <div className="space-y-4">
+          {/* Current user card */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
+            <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-1">Você</p>
+            <p className="font-bold text-gray-900">{profile?.nome || '—'}</p>
+            {profile?.empresa && (
+              <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
+                <Building2 size={12} className="text-gray-400" /> {profile.empresa}
+              </p>
+            )}
+            <p className="font-mono text-xs text-gray-400 mt-1">{profile?.cnpj}</p>
+          </div>
+
+          {teamLoading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-7 h-7 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {!teamLoading && teamMembers.length === 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">
+              <Users size={44} className="text-gray-200 mx-auto mb-3" />
+              <h3 className="text-base font-semibold text-gray-500 mb-1">Equipe com apenas você</h3>
+              <p className="text-sm text-gray-400">Outros usuários que cadastrarem o CNPJ <span className="font-mono">{profile?.cnpj}</span> aparecerão aqui.</p>
+            </div>
+          )}
+
+          {!teamLoading && teamMembers.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+                <Users size={15} className="text-indigo-500" />
+                <span className="font-semibold text-gray-800 text-sm">
+                  {teamMembers.length} outro{teamMembers.length !== 1 ? 's' : ''} membro{teamMembers.length !== 1 ? 's' : ''} na equipe
+                </span>
+              </div>
+              <ul className="divide-y divide-gray-50">
+                {teamMembers.map(m => {
+                  const statusStyle =
+                    m.status === 'ativo'    ? 'bg-green-100 text-green-700'  :
+                    m.status === 'recusado' ? 'bg-red-100 text-red-600'      :
+                                              'bg-yellow-100 text-yellow-700'
+                  const statusLabel =
+                    m.status === 'ativo'    ? 'Ativo'    :
+                    m.status === 'recusado' ? 'Recusado' : 'Pendente'
+                  const initials = (name) => (name || '?').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+                  return (
+                    <li key={m.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
+                        {initials(m.nome)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm truncate">{m.nome || '—'}</p>
+                        {m.telefone && (
+                          <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                            <PhoneIcon size={11} /> {m.telefone}
+                          </p>
+                        )}
+                      </div>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold shrink-0 ${statusStyle}`}>
+                        {statusLabel}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── COTAÇÕES ATIVAS TAB ── */}

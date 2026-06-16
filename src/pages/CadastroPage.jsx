@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { notifyClienteRegistered } from '../lib/notify'
-import { User, Building2, Hash, Phone, Mail, Lock, MessageCircle, CheckCircle2, AlertTriangle, ArrowLeft, ChevronDown } from 'lucide-react'
+import { User, Building2, Hash, Phone, Mail, Lock, MessageCircle, CheckCircle2, AlertTriangle, ArrowLeft, ChevronDown, Users } from 'lucide-react'
 
 // ─── Validação de CNPJ (algoritmo Receita Federal) ───────────────────────────
 function validateCNPJ(cnpj) {
@@ -35,8 +36,33 @@ export default function CadastroPage({ onGoToLogin }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
+  const [teamInfo, setTeamInfo] = useState(null) // { empresa, count } | null
+  const [teamLoading, setTeamLoading] = useState(false)
 
   const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }))
+
+  useEffect(() => {
+    const cnpjRaw = form.cnpj.replace(/\D/g, '')
+    if (cnpjRaw.length !== 14 || !validateCNPJ(form.cnpj)) { setTeamInfo(null); return }
+    let cancelled = false
+    setTeamLoading(true)
+    supabaseAdmin
+      .from('profiles')
+      .select('nome, empresa, status')
+      .eq('cnpj', form.cnpj)
+      .eq('status', 'ativo')
+      .then(({ data }) => {
+        if (cancelled) return
+        setTeamLoading(false)
+        if (data && data.length > 0) {
+          setTeamInfo({ empresa: data[0].empresa || null, count: data.length })
+        } else {
+          setTeamInfo(null)
+        }
+      })
+      .catch(() => { if (!cancelled) { setTeamLoading(false); setTeamInfo(null) } })
+    return () => { cancelled = true }
+  }, [form.cnpj])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -126,6 +152,31 @@ export default function CadastroPage({ onGoToLogin }) {
               />
             </div>
           </div>
+
+          {/* Team banner */}
+          {teamLoading && (
+            <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+              <div className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin shrink-0" />
+              Verificando equipe…
+            </div>
+          )}
+          {!teamLoading && teamInfo && (
+            <div className="flex items-center gap-2 text-xs bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5 text-indigo-700">
+              <Users size={14} className="shrink-0 text-indigo-500" />
+              <span>
+                Você ingressará na equipe
+                {teamInfo.empresa ? <strong className="mx-1">{teamInfo.empresa}</strong> : ' '}
+                — {teamInfo.count} membro{teamInfo.count !== 1 ? 's' : ''} ativo{teamInfo.count !== 1 ? 's' : ''}.
+                Aguardará aprovação do admin.
+              </span>
+            </div>
+          )}
+          {!teamLoading && !teamInfo && form.cnpj.replace(/\D/g, '').length === 14 && validateCNPJ(form.cnpj) && (
+            <div className="flex items-center gap-2 text-xs bg-green-50 border border-green-200 rounded-lg px-3 py-2.5 text-green-700">
+              <Building2 size={14} className="shrink-0 text-green-500" />
+              Primeiro cadastro deste CNPJ — você será o titular da equipe.
+            </div>
+          )}
 
           {/* WhatsApp — obrigatório */}
           <div>

@@ -116,6 +116,13 @@ export function AuthProvider({ children }) {
     if (session?.user) fetchProfile(session.user.id, session.user.user_metadata)
   }
 
+  const updateProfile = async (updates) => {
+    if (!session?.user?.id) return { error: new Error('Sem sessão') }
+    const { error } = await supabaseAdmin.from('profiles').update(updates).eq('id', session.user.id)
+    if (!error) setProfile(p => ({ ...p, ...updates }))
+    return { error }
+  }
+
   // loading enquanto: sessão ainda não foi lida OU sessão existe mas perfil ainda não chegou
   const loading = session === undefined || (session !== null && profile === null)
 
@@ -127,7 +134,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       session, profile, loading,
       isAdmin, isAtivo,
-      signIn, signUp, signOut, refreshProfile,
+      signIn, signUp, signOut, refreshProfile, updateProfile,
     }}>
       {children}
     </AuthContext.Provider>

@@ -1,12 +1,44 @@
-import { useState } from 'react'
-import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 
 export default function Header({ onSearch, searchQuery, page, onPageChange }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const [editingNum, setEditingNum] = useState(false)
+  const [numValue, setNumValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const popoverRef = useRef(null)
   const { tableInfo } = useProducts()
-  const { isAdmin, session, profile, signOut } = useAuth()
+  const { isAdmin, session, profile, signOut, updateProfile } = useAuth()
+
+  // Fecha popover ao clicar fora
+  useEffect(() => {
+    if (!showUserMenu) return
+    const handle = (e) => { if (popoverRef.current && !popoverRef.current.contains(e.target)) setShowUserMenu(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showUserMenu])
+
+  const openUserMenu = () => {
+    setNumValue(profile?.numero_usuario || '')
+    setEditingNum(false)
+    setShowUserMenu(v => !v)
+  }
+
+  const saveNumero = async () => {
+    setSaving(true)
+    setSaveError(null)
+    const { error } = await updateProfile({ numero_usuario: numValue.trim() || null })
+    setSaving(false)
+    if (error) {
+      setSaveError('Erro ao salvar. Verifique o banco de dados.')
+    } else {
+      setEditingNum(false)
+    }
+  }
 
   const NAV_ITEMS = [
     { id: 'catalog',   label: 'Catálogo',         icon: LayoutGrid, show: true },
@@ -41,8 +73,8 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
         <div className="max-w-7xl mx-auto px-4 py-1.5 flex justify-between items-center text-xs text-white/60">
           <span>{tableInfo?.nome || 'Lista de Preços'}</span>
           <div className="hidden sm:flex items-center gap-4">
-            <span className="flex items-center gap-1"><Phone size={11} /> 0800 727 0800</span>
-            <span className="flex items-center gap-1"><Mail size={11} /> energia.solar@weg.net</span>
+            <span className="flex items-center gap-1"><Phone size={11} /> 94 9209-0380</span>
+            <span className="flex items-center gap-1"><Mail size={11} /> vendas@ernaniff.com.br</span>
           </div>
         </div>
       </div>
@@ -74,15 +106,75 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
 
             {/* User + logout */}
             {profile && (
-              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-white/20">
-                <div className="flex items-center gap-1.5 text-white/70 text-xs">
+              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-white/20 relative" ref={popoverRef}>
+                <button
+                  onClick={openUserMenu}
+                  className="flex items-center gap-1.5 text-white/70 hover:text-white text-xs px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                >
                   <User size={13} />
+                  {profile.numero_usuario && (
+                    <span className="bg-white/20 text-white font-mono font-bold px-1.5 py-0.5 rounded text-[10px]">
+                      #{profile.numero_usuario}
+                    </span>
+                  )}
                   <span className="max-w-[100px] truncate">{profile.nome?.split(' ')[0]}</span>
-                </div>
+                </button>
                 <button onClick={signOut} title="Sair"
                   className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors">
                   <LogOut size={14} />
                 </button>
+
+                {/* User popover */}
+                {showUserMenu && (
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-3 z-50 text-gray-800">
+                    <div className="px-4 pb-2 border-b border-gray-100">
+                      <p className="font-bold text-sm text-gray-900 truncate">{profile.nome}</p>
+                      <p className="text-xs text-gray-400 truncate">{session?.user?.email}</p>
+                    </div>
+                    <div className="px-4 pt-3 pb-1">
+                      <p className="text-xs font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
+                        <Hash size={11} /> Número de Usuário
+                      </p>
+                      {editingNum ? (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              autoFocus
+                              type="text"
+                              value={numValue}
+                              onChange={e => { setNumValue(e.target.value); setSaveError(null) }}
+                              onKeyDown={e => { if (e.key === 'Enter') saveNumero(); if (e.key === 'Escape') { setEditingNum(false); setSaveError(null) } }}
+                              placeholder="Ex: 001, V-12, REP-03…"
+                              className={`flex-1 border rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 ${saveError ? 'border-red-300 focus:ring-red-300' : 'border-gray-200 focus:ring-weg-blue'}`}
+                            />
+                            <button
+                              onClick={saveNumero}
+                              disabled={saving}
+                              className="p-1.5 bg-weg-blue text-white rounded-lg hover:bg-weg-blue/90 disabled:opacity-50"
+                            >
+                              {saving
+                                ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                : <Check size={14} />}
+                            </button>
+                          </div>
+                          {saveError && (
+                            <p className="text-[11px] text-red-500 leading-tight">{saveError}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setNumValue(profile?.numero_usuario || ''); setEditingNum(true) }}
+                          className="w-full flex items-center justify-between text-sm bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-2 transition-colors"
+                        >
+                          <span className={profile?.numero_usuario ? 'font-mono font-bold text-weg-blue' : 'text-gray-400 text-xs'}>
+                            {profile?.numero_usuario ? `#${profile.numero_usuario}` : 'Clique para definir…'}
+                          </span>
+                          <Pencil size={12} className="text-gray-400" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </nav>
