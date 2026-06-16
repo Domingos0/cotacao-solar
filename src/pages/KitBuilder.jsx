@@ -3162,8 +3162,10 @@ function RevisionHistory({ revisoes, numeroOrcamento }) {
 
 // ─── Step 6: Resumo / Orçamento ──────────────────────────────────────────────
 function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, onGoToQuotes }) {
-  const { freteOpcoes, desconto } = useProducts()
+  const { freteOpcoes, desconto: globalDesconto } = useProducts()
   const { session, isAdmin, profile } = useAuth()
+  // Desconto individual do perfil tem prioridade sobre o desconto global
+  const desconto = profile?.desconto_comercial != null ? profile.desconto_comercial : globalDesconto
   const [freteId, setFreteId] = useState(() => {
     if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) return data.freteAutoId
     return freteOpcoes[0]?.id ?? 1

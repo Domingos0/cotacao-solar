@@ -1411,6 +1411,7 @@ function FreteSection() {
 
 // ─── User Management ──────────────────────────────────────────────────────────
 function UserManagement() {
+  const { desconto } = useProducts()
   const [users, setUsers]     = useState([])
   const [emails, setEmails]   = useState({}) // id → email
   const [loading, setLoading] = useState(true)
@@ -1461,6 +1462,12 @@ function UserManagement() {
   const setRole = async (id, role) => {
     await supabaseAdmin.from('profiles').update({ role }).eq('id', id)
     setUsers(u => u.map(p => p.id === id ? { ...p, role } : p))
+  }
+
+  const setUserDesconto = async (id, value) => {
+    const val = value === '' ? null : Math.max(0, Math.min(100, parseFloat(value)))
+    await supabaseAdmin.from('profiles').update({ desconto_comercial: val }).eq('id', id)
+    setUsers(u => u.map(p => p.id === id ? { ...p, desconto_comercial: val } : p))
   }
 
   const pending   = users.filter(u => u.status === 'pendente')
@@ -1564,6 +1571,7 @@ function UserManagement() {
 
   const UserRow = ({ user }) => {
     const st = STATUS_BADGE[user.status] || STATUS_BADGE.pendente
+    const [discVal, setDiscVal] = useState(user.desconto_comercial != null ? String(user.desconto_comercial) : '')
     return (
       <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
         <td className="px-4 py-3">
@@ -1596,6 +1604,27 @@ function UserManagement() {
             <option value="cliente">Cliente</option>
             <option value="admin">Admin</option>
           </select>
+        </td>
+        <td className="px-4 py-3 hidden lg:table-cell">
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              value={discVal}
+              onChange={e => setDiscVal(e.target.value)}
+              onBlur={() => setUserDesconto(user.id, discVal)}
+              onKeyDown={e => e.key === 'Enter' && setUserDesconto(user.id, discVal)}
+              placeholder={`${desconto}% ↩`}
+              title={`Desconto individual. Vazio = usa desconto global (${desconto}%)`}
+              className="w-16 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-weg-blue text-center"
+            />
+            <span className="text-xs text-gray-400">%</span>
+          </div>
+          {user.desconto_comercial == null && (
+            <p className="text-[10px] text-gray-400 mt-0.5">global ({desconto}%)</p>
+          )}
         </td>
         <td className="px-4 py-3 text-xs text-gray-400 hidden md:table-cell">
           {new Date(user.created_at).toLocaleDateString('pt-BR')}
@@ -1710,6 +1739,7 @@ function UserManagement() {
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase hidden lg:table-cell">Telefone</th>
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Perfil</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase hidden lg:table-cell">Desconto</th>
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">Cadastro</th>
                         <th className="px-4 py-2.5 w-28 text-left text-xs font-semibold text-gray-500 uppercase">Ações</th>
                       </tr>
