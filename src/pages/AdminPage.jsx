@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
+import kitCompositions from '../data/kitCompositions.json'
 import {
   getNotifySettings, saveNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado,
@@ -2386,6 +2387,26 @@ function QuoteManagement() {
       const totalBase = q.frete_pct > 1 ? r2(q.total_final / q.frete_pct) : q.total_final
       const freteAmt  = r2(q.total_final - totalBase)
       const ajusteAmt = r2((q.subtotal || 0) - totalBase)
+
+      // Composição da estrutura de fixação
+      const structComp = (() => {
+        if (!kd.wantsEstrutura) return []
+        const kitsToExpand = [
+          kd.estruturaKit  && (kd.estruturaQty  || 0) > 0 ? { kit: kd.estruturaKit,  qty: kd.estruturaQty  } : null,
+          kd.estruturaKit3 && (kd.estruturaQty3 || 0) > 0 ? { kit: kd.estruturaKit3, qty: kd.estruturaQty3 } : null,
+        ].filter(Boolean)
+        if (!kitsToExpand.length) return []
+        const merged = {}
+        kitsToExpand.forEach(({ kit, qty }) => {
+          const comps = kitCompositions[kit.codigo] || []
+          comps.forEach(c => {
+            const total = c.qty * qty
+            if (merged[c.sap]) merged[c.sap].qty += total
+            else merged[c.sap] = { sap: c.sap, descricao: c.descricao, qty: total }
+          })
+        })
+        return Object.values(merged)
+      })()
       return (
         /* Fundo escuro + papel A4 centralizado — na impressão vira bloco estático */
         <div id="kit-print" style={{
@@ -2465,6 +2486,49 @@ function QuoteManagement() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* ── Composição da Estrutura ── */}
+            {structComp.length > 0 && (
+              <div style={{borderTop:'2px dashed #e5e7eb'}}>
+                <div style={{padding:'7px 28px', background:'#f8fafc', borderBottom:'1px solid #e5e7eb'}}>
+                  <p style={{margin:0, fontSize:9, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.08em'}}>
+                    Composição da Estrutura de Fixação
+                  </p>
+                  <p style={{margin:'2px 0 0', fontSize:9, color:'#9ca3af'}}>
+                    {kd.estruturaKit && <span style={{marginRight:12}}>Kit 4 mod: {kd.estruturaKit.nome}</span>}
+                    {kd.estruturaKit3 && <span>Kit 3 mod: {kd.estruturaKit3.nome}</span>}
+                  </p>
+                </div>
+                <div style={{padding:'0 28px'}}>
+                  <table style={{width:'100%', borderCollapse:'collapse', fontSize:10, tableLayout:'fixed'}}>
+                    <colgroup>
+                      <col style={{width:24}} />
+                      <col />
+                      <col style={{width:80}} />
+                      <col style={{width:48}} />
+                    </colgroup>
+                    <thead>
+                      <tr style={{borderBottom:'1px solid #e5e7eb'}}>
+                        <th style={{padding:'5px 4px 5px 0', textAlign:'left', color:'#9ca3af', fontSize:8, fontWeight:600}}>#</th>
+                        <th style={{padding:'5px 4px', textAlign:'left', color:'#9ca3af', fontSize:8, fontWeight:600}}>Componente</th>
+                        <th style={{padding:'5px 4px', textAlign:'left', color:'#9ca3af', fontSize:8, fontWeight:600, fontFamily:'monospace'}}>SAP</th>
+                        <th style={{padding:'5px 4px 5px 0', textAlign:'center', color:'#9ca3af', fontSize:8, fontWeight:600}}>Qtd</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {structComp.map((c, i) => (
+                        <tr key={c.sap} style={{borderBottom:'1px solid #f3f4f6', background: i%2===0 ? 'white' : '#f9fafb'}}>
+                          <td style={{padding:'4px 4px 4px 0', color:'#9ca3af', fontSize:9, verticalAlign:'middle'}}>{i+1}</td>
+                          <td style={{padding:'4px 4px', color:'#374151', fontSize:10, fontWeight:500, verticalAlign:'middle'}}>{c.descricao}</td>
+                          <td style={{padding:'4px 4px', color:'#9ca3af', fontSize:9, fontFamily:'monospace', verticalAlign:'middle'}}>{c.sap}</td>
+                          <td style={{padding:'4px 4px 4px 0', textAlign:'center', fontWeight:700, color:'#1B3A8A', fontSize:10, verticalAlign:'middle'}}>{c.qty} un</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
