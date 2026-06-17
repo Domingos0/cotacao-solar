@@ -20,26 +20,32 @@
   body:has(> #kit-print) > *:not(#kit-print) {
     display: none !important;
   }
-  /* Garante que html/body não forcem altura de tela completa */
-  html:has(body > #kit-print),
+  /* Colapsa a altura do body para o conteúdo do kit (sem forçar 100vh) */
   body:has(> #kit-print) {
     height: auto !important;
     min-height: 0 !important;
-    overflow: visible !important;
+    background: white !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
   }
   body:has(> #kit-print) > #kit-print {
     display: block !important;
     position: static !important;
     inset: auto !important;
     width: 100% !important;
+    max-width: 760px !important;
     height: auto !important;
     max-height: none !important;
     min-height: 0 !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     padding: 0 !important;
     background: white !important;
     overflow: visible !important;
     z-index: auto !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
   }
   body:has(> #kit-print) > #kit-print .print-paper {
     max-width: none !important;
