@@ -15,9 +15,8 @@
     print-color-adjust: exact !important;
   }
 
-  /* Kit-print é renderizado via portal como filho direto do body */
-  /* display:none elimina ghost pages do DOM longo da página de admin */
-  body > *:not(#kit-print) {
+  /* Só oculta os outros filhos do body quando #kit-print existe no DOM */
+  body:has(#kit-print) > *:not(#kit-print) {
     display: none !important;
   }
 
