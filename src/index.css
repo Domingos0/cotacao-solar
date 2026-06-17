@@ -5,7 +5,7 @@
 /* ── Print styles ─────────────────────────────────────────── */
 @media print {
   @page {
-    size: A4 portrait;
+    size: 210mm auto;
     margin: 1.2cm 1.4cm;
   }
 
