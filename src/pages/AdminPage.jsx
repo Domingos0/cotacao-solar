@@ -2413,7 +2413,7 @@ function QuoteManagement() {
           position:'fixed', inset:0, zIndex:9999,
           background:'rgba(17,24,39,0.82)', overflowY:'auto',
           display:'flex', justifyContent:'center', alignItems:'flex-start', padding:'32px 16px',
-        }}>
+        }} onClick={e => { if (e.target === e.currentTarget) setPrintingQuote(null) }}>
           {/* Papel A4 (794px ≈ 210mm @96dpi) */}
           <div className="print-paper" style={{
             background:'white', width:'100%', maxWidth:794,
@@ -2561,16 +2561,17 @@ function QuoteManagement() {
               <p style={{margin:0}}>Ernaniff Representações · 94 9209-0380 · vendas@ernaniff.com.br · Folha 22, Quadra 17 – Lote 38, Sala 05, 2º Andar, Nova Marabá – PA</p>
             </div>
           </div>{/* /print-paper */}
-
-          {/* Botão fechar (oculto na impressão) */}
-          <button onClick={() => setPrintingQuote(null)}
-            className="print:hidden"
-            style={{position:'fixed', top:16, right:16, background:'white', border:'1px solid #d1d5db', borderRadius:12, padding:'8px 18px', fontSize:13, fontWeight:600, color:'#374151', cursor:'pointer', boxShadow:'0 4px 12px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:6}}>
-            <X size={14} /> Fechar
-          </button>
         </div>
       )
     })(), document.body)}
+    {/* Botão fechar em portal próprio — fora do #kit-print, some na impressão via body > *:not(#kit-print) */}
+    {printingQuote && createPortal(
+      <button onClick={() => setPrintingQuote(null)}
+        style={{position:'fixed', top:16, right:16, background:'white', border:'1px solid #d1d5db', borderRadius:12, padding:'8px 18px', fontSize:13, fontWeight:600, color:'#374151', cursor:'pointer', boxShadow:'0 4px 12px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:6, zIndex:10000}}>
+        <X size={14} /> Fechar
+      </button>,
+      document.body
+    )}
     <div className="space-y-4">
 
       {/* ── Toolbar ── */}
