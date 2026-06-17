@@ -7,6 +7,7 @@ import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
 import kitCompositions from '../data/kitCompositions.json'
+import { getInverterSpecs } from '../data/inverterSpecs'
 import {
   Sun, Zap, Link2, Shield, Cable, ToggleLeft, ChevronRight, ChevronLeft,
   Printer, Plus, Minus, Check, Info, AlertTriangle, Calculator, RefreshCw,
@@ -1744,7 +1745,17 @@ function Step3({ data, onChange, products, realKwp }) {
 
                   {/* Specs */}
                   <div className="px-3 pt-3 pb-2 flex-1 space-y-1 text-xs">
-                    <h3 className="font-bold text-gray-900 text-sm leading-tight mb-2">{inv.nome}</h3>
+                    <h3 className="font-bold text-gray-900 text-sm leading-tight">{inv.nome}</h3>
+                    {(() => {
+                      const m = getInverterSpecs(inv)?.subtitulo?.match(/^(STANDARD|LINHA PREMIUM)/)
+                      if (!m) return null
+                      const isStd = m[1] === 'STANDARD'
+                      return (
+                        <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full mb-1 tracking-wide ${isStd ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {m[1]}
+                        </span>
+                      )
+                    })()}
                     <div className="flex justify-between">
                       <span className="text-gray-500">Potência CA:</span>
                       <span className="font-bold text-weg-blue">
