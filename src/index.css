@@ -20,6 +20,13 @@
   body:has(> #kit-print) > *:not(#kit-print) {
     display: none !important;
   }
+  /* Garante que html/body não forcem altura de tela completa */
+  html:has(body > #kit-print),
+  body:has(> #kit-print) {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
   body:has(> #kit-print) > #kit-print {
     display: block !important;
     position: static !important;
