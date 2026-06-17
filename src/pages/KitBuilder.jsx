@@ -1883,13 +1883,30 @@ function Step3({ data, onChange, products, realKwp }) {
               )}
             </div>
           </div>
-          {mixList.length > 0 && (
-            <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 ${
-              combinedKw >= realKwp * 0.85 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-            }`}>
-              {combinedKw >= realKwp * 0.85 ? '✓ OK' : `falta ${(realKwp - combinedKw).toFixed(1)} kW`}
-            </span>
-          )}
+          {mixList.length > 0 && (() => {
+            const olPct = (realKwp / combinedKw - 1) * 100
+            const falta = combinedKw < realKwp * 0.85
+            if (falta) return (
+              <span className="text-xs font-bold px-2 py-1 rounded-full shrink-0 bg-amber-100 text-amber-700">
+                falta {(realKwp - combinedKw).toFixed(1)} kW
+              </span>
+            )
+            const over = olPct > 50
+            const sub  = olPct < -20
+            const cls = over ? 'bg-red-100 text-red-700'
+                      : sub  ? 'bg-sky-100 text-sky-700'
+                      : olPct > 30 ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-green-100 text-green-700'
+            const lbl = over ? `⚠ OL ${olPct.toFixed(0)}%`
+                      : sub  ? `Superdim. ${Math.abs(olPct).toFixed(0)}%`
+                      : olPct >= 0 ? `OL ${olPct.toFixed(0)}% ✓`
+                      : `OL 0%`
+            return (
+              <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 ${cls}`}>
+                {lbl}
+              </span>
+            )
+          })()}
         </div>
       )}
 
