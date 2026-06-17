@@ -3864,10 +3864,24 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         window.addEventListener('afterprint', () => {
           setShowPrintedScreen(true)
         }, { once: true })
-        window.print()
+        doPrint()
       }))
     }
   }, [pendingPrint, showPrintedScreen])
+
+  // Move #kit-print para filho direto do body antes de imprimir e restaura depois
+  // Isso ativa o CSS portal (body:has(> #kit-print)) que elimina páginas em branco
+  const doPrint = () => {
+    const el = document.getElementById('kit-print')
+    if (!el) { window.print(); return }
+    const parent = el.parentNode
+    const next   = el.nextSibling
+    document.body.appendChild(el)
+    window.addEventListener('afterprint', () => {
+      parent.insertBefore(el, next)
+    }, { once: true })
+    window.print()
+  }
 
   // ── Imprimir (salva automaticamente antes, muda status p/ em_analise) ──
   const handlePrint = async () => {
@@ -3876,7 +3890,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       const qid = await saveQuote({ silent: false, statusOverride: savedId ? undefined : 'em_analise' })
       if (!qid) return   // erro visível na UI, não avança para impressão
     }
-    window.print()
+    doPrint()
     setShowPrintedScreen(true)
   }
 
