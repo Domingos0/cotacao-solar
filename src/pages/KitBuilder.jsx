@@ -1708,6 +1708,37 @@ function Step3({ data, onChange, products, realKwp }) {
             <span className="text-green-600">— {suggested.length} compatível{suggested.length !== 1 ? 'is' : ''}</span>
           )}
         </p>
+        {/* Overload do inversor selecionado */}
+        {usePowerFilter && (() => {
+          let olPct = null, maxOl = null, label = null, cls = null, invName = null
+          if (!mixMode && data.inverter) {
+            const effKw = getInvEffKw(data.inverter, gridConf)
+            olPct = (realKwp / effKw - 1) * 100
+            maxOl = Math.round(getOverloadMaxGrid(data.inverter, gridConf) * 100)
+            invName = data.inverter.nome
+          } else if (mixMode && mixList.length > 0) {
+            olPct = (realKwp / combinedKw - 1) * 100
+            maxOl = 50
+            invName = `${mixList.length} inversores`
+          }
+          if (olPct === null) return null
+          const over = olPct > maxOl
+          const sub  = olPct < -20
+          cls = over ? 'bg-red-100 text-red-700 border-red-200'
+              : sub  ? 'bg-sky-100 text-sky-700 border-sky-200'
+              : olPct > 30 ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+              : 'bg-green-100 text-green-700 border-green-200'
+          label = over ? `⚠ OL ${olPct.toFixed(0)}% — excede máx. ${maxOl}%`
+                : sub  ? `Superdim. ${Math.abs(olPct).toFixed(0)}%`
+                : `OL ${olPct.toFixed(0)}% (máx. ${maxOl}%)`
+          return (
+            <div className={`inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full border text-xs font-semibold ${cls}`}>
+              <Zap size={12} />
+              <span>{invName}:</span>
+              <span>{label}</span>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Warning modal */}
