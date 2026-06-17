@@ -1492,6 +1492,184 @@ function Step3({ data, onChange, products, realKwp }) {
     onChange({ ...data, inverters: undefined, inverter: first?.inverter, inverterQty: first?.qty || 1 })
   }
 
+  // ── Warning modal state ──
+  const [invWarn, setInvWarn] = useState(null)
+  // invWarn: { inv, type:'overload'|'superdim', olPct, maxOlPct, effKw, step:1|2|3, suggestedMix }
+
+  const findSuggestedMix = (inv, effKw) => {
+    // Find smallest inverter that covers remaining power with acceptable OL
+    const remaining = realKwp - effKw
+    const candidates = allInverters
+      .filter(p => p.id !== inv.id && p.preco && p.potencia > 0)
+      .sort((a, b) => a.potencia - b.potencia)
+    return candidates.find(p => {
+      const pEff = getInvEffKw(p, gridConf)
+      const combinedOl = realKwp / (effKw + pEff) - 1
+      return pEff >= remaining * 0.85 && combinedOl <= getOverloadMaxGrid(p, gridConf) + 0.001
+    }) || null
+  }
+
+  const handleInvClick = (inv, olPct, maxOlPct, effKw) => {
+    if (olPct !== null && olPct > maxOlPct) {
+      const suggestedMix = findSuggestedMix(inv, effKw)
+      setInvWarn({ inv, type: 'overload', olPct, maxOlPct, effKw, step: 1, suggestedMix })
+    } else if (olPct !== null && olPct < -20) {
+      setInvWarn({ inv, type: 'superdim', olPct, step: 1 })
+    } else {
+      onChange({ ...data, inverter: inv })
+    }
+  }
+
+  const applyInvWarning = () => {
+    onChange({ ...data, inverter: invWarn.inv })
+    setInvWarn(null)
+  }
+
+  const applyMixWarning = () => {
+    const { inv, suggestedMix, effKw } = invWarn
+    onChange({ ...data, inverters: [{ inverter: inv, qty: 1 }, { inverter: suggestedMix, qty: 1 }], inverter: undefined, inverterQty: undefined })
+    setInvWarn(null)
+  }
+
+  // Modal de aviso de inversores
+  const InvWarnModal = invWarn && (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+        {/* ── OVERLOAD ── */}
+        {invWarn.type === 'overload' && invWarn.step === 1 && (<>
+          <div className="bg-red-600 text-white px-5 py-4 flex items-center gap-3">
+            <AlertTriangle size={20} className="shrink-0" />
+            <div>
+              <p className="font-bold text-base">Overload excessivo!</p>
+              <p className="text-xs text-red-100 mt-0.5">{invWarn.inv.nome}</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-gray-700">
+              Este inversor operaria em <strong className="text-red-600">{invWarn.olPct.toFixed(0)}% de overload</strong>, excedendo o máximo permitido de <strong>{invWarn.maxOlPct}%</strong>.
+            </p>
+            {invWarn.suggestedMix && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-xs font-bold text-weg-blue uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  <Calculator size={12} /> Sugestão de mesclagem
+                </p>
+                <p className="text-sm font-semibold text-gray-800">
+                  {invWarn.inv.nome} <span className="text-gray-400">+</span> {invWarn.suggestedMix.nome}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {invWarn.effKw} kW + {getInvEffKw(invWarn.suggestedMix, gridConf)} kW = {round2(invWarn.effKw + getInvEffKw(invWarn.suggestedMix, gridConf))} kW CA
+                </p>
+                <button
+                  onClick={applyMixWarning}
+                  className="mt-3 w-full py-2 rounded-xl bg-weg-blue text-white text-sm font-bold hover:bg-weg-blue/90 transition-colors">
+                  ↗ Aplicar mesclagem sugerida
+                </button>
+              </div>
+            )}
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <p className="text-xs text-gray-500 text-center">ou prosseguir com apenas este inversor:</p>
+              <button
+                onClick={() => setInvWarn(w => ({ ...w, step: 2 }))}
+                className="w-full py-2 rounded-xl border-2 border-gray-200 text-sm font-semibold text-gray-700 hover:border-gray-300 transition-colors">
+                Continuar com inversor único
+              </button>
+              <button
+                onClick={() => setInvWarn(null)}
+                className="w-full py-2 rounded-xl text-sm text-gray-400 hover:text-gray-600 transition-colors">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </>)}
+
+        {invWarn.type === 'overload' && invWarn.step === 2 && (<>
+          <div className="bg-amber-500 text-white px-5 py-4 flex items-center gap-3">
+            <Info size={20} className="shrink-0" />
+            <p className="font-bold text-base">Este inversor é para ampliação futura?</p>
+          </div>
+          <div className="p-5 space-y-3">
+            <p className="text-sm text-gray-600">
+              Se a instalação for expandida (mais painéis) futuramente, o overload temporário pode ser justificado.
+            </p>
+            <button
+              onClick={applyInvWarning}
+              className="w-full py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-colors">
+              Sim, é para ampliação futura — prosseguir
+            </button>
+            <button
+              onClick={() => setInvWarn(w => ({ ...w, step: 3 }))}
+              className="w-full py-2.5 rounded-xl border-2 border-amber-400 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition-colors">
+              Não, é a instalação definitiva
+            </button>
+            <button
+              onClick={() => setInvWarn(null)}
+              className="w-full py-1.5 rounded-xl text-sm text-gray-400 hover:text-gray-600 transition-colors">
+              Cancelar
+            </button>
+          </div>
+        </>)}
+
+        {invWarn.type === 'overload' && invWarn.step === 3 && (<>
+          <div className="bg-gray-800 text-white px-5 py-4 flex items-center gap-3">
+            <Shield size={20} className="shrink-0 text-red-400" />
+            <div>
+              <p className="font-bold text-base">Atenção — Garantia</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
+              <p className="font-bold mb-1">⚠️ A garantia WEG não cobre este caso</p>
+              <p>Em caso de falhas ou mau funcionamento causados por operação acima da capacidade nominal ({invWarn.maxOlPct}% máx.), a garantia do inversor <strong>não será válida</strong>.</p>
+            </div>
+            <button
+              onClick={applyInvWarning}
+              className="w-full py-2.5 rounded-xl bg-gray-700 text-white text-sm font-bold hover:bg-gray-800 transition-colors">
+              Entendi, prosseguir mesmo assim
+            </button>
+            <button
+              onClick={() => setInvWarn(null)}
+              className="w-full py-1.5 rounded-xl text-sm text-gray-400 hover:text-gray-600 transition-colors">
+              Cancelar
+            </button>
+          </div>
+        </>)}
+
+        {/* ── SUPERDIM ── */}
+        {invWarn.type === 'superdim' && (<>
+          <div className="bg-sky-600 text-white px-5 py-4 flex items-center gap-3">
+            <Info size={20} className="shrink-0" />
+            <div>
+              <p className="font-bold text-base">Inversor superdimensionado</p>
+              <p className="text-xs text-sky-100 mt-0.5">{invWarn.inv.nome}</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-gray-700">
+              Este inversor tem capacidade superior à demanda do sistema (<strong className="text-sky-700">{Math.abs(invWarn.olPct).toFixed(0)}% superdimensionado</strong>).
+            </p>
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-800 space-y-1">
+              <p>• O inversor não operará na faixa de maior eficiência.</p>
+              <p>• Pode haver menor aproveitamento de geração nos horários de pico.</p>
+              <p>• Justificável para ampliação futura ou redundância.</p>
+            </div>
+            <button
+              onClick={applyInvWarning}
+              className="w-full py-2.5 rounded-xl bg-sky-600 text-white text-sm font-bold hover:bg-sky-700 transition-colors">
+              Entendi, prosseguir mesmo assim
+            </button>
+            <button
+              onClick={() => setInvWarn(null)}
+              className="w-full py-1.5 rounded-xl text-sm text-gray-400 hover:text-gray-600 transition-colors">
+              Cancelar
+            </button>
+          </div>
+        </>)}
+
+      </div>
+    </div>
+  )
+
   const getMixEntry = (invId) => mixList.find(i => i.inverter.id === invId)
   const setMixQty = (inv, qty) => {
     if (qty <= 0) {
@@ -1531,6 +1709,9 @@ function Step3({ data, onChange, products, realKwp }) {
           )}
         </p>
       </div>
+
+      {/* Warning modal */}
+      {InvWarnModal}
 
       {/* Mode toggle */}
       {data.kitType !== 'micro' && (
@@ -1718,7 +1899,7 @@ function Step3({ data, onChange, products, realKwp }) {
                   </div>
                 )}
                 <button
-                  onClick={() => onChange({ ...data, inverter: inv })}
+                  onClick={() => handleInvClick(inv, olPct, maxOlPct, effKw)}
                   className={`text-left rounded-xl border-2 overflow-hidden transition-all flex flex-col ${
                     selected ? 'border-weg-blue ring-2 ring-blue-100' :
                     compatible ? 'border-gray-200 bg-white hover:border-weg-blue/60 hover:shadow-md' :
