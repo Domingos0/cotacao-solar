@@ -15,13 +15,12 @@
     print-color-adjust: exact !important;
   }
 
-  /* Só oculta os outros filhos do body quando #kit-print existe no DOM */
-  body:has(#kit-print) > *:not(#kit-print) {
+  /* ── Caso 1: AdminPage portal (#kit-print filho direto do body) ── */
+  /* Oculta irmãos apenas quando #kit-print é filho DIRETO do body */
+  body:has(> #kit-print) > *:not(#kit-print) {
     display: none !important;
   }
-
-  /* Outer wrapper: vira bloco estático, sem fundo escuro */
-  body > #kit-print {
+  body:has(> #kit-print) > #kit-print {
     display: block !important;
     position: static !important;
     inset: auto !important;
@@ -35,18 +34,36 @@
     overflow: visible !important;
     z-index: auto !important;
   }
-
-  /* Paper card: ocupa toda a largura, sem sombra nem borda */
-  body > #kit-print .print-paper {
+  body:has(> #kit-print) > #kit-print .print-paper {
     max-width: none !important;
     width: 100% !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }
-
-  body > #kit-print,
-  body > #kit-print * {
+  body:has(> #kit-print) > #kit-print,
+  body:has(> #kit-print) > #kit-print * {
     visibility: visible !important;
+  }
+
+  /* ── Caso 2: KitBuilder inline (#kit-print aninhado no DOM) ── */
+  /* Usa visibility para não quebrar o fluxo do #root */
+  body:not(:has(> #kit-print)):has(#kit-print) * {
+    visibility: hidden;
+  }
+  body:not(:has(> #kit-print)) #kit-print,
+  body:not(:has(> #kit-print)) #kit-print * {
+    visibility: visible !important;
+  }
+  body:not(:has(> #kit-print)) #kit-print {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: white !important;
   }
 
   /* Avoid breaking rows across pages */
