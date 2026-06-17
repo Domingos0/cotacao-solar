@@ -34,7 +34,7 @@ const SPECS = {
   },
   siw200g: {
     title: 'SIW200G W1',
-    subtitulo: 'Inversor Monofásico 3–10,5 kW',
+    subtitulo: 'STANDARD — Inversor Monofásico 3–10,5 kW',
     image: '/img/inversores/siw200g_w1.jpg',
     specs: {
       'Potência CA':       '3 – 10,5 kW',
@@ -49,7 +49,7 @@ const SPECS = {
   },
   siw300h: {
     title: 'SIW300H W00',
-    subtitulo: 'Inversor Monofásico 3–10 kW',
+    subtitulo: 'LINHA PREMIUM — Inversor Monofásico 3–10 kW',
     image: '/img/inversores/siw300h_w00.jpg',
     specs: {
       'Potência CA':       '3 – 10 kW',
@@ -63,7 +63,7 @@ const SPECS = {
   },
   siw400g_s: {
     title: 'SIW400G W1',
-    subtitulo: 'Inversor Trifásico 12–25 kW',
+    subtitulo: 'STANDARD — Inversor Trifásico 12–25 kW',
     image: '/img/inversores/siw400g_w1.jpg',
     specs: {
       'Potência CA':       '12 – 25 kW',
@@ -78,7 +78,7 @@ const SPECS = {
   },
   siw400g_m: {
     title: 'SIW400G W00',
-    subtitulo: 'Inversor Trifásico 15–37 kW',
+    subtitulo: 'STANDARD — Inversor Trifásico 15–37 kW',
     image: '/img/inversores/siw400g_w00.jpg',
     specs: {
       'Potência CA':       '15 – 37 kW',
@@ -93,7 +93,7 @@ const SPECS = {
   },
   siw400g_l: {
     title: 'SIW400G W1',
-    subtitulo: 'Inversor Trifásico 75–100 kW',
+    subtitulo: 'STANDARD — Inversor Trifásico 75–100 kW',
     image: '/img/inversores/siw400g_large.jpg',
     specs: {
       'Potência CA':       '75 – 100 kW',
@@ -106,7 +106,7 @@ const SPECS = {
   },
   siw500h: {
     title: 'SIW500H',
-    subtitulo: 'Inversor String Trifásico 20–100 kW',
+    subtitulo: 'LINHA PREMIUM — Inversor String Trifásico 20–100 kW',
     image: '/img/inversores/siw500h.jpg',
     specs: {
       'Potência CA':       '20 – 100 kW',

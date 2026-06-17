@@ -97,7 +97,21 @@ export default function ProductDetail({ product, onClose }) {
               <p className="text-white/60 text-xs uppercase tracking-widest mb-0.5">{product.categoria}</p>
               <h2 className="text-xl font-bold leading-snug">{product.nome}</h2>
               {invSpec?.subtitulo
-                ? <p className="text-white/70 text-sm mt-0.5">{invSpec.subtitulo}</p>
+                ? (() => {
+                    const linhaMatch = invSpec.subtitulo.match(/^(STANDARD|LINHA PREMIUM)\s*—\s*(.+)$/)
+                    if (linhaMatch) {
+                      const isStandard = linhaMatch[1] === 'STANDARD'
+                      return (
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide ${isStandard ? 'bg-sky-400/30 text-sky-100' : 'bg-amber-400/30 text-amber-100'}`}>
+                            {linhaMatch[1]}
+                          </span>
+                          <p className="text-white/70 text-sm">{linhaMatch[2]}</p>
+                        </div>
+                      )
+                    }
+                    return <p className="text-white/70 text-sm mt-0.5">{invSpec.subtitulo}</p>
+                  })()
                 : product.tipo && <p className="text-white/70 text-sm mt-0.5">{product.tipo}</p>
               }
             </div>

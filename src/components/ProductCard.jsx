@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronRight, Zap } from 'lucide-react'
 import { getProductImage } from '../data/productImages'
+import { getInverterSpecs } from '../data/inverterSpecs'
 
 const categoryColor = {
   'Módulos Fotovoltaicos':        'bg-amber-100 text-amber-800',
@@ -105,6 +106,11 @@ export default function ProductCard({ product, onClick }) {
   const gradient = categoryGradient[product.categoria] || 'from-gray-50 to-gray-100'
   const powerLabel = getPowerLabel(product)
   const imgSrc = getProductImage(product)
+  const invLinha = (() => {
+    const spec = getInverterSpecs(product)
+    const m = spec?.subtitulo?.match(/^(STANDARD|LINHA PREMIUM)/)
+    return m ? m[1] : null
+  })()
 
   return (
     <article
@@ -165,6 +171,13 @@ export default function ProductCard({ product, onClick }) {
           {product.tipo && (
             <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-500 px-2 py-1 rounded-md">
               {product.tipo}
+            </span>
+          )}
+          {invLinha && (
+            <span className={`inline-flex items-center text-[10px] font-bold px-2 py-1 rounded-md tracking-wide ${
+              invLinha === 'STANDARD' ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-700'
+            }`}>
+              {invLinha}
             </span>
           )}
         </div>
