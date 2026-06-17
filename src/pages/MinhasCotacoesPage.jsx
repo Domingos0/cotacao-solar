@@ -850,7 +850,11 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const handlePrint = () => {
     setIsPrinting(true)
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.addEventListener('afterprint', () => setIsPrinting(false), { once: true })
+      const el = document.getElementById('kit-print')
+      if (!el) { window.print(); return }
+      const parent = el.parentNode; const next = el.nextSibling
+      document.body.appendChild(el)
+      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setIsPrinting(false) }, { once: true })
       window.print()
     }))
   }
@@ -858,7 +862,11 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const handlePrintRevision = (r) => {
     setPrintRevision(r)
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.addEventListener('afterprint', () => setPrintRevision(null), { once: true })
+      const el = document.getElementById('kit-print')
+      if (!el) { window.print(); return }
+      const parent = el.parentNode; const next = el.nextSibling
+      document.body.appendChild(el)
+      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setPrintRevision(null) }, { once: true })
       window.print()
     }))
   }
@@ -1468,7 +1476,11 @@ function RevisionDetailModal({ quote, revision, onClose }) {
   const handlePrint = () => {
     setIsPrinting(true)
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.addEventListener('afterprint', () => setIsPrinting(false), { once: true })
+      const el = document.getElementById('kit-print')
+      if (!el) { window.print(); return }
+      const parent = el.parentNode; const next = el.nextSibling
+      document.body.appendChild(el)
+      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setIsPrinting(false) }, { once: true })
       window.print()
     }))
   }
@@ -1678,7 +1690,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const handlePrintRevision = (quote, r) => {
     setPrintRevisionData({ quote, r })
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.addEventListener('afterprint', () => setPrintRevisionData(null), { once: true })
+      const el = document.getElementById('kit-print')
+      if (!el) { window.print(); return }
+      const parent = el.parentNode; const next = el.nextSibling
+      document.body.appendChild(el)
+      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setPrintRevisionData(null) }, { once: true })
       window.print()
     }))
   }
