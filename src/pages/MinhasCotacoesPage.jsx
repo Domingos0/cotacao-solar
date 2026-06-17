@@ -1050,7 +1050,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           {(profile?.numero_usuario || profile?.nome || profile?.cnpj) && (
             <p className="text-xs text-gray-500">
               {(profile?.numero_usuario || profile?.nome) && (
-                <span>Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                <span>Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
                   {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
                 </strong></span>
               )}
@@ -1139,7 +1139,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               {quote.frete_pct > 1 && <p className="text-xs text-gray-500 mt-0.5">{quote.frete_nome}</p>}
               {(profile?.numero_usuario || profile?.nome) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                  Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
                     {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
                   </strong>
                 </p>
@@ -1513,7 +1513,7 @@ function RevisionDetailModal({ quote, revision, onClose }) {
               {revision.frete && <p className="text-xs text-gray-500 mt-0.5">{revision.frete}</p>}
               {(profile?.numero_usuario || profile?.nome) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                  Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
                     {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
                   </strong>
                 </p>
@@ -1777,7 +1777,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
             {(profile?.numero_usuario || profile?.nome || profile?.cnpj) && (
               <p className="text-xs text-gray-500">
                 {(profile?.numero_usuario || profile?.nome) && (
-                  <span>Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                  <span>Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
                     {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
                   </strong></span>
                 )}
@@ -1838,10 +1838,10 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
 
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
-            <FileText size={24} className="text-weg-blue" /> Minhas Cotações
+          <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 flex items-center gap-2">
+            <FileText size={22} className="text-weg-blue" /> Minhas Cotações
           </h1>
           <p className="text-gray-400 text-sm mt-0.5">{quotes.length} cotaç{quotes.length === 1 ? 'ão' : 'ões'} salvas</p>
         </div>
@@ -1854,10 +1854,10 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-none pb-1">
         <button
           onClick={() => setActiveTab('ativas')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors ${
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors shrink-0 ${
             activeTab === 'ativas'
               ? 'bg-weg-blue text-white border-weg-blue'
               : 'bg-white text-gray-500 border-gray-200 hover:border-weg-blue/50'
@@ -1872,7 +1872,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
         </button>
         <button
           onClick={() => setActiveTab('fechados')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors ${
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors shrink-0 ${
             activeTab === 'fechados'
               ? 'bg-orange-500 text-white border-orange-500'
               : 'bg-white text-gray-500 border-gray-200 hover:border-orange-400'
@@ -1888,7 +1888,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
         {profile?.cnpj && (
           <button
             onClick={() => setActiveTab('equipe')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors shrink-0 ${
               activeTab === 'equipe'
                 ? 'bg-indigo-600 text-white border-indigo-600'
                 : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-400'

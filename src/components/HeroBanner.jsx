@@ -10,7 +10,7 @@ const stats = [
 export default function HeroBanner() {
   return (
     <section className="bg-gradient-to-r from-weg-blue via-weg-blue-mid to-weg-blue-light text-white">
-      <div className="max-w-7xl mx-auto px-4 py-12">
+      <div className="max-w-7xl mx-auto px-4 py-6 md:py-12">
         <div className="flex flex-col lg:flex-row items-center gap-8">
           <div className="flex-1">
             <div className="inline-flex items-center gap-2 bg-weg-orange/20 border border-weg-orange/40 rounded-full px-3 py-1.5 text-sm font-medium text-weg-orange mb-4">

@@ -32,7 +32,7 @@ const categoryEmoji = {
 export default function FilterSidebar({ selectedCategory, onCategoryChange, counts, total }) {
   return (
     <aside className="w-full lg:w-64 shrink-0">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden sticky top-20">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden lg:sticky lg:top-20">
         {/* Header */}
         <div className="bg-weg-blue px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-white">

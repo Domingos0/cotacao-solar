@@ -1080,7 +1080,7 @@ function DisponibilidadeCard() {
               </button>
             </div>
           </div>
-          <div className="max-h-48 overflow-y-auto">
+          <div className="max-h-48 overflow-y-auto overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -1150,7 +1150,7 @@ function DisponibilidadeCard() {
           </div>
 
           {/* Table */}
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-[420px] overflow-y-auto overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
                 <tr>
@@ -3489,12 +3489,12 @@ function AdminDashboard() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       {/* Tab bar */}
-      <div className="flex items-center gap-1 mb-5 bg-white rounded-xl border border-gray-200 p-1 w-fit">
+      <div className="flex items-center gap-1 mb-5 bg-white rounded-xl border border-gray-200 p-1 overflow-x-auto scrollbar-none w-full md:w-fit">
         {TABS.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors relative ${
+            className={`flex items-center gap-1.5 px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors relative shrink-0 ${
               activeTab === tab.key
                 ? 'bg-weg-blue text-white shadow-sm'
                 : 'text-gray-600 hover:bg-gray-100'
@@ -3510,8 +3510,8 @@ function AdminDashboard() {
             )}
           </button>
         ))}
-        <div className="ml-4 pl-3 border-l border-gray-200 flex items-center gap-1">
-          <span className="text-xs text-gray-400">{profile?.nome}</span>
+        <div className="ml-4 pl-3 border-l border-gray-200 flex items-center gap-1 shrink-0">
+          <span className="text-xs text-gray-400 hidden sm:inline truncate max-w-[80px]">{profile?.nome}</span>
           <button
             onClick={signOut}
             title="Sair"

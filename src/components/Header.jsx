@@ -84,12 +84,12 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
           {/* Logo */}
           <button onClick={() => onPageChange('catalog')}
             className="flex items-center gap-3 shrink-0 hover:opacity-90 transition-opacity">
-            <img src="/logo-ernaniff-branco.png" alt="Ernaniff Representações" className="w-52 h-auto max-h-10 object-contain" />
+            <img src="/logo-ernaniff-branco.png" alt="Ernaniff Representações" className="w-32 sm:w-40 md:w-52 h-auto max-h-10 object-contain" />
           </button>
 
           {/* Search (catalog only) */}
           {page === 'catalog' && (
-            <div className="flex-1 max-w-md">
+            <div className="flex-1 max-w-[160px] sm:max-w-xs md:max-w-md">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={15} />
                 <input type="text" placeholder="Buscar por modelo, código SAP..."

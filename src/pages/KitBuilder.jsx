@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
+import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
 import kitCompositions from '../data/kitCompositions.json'
 import { getInverterSpecs } from '../data/inverterSpecs'
@@ -799,6 +800,69 @@ function BombDimStep({ data, onChange, products }) {
 
 // ─── Step 2: Dimensionamento (somente kWp) ───────────────────────────────────
 function Step1({ data, onChange }) {
+  const { freteOpcoes } = useProducts()
+  const [cidades, setCidades] = useState([])
+  const [loadingCidades, setLoadingCidades] = useState(false)
+  const [cidadeBusca, setCidadeBusca] = useState(data.clienteCidade || '')
+  const [cidadeDropdown, setCidadeDropdown] = useState(false)
+  const cidadeRef = useRef(null)
+
+  // Busca cidades do IBGE ao mudar o estado
+  useEffect(() => {
+    if (!data.clienteUF) { setCidades([]); return }
+    setLoadingCidades(true)
+    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${data.clienteUF}/municipios?orderBy=nome`)
+      .then(r => r.json())
+      .then(lista => setCidades(lista.map(m => m.nome)))
+      .catch(() => setCidades([]))
+      .finally(() => setLoadingCidades(false))
+  }, [data.clienteUF])
+
+  // Sync input when cidade muda externamente (troca de estado zera)
+  useEffect(() => {
+    setCidadeBusca(data.clienteCidade || '')
+  }, [data.clienteCidade])
+
+  // Fecha dropdown ao clicar fora
+  useEffect(() => {
+    const handler = (e) => {
+      if (cidadeRef.current && !cidadeRef.current.contains(e.target)) setCidadeDropdown(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const cidadesFiltradas = useMemo(() => {
+    if (!cidadeBusca || cidades.includes(cidadeBusca)) return cidades
+    const q = cidadeBusca.toLowerCase()
+    return cidades.filter(c => c.toLowerCase().includes(q))
+  }, [cidades, cidadeBusca])
+
+  const handleEstadoChange = (uf) => {
+    const regiao = regiaoFromUF(uf)
+    let freteAutoIdByRegiao = null
+    if (regiao === 'norte') {
+      freteAutoIdByRegiao = freteOpcoes.find(f => /\bnorte\b/i.test(f.nome))?.id ?? null
+    } else if (regiao === 'nordeste') {
+      freteAutoIdByRegiao = freteOpcoes.find(f => /nordeste/i.test(f.nome))?.id ?? null
+    }
+    onChange({
+      ...data,
+      clienteUF: uf || null,
+      clienteCidade: '',
+      clienteLocal: uf || '',
+      freteAutoIdByRegiao,
+    })
+  }
+
+  const handleCidadeChange = (cidade) => {
+    const uf = data.clienteUF || ''
+    const local = uf ? `${cidade} / ${uf}` : cidade
+    onChange({ ...data, clienteCidade: cidade, clienteLocal: local })
+  }
+
+  const regiaoDetectada = regiaoFromUF(data.clienteUF)
+
   return (
     <div className="space-y-6">
       <div className="text-center">
@@ -849,17 +913,111 @@ function Step1({ data, onChange }) {
               placeholder="Nome do cliente"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
             />
-            <input
-              value={data.clienteLocal || ''}
-              onChange={e => onChange({ ...data, clienteLocal: e.target.value })}
-              placeholder="Cidade / Estado"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
-            />
+
+            {/* Estado */}
+            <select
+              value={data.clienteUF || ''}
+              onChange={e => handleEstadoChange(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-weg-blue text-gray-700"
+            >
+              <option value="">Selecione o estado</option>
+              {ESTADOS.map(e => (
+                <option key={e.uf} value={e.uf}>{e.uf} — {e.nome}</option>
+              ))}
+            </select>
+
+            {/* Cidade — combobox com busca */}
+            {data.clienteUF && (
+              <div className="relative" ref={cidadeRef}>
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={cidadeBusca}
+                    onChange={e => { setCidadeBusca(e.target.value); setCidadeDropdown(true) }}
+                    onFocus={() => setCidadeDropdown(true)}
+                    disabled={loadingCidades}
+                    placeholder={loadingCidades ? 'Carregando cidades…' : 'Buscar cidade…'}
+                    className="w-full border border-gray-200 rounded-lg pl-8 pr-7 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue disabled:opacity-60"
+                  />
+                  {loadingCidades && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-weg-blue border-t-transparent rounded-full animate-spin pointer-events-none" />
+                  )}
+                  {data.clienteCidade && !loadingCidades && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-green-500 flex items-center justify-center pointer-events-none">
+                      <Check size={9} className="text-white" />
+                    </div>
+                  )}
+                </div>
+                {cidadeDropdown && !loadingCidades && cidadesFiltradas.length > 0 && (
+                  <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                    {cidadesFiltradas.map(c => (
+                      <li
+                        key={c}
+                        onMouseDown={() => {
+                          handleCidadeChange(c)
+                          setCidadeDropdown(false)
+                        }}
+                        className={`px-3 py-2 text-sm cursor-pointer ${
+                          c === data.clienteCidade
+                            ? 'bg-blue-50 text-weg-blue font-medium'
+                            : 'hover:bg-blue-50 hover:text-weg-blue'
+                        }`}
+                      >
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {cidadeDropdown && !loadingCidades && cidadeBusca && cidadesFiltradas.length === 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm text-gray-400">
+                    Nenhuma cidade encontrada
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Feedback de região + frete */}
+            {regiaoDetectada && (
+              <p className="text-[11px] text-green-700 flex items-center gap-1 mt-0.5 ml-0.5">
+                <Check size={11} />
+                Região <strong>{regiaoDetectada.replace('_', '-')}</strong>
+                {data.freteAutoIdByRegiao
+                  ? <span className="text-green-600"> — frete pré-selecionado automaticamente no resumo</span>
+                  : <span className="text-gray-400"> — sem frete específico para esta região</span>
+                }
+              </p>
+            )}
           </div>
         </div>
       </div>
     </div>
   )
+}
+
+// ─── Mapeamento UF → Região ──────────────────────────────────────────────────
+const UF_REGIAO = {
+  AC:'norte', AM:'norte', AP:'norte', PA:'norte', RO:'norte', RR:'norte', TO:'norte',
+  AL:'nordeste', BA:'nordeste', CE:'nordeste', MA:'nordeste', PB:'nordeste',
+  PE:'nordeste', PI:'nordeste', RN:'nordeste', SE:'nordeste',
+  DF:'centro_oeste', GO:'centro_oeste', MS:'centro_oeste', MT:'centro_oeste',
+  ES:'sudeste', MG:'sudeste', RJ:'sudeste', SP:'sudeste',
+  PR:'sul', RS:'sul', SC:'sul',
+}
+
+// Extrai a sigla de UF de strings como "Manaus / AM", "São Paulo - SP", "PA"
+function detectUF(local) {
+  if (!local) return null
+  const m = local.trim().match(/\b([A-Za-z]{2})\s*$/)
+  if (m) {
+    const uf = m[1].toUpperCase()
+    if (UF_REGIAO[uf]) return uf
+  }
+  return null
+}
+
+function regiaoFromUF(uf) {
+  return uf ? (UF_REGIAO[uf] || null) : null
 }
 
 // Detecta painel de CD Nordeste pelo nome
@@ -875,12 +1033,25 @@ function Step2({ data, onChange, products, targetKwp }) {
 
   const panels = products.filter(p => p.kitRole === KIT_ROLE.PANEL && p.preco)
 
+  const clienteRegiao = regiaoFromUF(data.clienteUF)
+  const isClienteNordeste = clienteRegiao === 'nordeste'
+
+  // Quando o cliente é do Nordeste, módulos CD Nordeste sobem para o topo
+  const panelsSorted = useMemo(() => {
+    if (!isClienteNordeste) return panels
+    const nordeste = panels.filter(p => isNordestePanel(p))
+    const outros = panels.filter(p => !isNordestePanel(p))
+    return [...nordeste, ...outros]
+  }, [panels, isClienteNordeste])
+
   const nordesteFreteId = freteOpcoes.find(f => /nordeste/i.test(f.nome))?.id
 
   const confirmSelectPanel = (panel, qty, freteAutoId) => {
     onChange({ ...data, panel, panelQty: qty, freteAutoId })
     setNordesteWarning(null)
   }
+
+  const norteFreteId = freteOpcoes.find(f => /\bnorte\b/i.test(f.nome))?.id
 
   const selectPanel = (panel) => {
     const qty = Math.ceil((targetKwp * 1000) / panel.potencia)
@@ -893,7 +1064,12 @@ function Step2({ data, onChange, products, targetKwp }) {
       return
     }
 
-    const freteAutoId = willBeNordeste ? nordesteFreteId : undefined
+    let freteAutoId = undefined
+    if (willBeNordeste) {
+      // Cliente da região Norte com CD Nordeste → pré-seleciona frete Norte
+      const clienteRegiao = regiaoFromUF(data.clienteUF)
+      freteAutoId = (clienteRegiao === 'norte' && norteFreteId) ? norteFreteId : nordesteFreteId
+    }
     onChange({ ...data, panel, panelQty: qty, freteAutoId })
   }
 
@@ -906,11 +1082,31 @@ function Step2({ data, onChange, products, targetKwp }) {
         </p>
       </div>
 
+      {/* Sugestão: cliente Nordeste sem módulo CD Nordeste selecionado */}
+      {isClienteNordeste && !isNordestePanel(data.panel) && (
+        <div className="max-w-3xl mx-auto bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-blue-800">
+          <Info size={15} className="shrink-0 text-blue-500" />
+          <span>Cliente da <strong>região Nordeste</strong> — módulos <strong>CD Nordeste</strong> estão destacados no topo da lista.</span>
+        </div>
+      )}
+
       {/* Aviso de frete auto-selecionado quando painel Nordeste */}
-      {isNordestePanel(data.panel) && (
+      {isNordestePanel(data.panel) && regiaoFromUF(data.clienteUF) !== 'norte' && (
         <div className="max-w-3xl mx-auto bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-orange-800">
           <AlertTriangle size={15} className="shrink-0 text-orange-500" />
           <span>Painel <strong>CD Nordeste</strong> selecionado — o frete <strong>Nordeste</strong> foi pré-selecionado automaticamente no resumo.</span>
+        </div>
+      )}
+
+      {/* Aviso especial: cliente região Norte + módulo CD Nordeste */}
+      {isNordestePanel(data.panel) && regiaoFromUF(data.clienteUF) === 'norte' && (
+        <div className="max-w-3xl mx-auto bg-amber-50 border-2 border-amber-400 rounded-xl px-4 py-3 flex items-start gap-2 text-sm text-amber-900">
+          <AlertTriangle size={16} className="shrink-0 text-amber-500 mt-0.5" />
+          <span>
+            <strong>Atenção:</strong> módulo <strong>CD Nordeste</strong> selecionado para cliente da{' '}
+            <strong>região Norte ({data.clienteUF})</strong>.
+            O frete <strong>Norte</strong> foi pré-selecionado — verifique se é a modalidade correta para esta entrega.
+          </span>
         </div>
       )}
 
@@ -950,7 +1146,7 @@ function Step2({ data, onChange, products, targetKwp }) {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {panels.map(panel => {
+        {panelsSorted.map(panel => {
           const qty = Math.ceil((targetKwp * 1000) / panel.potencia)
           const realKwp = (qty * panel.potencia / 1000).toFixed(2)
           const selected = data.panel?.id === panel.id
@@ -3408,15 +3604,18 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const desconto = profile?.desconto_comercial != null ? profile.desconto_comercial : globalDesconto
   const [freteId, setFreteId] = useState(() => {
     if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) return data.freteAutoId
+    if (data.freteAutoIdByRegiao && freteOpcoes.some(f => f.id === data.freteAutoIdByRegiao)) return data.freteAutoIdByRegiao
     return freteOpcoes[0]?.id ?? 1
   })
 
-  // Sincroniza frete quando painel CD Nordeste é selecionado em outra step
+  // Sincroniza frete quando painel CD Nordeste é selecionado ou quando região do cliente muda
   useEffect(() => {
     if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) {
       setFreteId(data.freteAutoId)
+    } else if (data.freteAutoIdByRegiao && freteOpcoes.some(f => f.id === data.freteAutoIdByRegiao)) {
+      setFreteId(data.freteAutoIdByRegiao)
     }
-  }, [data.freteAutoId])
+  }, [data.freteAutoId, data.freteAutoIdByRegiao])
 
   // Fretes permitidos para módulos CD Nordeste
   const isNordeste = isNordestePanel(data.panel)
@@ -4124,7 +4323,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               {prop.responsavel && <p style={{fontSize:10, color:'#555', margin:'4px 0 0'}}>Resp: {prop.responsavel}</p>}
               {(profile?.numero_usuario || profile?.nome) && (
                 <p style={{fontSize:10, color:'#555', margin:'2px 0 0'}}>
-                  Vendedor: <strong style={{fontFamily: profile?.numero_usuario ? 'monospace' : 'inherit'}}>
+                  Usuário: <strong style={{fontFamily: profile?.numero_usuario ? 'monospace' : 'inherit'}}>
                     {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
                   </strong>
                 </p>
@@ -4433,13 +4632,19 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Localidade / Cidade</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Localidade</label>
                 <input
-                  type="text" value={data.clienteLocal || ''}
+                  type="text"
+                  value={data.clienteLocal || ''}
                   onChange={e => onChange({ ...data, clienteLocal: e.target.value })}
-                  placeholder="Ex: Florianópolis - SC"
+                  placeholder={data.clienteUF ? `${data.clienteCidade || ''}${data.clienteCidade && data.clienteUF ? ' / ' : ''}${data.clienteUF || ''}` : 'Ex: Florianópolis / SC'}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue"
                 />
+                {data.clienteUF && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Selecionado: {[data.clienteCidade, data.clienteUF].filter(Boolean).join(' / ')}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">E-mail do cliente</label>
@@ -4710,10 +4915,10 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Top bar */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-extrabold text-gray-900">⚡ Monte seu Kit Solar</h1>
-          <p className="text-gray-400 text-sm flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900">⚡ Monte seu Kit Solar</h1>
+          <p className="text-gray-400 text-sm flex items-center gap-2 flex-wrap">
             Siga os passos para gerar seu orçamento completo
             {kitTypeInfo && step > 1 && (
               <span className="inline-flex items-center gap-1 bg-weg-blue/10 text-weg-blue text-xs font-semibold px-2 py-0.5 rounded-full">
@@ -4734,7 +4939,7 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
       <StepIndicator current={step} onNavigate={setStep} steps={STEPS} />
 
       {/* Step content */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
         {step === 1 && <StepKitType data={data} onChange={setData} />}
         {step === 2 && data.kitType === 'bombeamento' && <BombDimStep data={data} onChange={setData} products={products} />}
         {step === 2 && data.kitType !== 'bombeamento' && <Step1 data={data} onChange={setData} />}

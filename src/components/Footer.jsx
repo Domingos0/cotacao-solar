@@ -9,7 +9,7 @@ export default function Footer() {
       {/* Orange accent bar */}
       <div className="h-1 bg-weg-orange" />
 
-      <div className="max-w-7xl mx-auto px-4 py-12">
+      <div className="max-w-7xl mx-auto px-4 py-8 md:py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Brand */}
           <div>
