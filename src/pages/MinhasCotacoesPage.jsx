@@ -1458,6 +1458,203 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   )
 }
 
+// ─── Revision Detail Modal ─────────────────────────────────────────────────────
+function RevisionDetailModal({ quote, revision, onClose }) {
+  const { profile, isAdmin } = useAuth()
+  const { tableInfo } = useProducts()
+  const kitData = quote.data || {}
+  const [isPrinting, setIsPrinting] = useState(false)
+
+  const handlePrint = () => {
+    setIsPrinting(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.addEventListener('afterprint', () => setIsPrinting(false), { once: true })
+      window.print()
+    }))
+  }
+
+  return (
+    <>
+      {/* Print overlay */}
+      {isPrinting && (
+        <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
+          <div className="bg-[#1B3A8A] text-white px-8 py-6 flex items-center justify-between print-header">
+            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
+              onError={e => { e.target.style.display = 'none' }} />
+            <div className="text-right">
+              <p className="font-mono font-bold text-xl">
+                {kitData.numero_orcamento ? `${kitData.numero_orcamento} · Rev. ${revision.revisao}` : `Rev. ${revision.revisao}`}
+              </p>
+              <p className="text-white/70 text-sm">{quote.nome_projeto}</p>
+              <p className="text-white/60 text-xs">{fmtDate(revision.data)}</p>
+            </div>
+          </div>
+          <div className="px-8 py-6 space-y-4">
+            {kitData.clienteNome && (
+              <p className="text-sm text-gray-600"><strong>Cliente:</strong> {kitData.clienteNome}</p>
+            )}
+            {(profile?.numero_usuario || profile?.nome || profile?.cnpj) && (
+              <p className="text-xs text-gray-500">
+                {(profile?.numero_usuario || profile?.nome) && (
+                  <span>Vendedor: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  </strong></span>
+                )}
+                {profile?.cnpj && <span className="ml-3 font-mono">CNPJ: {profile.cnpj}</span>}
+              </p>
+            )}
+            {(revision.items || []).length > 0 ? (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Composição do Kit</h3>
+                <table className="w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Item</th>
+                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Produto / SAP</th>
+                      <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Qtd</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unitário</th>
+                      <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revision.items.map((item, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-4 py-2 text-xs font-medium text-gray-800">{item.label}</td>
+                        <td className="px-4 py-2 text-xs text-gray-500">
+                          <div>{item.produto}</div>
+                          <div className="font-mono text-gray-400">{item.codigo_sap}</div>
+                        </td>
+                        <td className="px-3 py-2 text-center text-xs font-bold text-gray-700">{item.qty} {item.unit}</td>
+                        <td className="px-3 py-2 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
+                        <td className="px-4 py-2 text-right text-xs font-bold text-gray-800">{fmt(item.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic">Itens do kit não disponíveis para esta revisão.</p>
+            )}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+              {isAdmin && revision.frete && (
+                <div className="flex justify-between text-gray-500">
+                  <span>Frete — {revision.frete}</span>
+                  <span className="text-green-600 font-medium">Incluso</span>
+                </div>
+              )}
+              <div className={`${isAdmin && revision.frete ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
+                <span>Total Final</span>
+                <span className="text-[#1B3A8A] text-lg">{fmt(revision.total_final)}</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 text-center pt-2">
+              Revisão {revision.revisao} — emitida em {fmtDate(revision.data)} · {tableInfo?.nome}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+
+          {/* Header */}
+          <div className="sticky top-0 bg-weg-blue text-white px-6 py-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                {kitData.numero_orcamento && (
+                  <span className="font-mono font-bold text-lg">{kitData.numero_orcamento}</span>
+                )}
+                <span className="bg-white/20 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  Rev. {revision.revisao}
+                </span>
+              </div>
+              <p className="text-white/80 text-sm">{quote.nome_projeto}</p>
+              {kitData.clienteNome && (
+                <p className="text-white/60 text-xs">{kitData.clienteNome}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <StatusBadge status="revisada" />
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/20">
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6 space-y-6">
+
+            {/* Kit items table */}
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                <Package size={13} /> Composição do kit
+              </h4>
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs">Item</th>
+                      <th className="text-left px-4 py-2.5 font-semibold text-gray-500 text-xs hidden sm:table-cell">Produto / SAP</th>
+                      <th className="text-center px-3 py-2.5 font-semibold text-gray-500 text-xs">Qtd</th>
+                      <th className="text-right px-3 py-2.5 font-semibold text-gray-500 text-xs">Unitário</th>
+                      <th className="text-right px-4 py-2.5 font-semibold text-gray-500 text-xs">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(revision.items || []).length === 0 ? (
+                      <tr><td colSpan={5} className="text-center py-6 text-gray-400 text-xs italic">Itens não disponíveis para esta revisão.</td></tr>
+                    ) : revision.items.map((item, i) => (
+                      <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                        <td className="px-4 py-2.5 font-medium text-gray-800 text-xs">{item.label}</td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs hidden sm:table-cell">
+                          <div className="truncate max-w-[200px]">{item.produto}</div>
+                          <div className="font-mono text-gray-400">{item.codigo_sap}</div>
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-bold text-gray-700 text-xs">{item.qty} {item.unit}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{fmt(item.preco_unit)}</td>
+                        <td className="px-4 py-2.5 text-right font-bold text-gray-800 text-xs">{fmt(item.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Financial summary */}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+              {isAdmin && revision.frete && (
+                <div className="flex justify-between text-sm text-gray-400">
+                  <span>Frete — {revision.frete}</span>
+                  <span className="text-green-600 font-medium">Incluso</span>
+                </div>
+              )}
+              <div className={`${isAdmin && revision.frete ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
+                <span>Total Final</span>
+                <span className="text-weg-blue text-lg">{fmt(revision.total_final)}</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="border-t border-gray-100 pt-4 flex flex-wrap gap-2 justify-end">
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 hover:border-gray-300 bg-white px-4 py-2 rounded-xl font-semibold"
+              >
+                <Printer size={15} /> Imprimir / PDF
+              </button>
+              <button
+                onClick={onClose}
+                className="flex items-center gap-1.5 text-sm text-white bg-weg-blue hover:bg-weg-blue/90 px-4 py-2 rounded-xl font-semibold"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────────
 const CLOSED_STATUSES = ['fechado', 'implantado', 'perdida']
 
@@ -1471,6 +1668,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [deletingId, setDeletingId]   = useState(null)
   const [activeTab, setActiveTab]     = useState('ativas') // 'ativas' | 'fechados' | 'equipe'
   const [printRevisionData, setPrintRevisionData] = useState(null) // { quote, r }
+  const [selectedRevision, setSelectedRevision] = useState(null) // { quote, revision }
   const [teamMembers, setTeamMembers] = useState([])
   const [teamLoading, setTeamLoading] = useState(false)
 
@@ -1941,7 +2139,13 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-center">
-                            <span className="text-xs font-bold text-purple-600">{r.revisao}</span>
+                            <button
+                              onClick={() => setSelectedRevision({ quote: q, revision: r })}
+                              className="text-xs font-bold text-purple-600 hover:text-purple-800 hover:underline px-2 py-0.5 rounded transition-colors"
+                              title="Ver composição desta revisão"
+                            >
+                              {r.revisao}
+                            </button>
                           </td>
                           <td className="px-4 py-2.5 text-xs text-gray-400 hidden md:table-cell">—</td>
                           <td className="px-4 py-2.5">
@@ -1979,6 +2183,15 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
           onStatusChange={handleStatusChange}
           onRefresh={fetchQuotes}
           onGoToFechados={async () => { await fetchQuotes(true); setActiveTab('fechados'); setSelectedQuote(null) }}
+        />
+      )}
+
+      {/* Revision Detail Modal */}
+      {selectedRevision && (
+        <RevisionDetailModal
+          quote={selectedRevision.quote}
+          revision={selectedRevision.revision}
+          onClose={() => setSelectedRevision(null)}
         />
       )}
     </div>
