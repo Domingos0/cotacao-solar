@@ -373,33 +373,48 @@ function BombDimStep({ data, onChange, products }) {
   const tensaoV   = parseFloat(form.tensao) || 380
   const invFactor = 1000 / (1.732 * tensaoV * 0.87)  // A/kW
 
-  // Retorna compatibilidade do inversor com o motor
+  // Retorna compatibilidade do inversor com o motor — 3 estados:
+  //   status 'ok'       → ≥ I_motor × 1,20 (recomendado, +20% de margem)
+  //   status 'warning'  → I_motor ≤ I_est < I_motor × 1,20 (funciona, abaixo do recomendado)
+  //   status 'blocked'  → I_est < I_motor (insuficiente, bloqueado)
   const checkInvCompat = (inv) => {
-    if (!inv?.potencia) return { ok: false, label: '—' }
+    if (!inv?.potencia) return { status: 'blocked', ok: false, label: '—' }
     if (form.metodo === 'cv' && pMotorKw > 0) {
-      // Regra: Pinv ≥ Pmotor (Pin com FS). FV com 70% oversizing é garantido pelos módulos.
-      const ok  = inv.potencia >= pMotorKw
       const pct = round2((inv.potencia / pMotorKw - 1) * 100)
-      return { ok, pct, label: ok ? `+${pct}% acima do motor` : `${Math.abs(pct)}% subdimensionado` }
+      if (inv.potencia >= pMotorKw * 1.20)
+        return { status: 'ok',      ok: true,  pct, label: `+${pct}% acima do motor (recomendado)` }
+      if (inv.potencia >= pMotorKw)
+        return { status: 'warning', ok: true,  pct, label: `+${pct}% — abaixo do recomendado (+20%)` }
+      return       { status: 'blocked', ok: false, pct, label: `${Math.abs(pct)}% subdimensionado` }
     }
     if (form.metodo === 'corrente' && corrNum > 0) {
-      // Regra: corrente estimada do inversor ≥ corrente nominal do motor
       const iEst = round2(inv.potencia * invFactor)
-      const ok   = iEst >= corrNum
       const pct  = round2((iEst / corrNum - 1) * 100)
-      return { ok, iEst, pct, label: ok ? `${iEst} A ≥ ${corrNum} A` : `${iEst} A < ${corrNum} A` }
+      if (iEst >= corrNum * 1.20)
+        return { status: 'ok',      ok: true,  iEst, pct, label: `${iEst} A — +${pct}% acima (recomendado)` }
+      if (iEst >= corrNum)
+        return { status: 'warning', ok: true,  iEst, pct, label: `${iEst} A — +${pct}% (abaixo do recomendado +20%)` }
+      return       { status: 'blocked', ok: false, iEst, pct, label: `${iEst} A < ${corrNum} A (insuficiente)` }
     }
-    return { ok: true, label: '' }
+    return { status: 'ok', ok: true, label: '' }
   }
 
   const autoInverter = useMemo(() => {
     if (form.metodo === 'cv' && pMotorKw > 0) {
-      // Menor inversor com Pinv ≥ Pmotor (corrente jamais pode ser menor que a do motor)
-      return bombInvs.find(p => (p.potencia || 0) >= pMotorKw) || bombInvs[bombInvs.length - 1] || null
+      // Preferência: Pinv ≥ Pmotor × 1,20 (recomendado). Fallback: Pinv ≥ Pmotor.
+      return (
+        bombInvs.find(p => (p.potencia || 0) >= pMotorKw * 1.20) ||
+        bombInvs.find(p => (p.potencia || 0) >= pMotorKw) ||
+        bombInvs[bombInvs.length - 1] || null
+      )
     }
     if (form.metodo === 'corrente' && corrNum > 0) {
-      // Menor inversor cuja corrente estimada ≥ corrente nominal do motor
-      return bombInvs.find(p => (p.potencia || 0) * invFactor >= corrNum) || bombInvs[bombInvs.length - 1] || null
+      // Preferência: I_est ≥ I_motor × 1,20. Fallback: I_est ≥ I_motor.
+      return (
+        bombInvs.find(p => (p.potencia || 0) * invFactor >= corrNum * 1.20) ||
+        bombInvs.find(p => (p.potencia || 0) * invFactor >= corrNum) ||
+        bombInvs[bombInvs.length - 1] || null
+      )
     }
     return null
   }, [form.metodo, pMotorKw, corrNum, form.tensao, bombInvs, invFactor])
@@ -869,37 +884,54 @@ function BombDimStep({ data, onChange, products }) {
         </div>
         <p className="text-xs text-gray-400 mb-3">
           {form.metodo === 'cv'
-            ? `Regra: P_inversor ≥ P_motor (${round2(pMotorKw)} kW). Inversores abaixo são bloqueados.`
-            : `Regra: I_saída_inversor ≥ I_motor (${corrNum} A). Inversores com corrente insuficiente são bloqueados.`}
+            ? `Recomendado: P_inv ≥ ${round2(pMotorKw * 1.20)} kW (+20% sobre motor ${round2(pMotorKw)} kW). Mínimo: ≥ ${round2(pMotorKw)} kW.`
+            : `Recomendado: I_inv ≥ ${round2(corrNum * 1.20)} A (+20% sobre motor ${corrNum} A). Mínimo: ≥ ${corrNum} A.`}
         </p>
         <div className="grid grid-cols-1 gap-2 max-h-52 overflow-y-auto pr-1">
           {bombInvs.map(inv => {
             const compat = checkInvCompat(inv)
             const isSelected = invFinal?.id === inv.id
             const iEst = form.metodo === 'corrente' ? round2((inv.potencia || 0) * invFactor) : null
+            const borderCls = isSelected
+              ? compat.status === 'ok'      ? 'border-green-500 bg-green-50'
+              : compat.status === 'warning' ? 'border-amber-400 bg-amber-50'
+              :                               'border-red-400 bg-red-50'
+              : compat.status === 'blocked' ? 'border-red-100 bg-red-50/30 opacity-50'
+              :                               'border-gray-200 hover:border-cyan-300'
             return (
               <button key={inv.id} onClick={() => setSelInv(inv)}
-                className={`text-left text-sm rounded-lg border p-2.5 transition-all ${
-                  isSelected
-                    ? compat.ok ? 'border-cyan-500 bg-cyan-50' : 'border-red-400 bg-red-50'
-                    : compat.ok ? 'border-gray-200 hover:border-cyan-300' : 'border-red-100 bg-red-50/40 opacity-60'
-                }`}>
+                className={`text-left text-sm rounded-lg border p-2.5 transition-all ${borderCls}`}>
                 <div className="flex justify-between items-center gap-2">
-                  <span className={`font-semibold ${!compat.ok ? 'text-red-700' : ''}`}>{inv.nome}</span>
+                  <span className={`font-semibold ${
+                    compat.status === 'blocked' ? 'text-red-700' :
+                    compat.status === 'warning' ? 'text-amber-800' : ''
+                  }`}>{inv.nome}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      compat.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                      compat.status === 'ok'      ? 'bg-green-100 text-green-700' :
+                      compat.status === 'warning' ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-red-100 text-red-600'
                     }`}>
-                      {compat.ok ? '✓ OK' : '✗ Insuficiente'}
+                      {compat.status === 'ok'      ? '✓ Recomendado' :
+                       compat.status === 'warning' ? '⚠ Aceitável'    :
+                                                     '✗ Insuficiente'}
                     </span>
                     <span className="text-weg-orange font-bold">{fmt(inv.preco)}</span>
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
                   {inv.potencia && <span>{inv.potencia} kW</span>}
-                  {iEst !== null && <span className={`font-semibold ${compat.ok ? 'text-green-600' : 'text-red-500'}`}>I_est {iEst} A</span>}
+                  {iEst !== null && (
+                    <span className={`font-semibold ${
+                      compat.status === 'ok' ? 'text-green-600' :
+                      compat.status === 'warning' ? 'text-amber-600' : 'text-red-500'
+                    }`}>I_est {iEst} A</span>
+                  )}
                   {inv.entradas && <span>· {inv.entradas} entradas</span>}
-                  {compat.label && <span className={`font-medium ${compat.ok ? 'text-green-600' : 'text-red-500'}`}>· {compat.label}</span>}
+                  {compat.label && <span className={`font-medium ${
+                    compat.status === 'ok' ? 'text-green-600' :
+                    compat.status === 'warning' ? 'text-amber-600' : 'text-red-500'
+                  }`}>· {compat.label}</span>}
                 </div>
               </button>
             )
@@ -1007,25 +1039,35 @@ function BombDimStep({ data, onChange, products }) {
                 <span>Nenhum inversor de bombeamento encontrado. Importe a tabela com inversores CFW.</span>
               </div>
             )}
-            {invFinal && invCompat && !invCompat.ok && (
+            {invFinal && invCompat?.status === 'blocked' && (
               <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-red-700 flex items-start gap-2">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                 <span>
                   {form.metodo === 'cv'
-                    ? `⛔ Inversor subdimensionado: ${invFinal.potencia} kW < motor ${round2(pMotorKw)} kW. Selecione um inversor com P ≥ ${round2(pMotorKw)} kW.`
-                    : `⛔ Corrente insuficiente: I_est ${invCompat.iEst} A < I_motor ${corrNum} A. Selecione um inversor com corrente de saída ≥ ${corrNum} A.`}
+                    ? `⛔ Inversor subdimensionado: ${invFinal.potencia} kW < motor ${round2(pMotorKw)} kW. Necessário ≥ ${round2(pMotorKw)} kW.`
+                    : `⛔ Corrente insuficiente: I_est ${invCompat.iEst} A < I_motor ${corrNum} A. Necessário ≥ ${corrNum} A.`}
                 </span>
               </div>
             )}
-            {invFinal && invCompat?.ok && (
+            {invFinal && invCompat?.status === 'warning' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-700 flex items-start gap-2">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  {form.metodo === 'cv'
+                    ? `⚠ Abaixo do recomendado: ${invFinal.potencia} kW está entre P_motor (${round2(pMotorKw)} kW) e o recomendado (${round2(pMotorKw * 1.20)} kW). O inversor funcionará, mas com menor margem de segurança.`
+                    : `⚠ Abaixo do recomendado: I_est ${invCompat.iEst} A está entre I_motor (${corrNum} A) e o recomendado (${round2(corrNum * 1.20)} A = I × 1,20). Funcionará, mas sem a margem de +20%.`}
+                </span>
+              </div>
+            )}
+            {invFinal && invCompat?.status === 'ok' && (
               <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-green-700 flex items-center gap-2">
                 <Check size={14} />
                 <span>
                   {form.metodo === 'cv'
-                    ? `✓ Inversor compatível: ${invFinal.potencia} kW ≥ motor ${round2(pMotorKw)} kW${invCompat.pct > 0 ? ` (margem +${invCompat.pct}%)` : ''}.`
-                    : `✓ Corrente adequada: I_est ${invCompat.iEst} A ≥ I_motor ${corrNum} A${invCompat.pct > 0 ? ` (margem +${invCompat.pct}%)` : ''}.`}
+                    ? `✓ Inversor recomendado: ${invFinal.potencia} kW ≥ ${round2(pMotorKw * 1.20)} kW (+20% motor).`
+                    : `✓ Corrente recomendada: I_est ${invCompat.iEst} A ≥ ${round2(corrNum * 1.20)} A (+20% I_motor).`}
                   {form.metodo === 'cv' && pFVReal >= pFVMinKw
-                    ? ` FV ${pFVReal} kWp — oversizing ${oversizingPct}% ≥ 70% ✓`
+                    ? ` FV ${pFVReal} kWp — oversizing ${oversizingPct}% ✓`
                     : ''}
                 </span>
               </div>
@@ -1038,12 +1080,22 @@ function BombDimStep({ data, onChange, products }) {
         <button onClick={() => setSub('estrutura')} className="flex items-center gap-1 px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:border-gray-300 transition-all">
           <ChevronLeft size={16} /> Voltar
         </button>
-        <button onClick={handleConfirm}
-          disabled={!selPanel || !invFinal || (invFinal ? !checkInvCompat(invFinal).ok : true)}
-          className="px-8 py-2.5 rounded-xl bg-weg-blue text-white font-semibold hover:bg-weg-blue-mid disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          title={invFinal && !checkInvCompat(invFinal).ok ? 'Selecione um inversor compatível com o motor' : undefined}>
-          ✓ Confirmar dimensionamento
-        </button>
+        {(() => {
+          const compat = invFinal ? checkInvCompat(invFinal) : null
+          const blocked = !selPanel || !invFinal || compat?.status === 'blocked'
+          return (
+            <button onClick={handleConfirm}
+              disabled={blocked}
+              className={`px-8 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                compat?.status === 'warning'
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                  : 'bg-weg-blue hover:bg-weg-blue-mid text-white'
+              }`}
+              title={blocked ? 'Selecione um inversor compatível com o motor' : undefined}>
+              {compat?.status === 'warning' ? '⚠ Confirmar (com ressalva)' : '✓ Confirmar dimensionamento'}
+            </button>
+          )
+        })()}
       </div>
     </div>
   )
