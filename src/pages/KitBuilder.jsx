@@ -4916,14 +4916,26 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           </div>
         )}
 
-        {/* Footer note */}
-        <div className="px-5 py-3 bg-gray-50 text-xs text-gray-400 border-t border-gray-200 space-y-0.5">
-          <p>Preços {freteOpcao.acrescimo === 1 ? 'FOB Itajaí-SC' : freteOpcao.nome}. Válidos conforme {tableInfo.nome}. Sujeitos a alteração sem aviso prévio.</p>
-          {isAdmin && <p>Fator de precificação: {F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × (1 − ${desconto}%)` : ''}.</p>}
-          <p>Validade desta proposta: <strong>{prop.validade || 7} dias</strong> a partir da data de emissão.</p>
+        {/* Rodapé informativo */}
+        <div className="mx-5 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
+          <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
+          <p className="text-[10px] text-gray-500">
+            Preços {freteOpcao.acrescimo === 1 ? 'FOB Itajaí-SC' : freteOpcao.nome}. Válidos conforme <strong>{tableInfo.nome}</strong>. Sujeitos a alteração sem aviso prévio.
+          </p>
+          {isAdmin && (
+            <p className="text-[10px] text-gray-400">
+              Fator de precificação: {F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × (1 − ${desconto}%)` : ''}.
+            </p>
+          )}
+          <p className="text-[10px] text-gray-500">
+            Validade desta proposta: <strong>{prop.validade || 7} dias</strong> a partir da data de emissão.
+          </p>
+          <p className="text-[10px] text-gray-400">
+            Dúvidas: (94) 9209-0380 · vendas@ernaniff.com.br
+          </p>
         </div>
 
-        {/* Print-only footer */}
+        {/* Print-only blue footer bar */}
         <div className="hidden print:flex items-center justify-between px-6 py-2 border-t border-gray-300" style={{background:'#1B3A8A'}}>
           <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome} — Validade: {prop.validade || 7} dias</span>
           <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>

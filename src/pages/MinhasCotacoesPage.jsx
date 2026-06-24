@@ -1315,11 +1315,6 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             <span className="text-white font-extrabold text-xl">{fmt(quote.total_final)}</span>
           </div>
 
-          {/* Footer page 1 */}
-          <p className="text-center text-xs text-gray-400 py-4">
-            Preços {quote.frete_pct > 1 ? quote.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.
-          </p>
-
           {/* Composição da Estrutura — sempre em nova página */}
           {structureComposition.length > 0 && (
             <div className="px-8 py-4 border-t border-dashed border-gray-200 print-new-page">
@@ -1354,6 +1349,22 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </table>
             </div>
           )}
+
+          {/* Rodapé informativo — abaixo da estrutura (ou do total quando não há estrutura) */}
+          <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
+            <p className="text-[11px] text-gray-600 font-medium">
+              📋 Condições Comerciais
+            </p>
+            <p className="text-[10px] text-gray-500">
+              Preços {quote.frete_pct > 1 ? quote.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme <strong>{tableInfo?.nome}</strong>. Sujeitos a alteração sem aviso prévio.
+            </p>
+            <p className="text-[10px] text-gray-500">
+              Validade desta proposta: <strong>7 dias</strong> a partir da data de emissão.
+            </p>
+            <p className="text-[10px] text-gray-400">
+              Dúvidas: (94) 9209-0380 · vendas@ernaniff.com.br
+            </p>
+          </div>
         </div>
       )
     })()}
