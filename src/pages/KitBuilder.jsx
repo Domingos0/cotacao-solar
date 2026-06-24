@@ -4867,7 +4867,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
         {/* Structure composition section */}
         {structureComposition.length > 0 && (
-          <div className="border-t-2 border-dashed border-gray-200">
+          <div className="border-t-2 border-dashed border-gray-200 print-new-page">
             {/* Section header */}
             <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
               <p className="text-xs font-bold text-gray-600 uppercase tracking-widest">

@@ -103,9 +103,31 @@
     white-space: normal !important;
   }
 
+  /* Compacta células em print para o total caber na pág 1 */
+  #kit-print tbody td,
+  #kit-print tbody th {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+  }
+  #kit-print thead th {
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
+  /* Total (tfoot) nunca quebra de página — fica junto com os últimos itens */
+  #kit-print tfoot {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  #kit-print tfoot tr {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+
   /* Avoid breaking rows across pages */
   #kit-print tr {
     page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   /* Blue header prints with color */
@@ -114,9 +136,10 @@
     color: white !important;
   }
 
-  /* Structure composition section break hint */
-  #kit-print .print-page-break {
-    page-break-before: auto;
+  /* Composição da estrutura sempre começa em nova página */
+  #kit-print .print-new-page {
+    page-break-before: always !important;
+    break-before: page !important;
   }
 }
 

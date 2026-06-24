@@ -1320,9 +1320,9 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             Preços {quote.frete_pct > 1 ? quote.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.
           </p>
 
-          {/* Composição da Estrutura — logo abaixo do total */}
+          {/* Composição da Estrutura — sempre em nova página */}
           {structureComposition.length > 0 && (
-            <div className="px-8 py-4 border-t border-dashed border-gray-200">
+            <div className="px-8 py-4 border-t border-dashed border-gray-200 print-new-page">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Composição da Estrutura de Fixação</p>
               {kitData.estruturaKit && (
                 <p className="text-xs text-gray-400 mb-3">
