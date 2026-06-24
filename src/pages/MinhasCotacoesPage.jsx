@@ -40,6 +40,43 @@ const ISOPLETA_OPTIONS = [30, 35, 40, 45, 50]
 
 const round2 = v => Math.round(v * 100) / 100
 
+// ─── Stock helpers ────────────────────────────────────────────────────────────
+function isNordestePanel(panel) {
+  if (!panel?.nome) return false
+  return /(nordeste|cd\s*ne\b)/i.test(panel.nome)
+}
+
+function getPanelStock(panel, catalogProducts) {
+  if (!panel || !catalogProducts?.length) return null
+  const cur = catalogProducts.find(p => p.id === panel.id || (panel.codigo && p.codigo === panel.codigo))
+  return cur ? (cur.estoque || 'Disponível') : null
+}
+
+function findAlternativePanel(panel, freteNome, catalogProducts) {
+  if (!panel || !catalogProducts?.length) return null
+  const available = catalogProducts.filter(
+    p => p.kitRole === KIT_ROLE.PANEL && p.preco &&
+    (!p.estoque || p.estoque === 'Disponível') &&
+    p.id !== panel.id
+  )
+  if (!available.length) return null
+
+  const originalIsNordeste = isNordestePanel(panel)
+  const freteIsNordeste = /nordeste/i.test(freteNome || '')
+
+  let pool
+  if (originalIsNordeste && freteIsNordeste) {
+    // CD Nordeste + frete Nordeste → sugerir mais barato CD Nordeste disponível
+    pool = available.filter(p => isNordestePanel(p))
+  } else {
+    // qualquer outro caso → sugerir mais barato não-Nordeste
+    pool = available.filter(p => !isNordestePanel(p))
+  }
+
+  if (!pool.length) pool = available
+  return pool.reduce((min, p) => p.preco < min.preco ? p : min)
+}
+
 // Fatores de precificação (mirror de KitBuilder)
 const FATOR_BASE = 0.63 * 0.92 * 0.95 * 0.93  // ≈ 0.5121
 
@@ -127,7 +164,7 @@ function AccRow({ label, included, onToggle, qty, onQtyChange, unit = 'un', prod
   )
 }
 
-function InlineEditor({ quote, onApply, onCancel }) {
+function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
   const { catalogProducts, freteOpcoes, desconto } = useProducts()
   const kitData    = quote.data || {}
   const kitType    = kitData.kitType || 'ongrid_mono'
@@ -138,8 +175,12 @@ function InlineEditor({ quote, onApply, onCancel }) {
 
   // ── Panel state ──
   const [tab, setTab]           = useState('modulos')
-  const [selPanel, setSelPanel] = useState(kitData.panel || null)
-  const [panelQty, setPanelQty] = useState(kitData.panelQty || 0)
+  const [selPanel, setSelPanel] = useState(initialPanel || kitData.panel || null)
+  const [panelQty, setPanelQty] = useState(
+    initialPanel
+      ? Math.ceil((targetKwp * 1000) / initialPanel.potencia)
+      : (kitData.panelQty || 0)
+  )
 
   // ── Inverter state ──
   const [selInv, setSelInv] = useState(kitData.inverter || null)
@@ -745,8 +786,16 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const items    = quote.quote_items || []
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
-  const { tableInfo } = useProducts()
+  const { tableInfo, catalogProducts } = useProducts()
   const { profile, isAdmin } = useAuth()
+
+  // ── Stock check for the saved panel ──────────────────────────────────────────
+  const panelInQuote   = kitData.panel
+  const panelStock     = getPanelStock(panelInQuote, catalogProducts)
+  const panelEsgotado  = panelStock === 'Esgotado' || panelStock === 'Sem estoque'
+  const alternativePanel = panelEsgotado
+    ? findAlternativePanel(panelInQuote, quote.frete_nome, catalogProducts)
+    : null
 
   // Build structure composition (mirrors KitBuilder logic)
   const structureComposition = useMemo(() => {
@@ -774,6 +823,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const [done, setDone]                   = useState(null)  // 'fechar' | 'rejeitar'
   const [showRevHistory, setShowRevHistory] = useState(false)
   const [editMode, setEditMode]           = useState(false)
+  const [suggestedPanel, setSuggestedPanel] = useState(null)
   const [successData, setSuccessData]     = useState(null)
   const [countdown, setCountdown]         = useState(4)
   const [isPrinting, setIsPrinting]       = useState(false)
@@ -1288,9 +1338,50 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             <InlineEditor
               quote={quote}
               onApply={handleApplyEdit}
-              onCancel={() => setEditMode(false)}
+              onCancel={() => { setEditMode(false); setSuggestedPanel(null) }}
+              initialPanel={suggestedPanel}
             />
           ) : (<>
+
+          {/* Aviso de módulo esgotado */}
+          {panelEsgotado && panelInQuote && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} className="shrink-0 text-red-500 mt-0.5" />
+                <div>
+                  <p className="font-bold text-red-800 text-sm">Módulo esgotado</p>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    O módulo <strong>{panelInQuote.nome}</strong> ({panelInQuote.potencia} Wp)
+                    desta cotação está sem estoque no momento.
+                  </p>
+                </div>
+              </div>
+              {alternativePanel && !isClosed && (
+                <div className="bg-white rounded-lg border border-red-100 px-3 py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 truncate">
+                      Sugestão: {alternativePanel.nome}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {alternativePanel.potencia} Wp · {fmt(alternativePanel.preco)}/un
+                      {isNordestePanel(alternativePanel) && ' · CD Nordeste'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setSuggestedPanel(alternativePanel); setEditMode(true) }}
+                    className="shrink-0 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold px-3 py-2 rounded-lg"
+                  >
+                    Usar este módulo
+                  </button>
+                </div>
+              )}
+              {!alternativePanel && !isClosed && (
+                <p className="text-xs text-red-600 pl-6">
+                  Nenhum módulo alternativo disponível no momento.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Kit items table */}
           <div>
@@ -1675,6 +1766,7 @@ const CLOSED_STATUSES = ['fechado', 'implantado', 'perdida']
 
 export default function MinhasCotacoesPage({ onLoadQuote }) {
   const { session, profile } = useAuth()
+  const { catalogProducts } = useProducts()
   const [quotes, setQuotes]           = useState([])
   const [loading, setLoading]         = useState(true)
   const [selectedQuote, setSelectedQuote] = useState(null)
@@ -2077,6 +2169,8 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                   const revisoes = kitData.revisoes || []
                   const hasRevisions = revisoes.length > 0
                   const isExpanded = expandedId === q.id
+                  const qPanelStock = getPanelStock(kitData.panel, catalogProducts)
+                  const qPanelEsgotado = qPanelStock === 'Esgotado' || qPanelStock === 'Sem estoque'
 
                   return (
                     <>
@@ -2096,6 +2190,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                           >
                             {kitData.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
                           </button>
+                          {qPanelEsgotado && (
+                            <span className="flex items-center gap-1 mt-0.5 text-[10px] font-semibold text-red-600">
+                              <AlertTriangle size={10} /> Módulo esgotado
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-3.5 text-center">
                           <span className={`text-sm font-bold ${(kitData.revisao || 0) > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
