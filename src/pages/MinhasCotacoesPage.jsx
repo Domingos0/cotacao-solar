@@ -2398,7 +2398,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                                   <StatusBadge status="revisada" />
                                 )}
                               </td>
-                              <td className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">
+                              <td className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 whitespace-nowrap">
                                 {r.total_final != null ? fmt(r.total_final) : '—'}
                               </td>
                               <td className="px-3 py-2.5 text-center">

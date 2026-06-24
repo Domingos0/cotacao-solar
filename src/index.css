@@ -102,6 +102,18 @@
     word-break: break-word !important;
     white-space: normal !important;
   }
+  /* tfoot: valor total nunca quebra linha */
+  #kit-print tfoot td,
+  #kit-print tfoot th {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+  }
+  /* Colunas de valor (4ª = Unit. e 5ª = Total) nunca quebram */
+  #kit-print tbody td:nth-child(4),
+  #kit-print tbody td:nth-child(5) {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+  }
 
   /* Compacta células em print para o total caber na pág 1 */
   #kit-print tbody td,
