@@ -335,6 +335,7 @@ function BombDimStep({ data, onChange, products }) {
     corrente:  data.bombCorrente  || '',
     distancia: data.bombDistancia != null ? String(data.bombDistancia) : '',
     roofType:  data.bombRoofType  || '',
+    hsp:       data.bombHsp       != null ? String(data.bombHsp) : String(SUN_HOURS),
   })
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -354,13 +355,13 @@ function BombDimStep({ data, onChange, products }) {
   const distNum  = parseFloat(form.distancia) || 0
   const needsReact = distNum > 70
 
+  // NBR 16690: 220 V → 7 módulos em série | 380 V → 14 módulos em série
+  const seriesPorString = form.tensao === '380' ? 14 : 7
+
   const calcNMod = (panel) => {
-    if (!panel || !pFVMinKw) return 7
-    const pFVMinWp = pFVMinKw * 1000
-    let n = Math.ceil(pFVMinWp / panel.potencia)
-    n = Math.max(7, n)
-    if (panel.potencia >= 700 && n > 7 && (n - 1) * panel.potencia >= pFVMinWp) n--
-    return n
+    if (!panel || !pFVMinKw) return seriesPorString
+    const nMinimo = Math.ceil((pFVMinKw * 1000) / panel.potencia)
+    return Math.max(Math.ceil(nMinimo / seriesPorString) * seriesPorString, seriesPorString)
   }
 
   const [selPanel, setSelPanel] = useState(() => data.panel || modulos[0] || null)
@@ -389,6 +390,25 @@ function BombDimStep({ data, onChange, products }) {
   const nMod      = calcNMod(selPanel)
   const pFVReal   = selPanel ? round2(nMod * selPanel.potencia / 1000) : 0
   const entFinal  = invFinal?.entradas || 2
+  const paralelos = seriesPorString > 0 ? nMod / seriesPorString : 0
+  const hspNum    = parseFloat(form.hsp) || SUN_HOURS
+  const eDiaKwh   = pFVReal > 0 ? round2(pFVReal * hspNum * 0.80) : 0
+  const eMesKwh   = round2(eDiaKwh * 30)
+  const eAnoMwh   = round2((eDiaKwh * 365) / 1000)
+  const oversizingPct = pMotorKw > 0 && pFVReal > 0 ? round2((pFVReal / pMotorKw - 1) * 100) : null
+
+  const modulosComparativos = useMemo(() => {
+    if (!pFVMinKw || !seriesPorString) return modulos.map(m => ({ ...m, totalMods: 0, paralelos: 0, kWp: 0 }))
+    return modulos
+      .map(m => {
+        const nMin    = Math.ceil((pFVMinKw * 1000) / m.potencia)
+        const total   = Math.max(Math.ceil(nMin / seriesPorString) * seriesPorString, seriesPorString)
+        const nParal  = total / seriesPorString
+        const kWp     = round2(total * m.potencia / 1000)
+        return { ...m, totalMods: total, paralelos: nParal, kWp }
+      })
+      .sort((a, b) => a.paralelos - b.paralelos || a.totalMods - b.totalMods)
+  }, [modulos, pFVMinKw, seriesPorString])
 
   const handleConfirm = () => {
     const panel = selPanel || modulos[0]
@@ -407,6 +427,11 @@ function BombDimStep({ data, onChange, products }) {
       bombNeedsReactance: needsReact,
       bombPMotorKw: round2(pMotorKw),
       bombPFVMinKw: round2(pFVMinKw),
+      bombHsp: hspNum,
+      bombParalelos: paralelos,
+      bombSeries: seriesPorString,
+      bombEDia: eDiaKwh,
+      bombEMes: eMesKwh,
       bombDimDone: true,
       panel,
       panelQty: qty,
@@ -644,20 +669,112 @@ function BombDimStep({ data, onChange, products }) {
         {needsReact && <span className="bg-orange-100 text-orange-800 text-xs font-semibold px-3 py-1.5 rounded-full">⚠ Reatância ({distNum}m)</span>}
       </div>
 
-      {/* Panel selector */}
+      {/* Configuração de strings */}
+      {selPanel && (
+        <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-4">
+          <h3 className="font-bold text-cyan-800 mb-3 flex items-center gap-2">
+            <span>📐</span> Configuração das strings (NBR 16690)
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div className="bg-white rounded-lg p-3 border border-cyan-100">
+              <p className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Config.</p>
+              <p className="text-xl font-black text-cyan-700">{paralelos}×{seriesPorString}</p>
+              <p className="text-[10px] text-gray-400">paralelo × série</p>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-cyan-100">
+              <p className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Total módulos</p>
+              <p className="text-xl font-black text-cyan-700">{nMod}</p>
+              <p className="text-[10px] text-gray-400">{pFVReal} kWp instalado</p>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-cyan-100">
+              <p className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Vmp string</p>
+              <p className="text-xl font-black text-cyan-700">
+                {selPanel.vmp ? `${round2(selPanel.vmp * seriesPorString)} V` : '—'}
+              </p>
+              <p className="text-[10px] text-gray-400">{seriesPorString}×Vmp</p>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-cyan-100">
+              <p className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Isc string</p>
+              <p className="text-xl font-black text-cyan-700">
+                {selPanel.isc ? `${selPanel.isc} A` : '—'}
+              </p>
+              <p className="text-[10px] text-gray-400">por string</p>
+            </div>
+          </div>
+          {form.metodo === 'cv' && (
+            <p className="text-xs text-cyan-700 mt-3 text-center">
+              P_FV mín. {round2(pFVMinKw)} kW (motor {round2(pMotorKw)} kW × 1,70) →
+              arredondado para múltiplo de {seriesPorString} = <strong>{nMod} módulos ({paralelos} string{paralelos !== 1 ? 's' : ''})</strong>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Comparativo de módulos disponíveis — por número de paralelos */}
+      {pFVMinKw > 0 && modulosComparativos.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="font-bold text-gray-800 mb-1">📊 Comparativo — catálogo por nº de strings em paralelo</h3>
+          <p className="text-xs text-gray-400 mb-3">Clique para selecionar o módulo. Configuração {form.tensao}V: {seriesPorString} módulos em série por string.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-gray-100 text-gray-500 text-left">
+                  <th className="pb-2 pr-2 font-semibold">Módulo</th>
+                  <th className="pb-2 font-semibold text-center">Wp</th>
+                  <th className="pb-2 font-semibold text-center">Config.</th>
+                  <th className="pb-2 font-semibold text-center">Total</th>
+                  <th className="pb-2 font-semibold text-right">kWp</th>
+                  <th className="pb-2 font-semibold text-right">Módulos R$</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modulosComparativos.map(m => {
+                  const isSelected = selPanel?.id === m.id
+                  return (
+                    <tr key={m.id}
+                      onClick={() => setSelPanel(products.find(p => p.id === m.id) || m)}
+                      className={`border-b border-gray-50 cursor-pointer transition-colors ${
+                        isSelected ? 'bg-cyan-50' : 'hover:bg-gray-50'
+                      }`}>
+                      <td className={`py-1.5 pr-2 font-medium leading-snug ${isSelected ? 'text-cyan-700' : 'text-gray-800'}`}>
+                        {m.nome}
+                        {isSelected && <span className="ml-1 text-cyan-600">✓</span>}
+                      </td>
+                      <td className="py-1.5 text-center text-gray-600">{m.potencia}</td>
+                      <td className="py-1.5 text-center">
+                        <span className={`font-black font-mono ${isSelected ? 'text-cyan-700' : 'text-gray-700'}`}>
+                          {m.paralelos}×{seriesPorString}
+                        </span>
+                      </td>
+                      <td className="py-1.5 text-center text-gray-600">{m.totalMods} un</td>
+                      <td className="py-1.5 text-right font-semibold text-gray-700">{m.kWp} kWp</td>
+                      <td className="py-1.5 text-right text-weg-orange font-semibold">
+                        {m.preco ? fmtInt(m.preco * m.totalMods) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Panel selector (compacto — seleção pelo comparativo acima) */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-gray-800">☀️ Módulos fotovoltaicos</h3>
+          <h3 className="font-bold text-gray-800">☀️ Módulo selecionado</h3>
           {selPanel && (
             <span className="text-xs bg-green-100 text-green-700 font-semibold px-2 py-1 rounded-full">
               {nMod} un · {pFVReal} kWp
             </span>
           )}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
           {modulos.map(m => {
             const n = calcNMod(m)
             const p = round2(n * m.potencia / 1000)
+            const pal = n / seriesPorString
             return (
               <button key={m.id} onClick={() => setSelPanel(m)}
                 className={`text-left text-sm rounded-lg border p-2.5 transition-all ${
@@ -665,19 +782,13 @@ function BombDimStep({ data, onChange, products }) {
                 }`}>
                 <div className="font-semibold">{m.nome}</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  {m.potencia} Wp · {n} un · {p} kWp · {fmt(m.preco)}/un
+                  {m.potencia} Wp · <span className="font-bold text-cyan-700">{pal}×{seriesPorString}</span> = {n} un · {p} kWp · {fmt(m.preco)}/un
                 </div>
               </button>
             )
           })}
           {modulos.length === 0 && <p className="text-sm text-gray-400 text-center py-3 col-span-2">Nenhum módulo no catálogo.</p>}
         </div>
-        {form.metodo === 'cv' && selPanel && (
-          <p className="text-xs text-gray-500 mt-2">
-            P_FV mín. {round2(pFVMinKw)} kW · {nMod} × {selPanel.potencia} Wp = {pFVReal} kWp
-            {nMod === 7 && pFVReal < pFVMinKw ? ' (mín. 7 módulos aplicado)' : ''}
-          </p>
-        )}
       </div>
 
       {/* Inverter selector */}
@@ -745,6 +856,67 @@ function BombDimStep({ data, onChange, products }) {
           {needsReact && <div className="text-orange-600 font-semibold col-span-2">· Reatância de saída (distância {distNum}m)</div>}
         </div>
       </div>
+
+      {/* Produção de energia */}
+      {pFVReal > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="font-bold text-gray-800 mb-3">⚡ Estimativa de produção de energia</h3>
+          <div className="flex items-center gap-2 mb-3">
+            <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">HSP (h/dia):</label>
+            <input type="number" min="1" max="8" step="0.1" value={form.hsp}
+              onChange={e => sf('hsp', e.target.value)}
+              className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+            <span className="text-xs text-gray-400">Padrão Brasil: {SUN_HOURS} h — ajuste conforme a região</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-100">
+              <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">Diária</p>
+              <p className="text-lg font-black text-yellow-700">{eDiaKwh}</p>
+              <p className="text-[10px] text-gray-400">kWh/dia</p>
+            </div>
+            <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-100">
+              <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">Mensal</p>
+              <p className="text-lg font-black text-yellow-700">{eMesKwh}</p>
+              <p className="text-[10px] text-gray-400">kWh/mês</p>
+            </div>
+            <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-100">
+              <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">Anual</p>
+              <p className="text-lg font-black text-yellow-700">{eAnoMwh}</p>
+              <p className="text-[10px] text-gray-400">MWh/ano</p>
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2 text-center">
+            Fórmula: {pFVReal} kWp × {hspNum} HSP × 0,80 (PR) = {eDiaKwh} kWh/dia
+          </p>
+        </div>
+      )}
+
+      {/* Aviso de eficiência do sistema (oversizing) */}
+      {oversizingPct !== null && form.metodo === 'cv' && (
+        <div className={`rounded-xl border p-4 flex items-start gap-3 ${
+          oversizingPct >= 70
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : oversizingPct >= 50
+            ? 'bg-amber-50 border-amber-200 text-amber-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <span className="text-xl shrink-0">{oversizingPct >= 70 ? '✅' : '⚠️'}</span>
+          <div>
+            <p className="font-bold text-sm">
+              Eficiência do sistema — Oversizing: {oversizingPct}%
+            </p>
+            <p className="text-xs mt-0.5">
+              {oversizingPct >= 70
+                ? `Sistema dentro da recomendação técnica (mínimo 70%). Potência FV ${pFVReal} kWp ÷ motor ${round2(pMotorKw)} kW = fator ${round2(pFVReal / pMotorKw)}.`
+                : oversizingPct >= 50
+                ? `Oversizing abaixo de 70%. Recomenda-se aumentar o número de módulos para melhor desempenho em dias nublados.`
+                : `Oversizing insuficiente (< 50%). O sistema pode não partir o motor em condições de baixa irradiação.`
+              }
+            </p>
+            <p className="text-[10px] mt-1 opacity-70">O cliente pode alterar o dimensionamento nos passos seguintes.</p>
+          </div>
+        </div>
+      )}
 
       {/* Validation messages */}
       <div className="space-y-2 text-sm">
