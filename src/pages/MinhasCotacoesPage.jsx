@@ -1811,8 +1811,8 @@ function RevisionDetailModal({ quote, revision, onClose }) {
 const CLOSED_STATUSES = ['fechado', 'implantado', 'perdida']
 
 export default function MinhasCotacoesPage({ onLoadQuote }) {
-  const { session, profile } = useAuth()
-  const { catalogProducts } = useProducts()
+  const { session, profile, isAdmin } = useAuth()
+  const { catalogProducts, condicoes, tableInfo: rootTableInfo } = useProducts()
   const [quotes, setQuotes]           = useState([])
   const [loading, setLoading]         = useState(true)
   const [selectedQuote, setSelectedQuote] = useState(null)
@@ -1956,12 +1956,17 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
               )}
               <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
                 <span>Total Final</span>
-                <span className="text-[#1B3A8A] text-lg">{fmt(r.total_final)}</span>
+                <span className="text-[#1B3A8A] text-lg whitespace-nowrap">{fmt(r.total_final)}</span>
               </div>
             </div>
             <p className="text-xs text-gray-400 text-center pt-4">
               Revisão {r.revisao} — emitida em {fmtDate(r.data)}
             </p>
+            {/* Rodapé informativo */}
+            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
+              <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
+              <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+            </div>
           </div>
         </div>
       )
