@@ -3901,7 +3901,7 @@ function RevisionHistory({ revisoes, numeroOrcamento }) {
 
 // ─── Step 6: Resumo / Orçamento ──────────────────────────────────────────────
 function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, onGoToQuotes }) {
-  const { freteOpcoes, desconto: globalDesconto } = useProducts()
+  const { freteOpcoes, desconto: globalDesconto, condicoes } = useProducts()
   const { session, isAdmin, profile } = useAuth()
   // Desconto individual do perfil tem prioridade sobre o desconto global
   const desconto = profile?.desconto_comercial != null ? profile.desconto_comercial : globalDesconto
@@ -4690,12 +4690,10 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                       {item.qty} {item.unit}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-600 print:hidden">
-                    {isAdmin
-                      ? (item.product.preco ? fmt(item.product.preco) : 'S/C')
-                      : <span className="text-gray-300">—</span>}
+                  <td className="px-4 py-3 text-right text-sm text-gray-600 whitespace-nowrap">
+                    {item.product.preco ? fmt(item.product.preco) : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">
+                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">
                     {item.product.preco ? fmt(moneyMul(item.product.preco, item.qty)) : '—'}
                   </td>
                   <td className="px-4 py-3 print:hidden">
@@ -4752,7 +4750,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                 <td colSpan="4" className="px-4 py-4 text-right font-bold uppercase tracking-wide">
                   Total do Kit
                 </td>
-                <td className="px-4 py-4 text-right text-xl font-extrabold">
+                <td className="px-4 py-4 text-right text-xl font-extrabold whitespace-nowrap">
                   {fmt(totalFinal)}
                 </td>
               </tr>
@@ -4916,23 +4914,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           </div>
         )}
 
-        {/* Rodapé informativo */}
+        {/* Rodapé informativo — conteúdo editável pelo admin */}
         <div className="mx-5 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
           <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
-          <p className="text-[10px] text-gray-500">
-            Preços {freteOpcao.acrescimo === 1 ? 'FOB Itajaí-SC' : freteOpcao.nome}. Válidos conforme <strong>{tableInfo.nome}</strong>. Sujeitos a alteração sem aviso prévio.
-          </p>
+          <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
           {isAdmin && (
             <p className="text-[10px] text-gray-400">
               Fator de precificação: {F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × (1 − ${desconto}%)` : ''}.
             </p>
           )}
-          <p className="text-[10px] text-gray-500">
-            Validade desta proposta: <strong>{prop.validade || 7} dias</strong> a partir da data de emissão.
-          </p>
-          <p className="text-[10px] text-gray-400">
-            Dúvidas: (94) 9209-0380 · vendas@ernaniff.com.br
-          </p>
         </div>
 
         {/* Print-only blue footer bar */}

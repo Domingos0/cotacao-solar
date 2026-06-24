@@ -1247,6 +1247,53 @@ function DescontoCard() {
   )
 }
 
+// ─── Condições Comerciais Card ────────────────────────────────────────────────
+function CondicoesCard() {
+  const { condicoes, saveCondicoes } = useProducts()
+  const [local, setLocal] = useState(condicoes)
+  const [saved, setSaved] = useState(false)
+
+  const commit = () => {
+    saveCondicoes(local)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+      <div className="mb-3">
+        <p className="font-semibold text-gray-900 text-sm mb-0.5">Condições Comerciais</p>
+        <p className="text-xs text-gray-400">
+          Aparece no rodapé de impressão de todos os kits (novos e já salvos) para todos os usuários.
+        </p>
+      </div>
+      <textarea
+        rows={4}
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-weg-blue resize-y"
+        placeholder="Ex: Preços FOB Itajaí-SC. Validade 7 dias..."
+      />
+      <div className="flex items-center justify-between mt-2">
+        <button
+          onClick={() => setLocal(condicoes)}
+          className="text-xs text-gray-400 hover:text-gray-600"
+        >
+          Descartar alterações
+        </button>
+        <button
+          onClick={commit}
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+            saved ? 'bg-green-500 text-white' : 'bg-weg-blue hover:bg-weg-blue-mid text-white'
+          }`}
+        >
+          {saved ? '✓ Salvo' : 'Salvar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Frete Section ───────────────────────────────────────────────────────────
 function FreteSection() {
   const { freteOpcoes, addFreteOpcao, updateFreteOpcao, deleteFreteOpcao, resetFrete } = useProducts()
@@ -3730,6 +3777,7 @@ function AdminDashboard() {
 
       {/* Freight + Discount row */}
       <DescontoCard />
+      <CondicoesCard />
       <FreteSection />
       <DisponibilidadeCard />
 

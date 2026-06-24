@@ -10,6 +10,12 @@ const FRETE_KEY        = 'weg_frete_opcoes'
 const DESCONTO_KEY     = 'weg_desconto'
 const AUTH_KEY         = 'weg_admin_auth'
 const ACTIVE_LIST_KEY  = 'weg_active_list_sap'
+const CONDICOES_KEY    = 'weg_condicoes'
+
+export const DEFAULT_CONDICOES =
+`Preços FOB Itajaí-SC. Sujeitos a alteração sem aviso prévio.
+Validade desta proposta: 7 dias a partir da data de emissão.
+Dúvidas: (94) 9209-0380 · vendas@ernaniff.com.br`
 
 export const DEFAULT_FRETE = [
   { id: 1, nome: 'FOB – Retirada em nossa fábrica WEG em Itajaí-SC', acrescimo: 1.000 },
@@ -46,6 +52,13 @@ function loadDesconto() {
     const saved = localStorage.getItem(DESCONTO_KEY)
     return saved !== null ? Number(saved) : 0
   } catch { return 0 }
+}
+
+function loadCondicoes() {
+  try {
+    const saved = localStorage.getItem(CONDICOES_KEY)
+    return saved !== null ? saved : DEFAULT_CONDICOES
+  } catch { return DEFAULT_CONDICOES }
 }
 
 function loadFrete() {
@@ -113,6 +126,7 @@ export function ProductsProvider({ children }) {
   const [desconto, setDesconto]       = useState(loadDesconto)
   const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem(AUTH_KEY) === '1')
   const [activeListCodes, setActiveListCodesState] = useState(loadActiveListCodes)
+  const [condicoes, setCondicoes] = useState(loadCondicoes)
 
   // Na inicialização: se o localStorage não tem dados importados (cache foi limpo),
   // restaura do Supabase automaticamente
@@ -126,7 +140,8 @@ export function ProductsProvider({ children }) {
       sbLoad('catalog_table_info'),
       sbLoad('catalog_frete'),
       sbLoad('catalog_desconto'),
-    ]).then(([prods, codes, tinfo, frete, desc]) => {
+      sbLoad('catalog_condicoes'),
+    ]).then(([prods, codes, tinfo, frete, desc, cond]) => {
       if (prods) {
         const restored = prods.map(p => normalizeProduct({ ...p, kitRole: p.kitRole ?? assignKitRole(p) }))
         setProducts(restored)
@@ -149,6 +164,10 @@ export function ProductsProvider({ children }) {
         const d = Number(desc)
         setDesconto(d)
         localStorage.setItem(DESCONTO_KEY, String(d))
+      }
+      if (cond !== null && typeof cond === 'string') {
+        setCondicoes(cond)
+        localStorage.setItem(CONDICOES_KEY, cond)
       }
     }).catch(e => console.warn('[catalog] restore error:', e?.message))
   }, [])
@@ -234,6 +253,13 @@ export function ProductsProvider({ children }) {
     sbSave('catalog_desconto', v)
   }, [])
 
+  const saveCondicoes = useCallback((texto) => {
+    const v = typeof texto === 'string' ? texto : DEFAULT_CONDICOES
+    setCondicoes(v)
+    localStorage.setItem(CONDICOES_KEY, v)
+    sbSave('catalog_condicoes', v)
+  }, [])
+
   const saveFrete = useCallback((opcoes) => {
     setFreteOpcoes(opcoes)
     localStorage.setItem(FRETE_KEY, JSON.stringify(opcoes))
@@ -290,6 +316,8 @@ export function ProductsProvider({ children }) {
       resetToDefaults,
       syncDefaultPrices,
       saveDesconto,
+      condicoes,
+      saveCondicoes,
       saveFrete,
       addFreteOpcao,
       updateFreteOpcao,

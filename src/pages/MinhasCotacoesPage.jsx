@@ -833,7 +833,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const items    = quote.quote_items || []
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
-  const { tableInfo, catalogProducts } = useProducts()
+  const { tableInfo, catalogProducts, condicoes } = useProducts()
   const { profile, isAdmin } = useAuth()
 
   // ── Stock check for the saved panel ──────────────────────────────────────────
@@ -1279,8 +1279,8 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                       <p className="text-xs text-gray-400 font-mono">SAP:&nbsp;&nbsp;{item.codigo_sap}</p>
                     </td>
                     <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                    <td className="py-2.5 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
-                    <td className="py-2.5 text-right text-sm font-bold text-gray-900">{fmt(item.total)}</td>
+                    <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt(item.preco_unit)}</td>
+                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1308,11 +1308,11 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               )}
             </div>
           )}
-          <div className="bg-[#003087] mx-0 px-8 py-4 flex justify-between items-center">
+          <div className="bg-[#003087] mx-0 px-8 py-4 flex justify-between items-center gap-4">
             <span className="text-white font-extrabold text-sm uppercase tracking-widest">
               Total do Kit
             </span>
-            <span className="text-white font-extrabold text-xl">{fmt(quote.total_final)}</span>
+            <span className="text-white font-extrabold text-xl whitespace-nowrap">{fmt(quote.total_final)}</span>
           </div>
 
           {/* Composição da Estrutura — sempre em nova página */}
@@ -1350,20 +1350,10 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             </div>
           )}
 
-          {/* Rodapé informativo — abaixo da estrutura (ou do total quando não há estrutura) */}
+          {/* Rodapé informativo — conteúdo editável pelo admin */}
           <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
-            <p className="text-[11px] text-gray-600 font-medium">
-              📋 Condições Comerciais
-            </p>
-            <p className="text-[10px] text-gray-500">
-              Preços {quote.frete_pct > 1 ? quote.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme <strong>{tableInfo?.nome}</strong>. Sujeitos a alteração sem aviso prévio.
-            </p>
-            <p className="text-[10px] text-gray-500">
-              Validade desta proposta: <strong>7 dias</strong> a partir da data de emissão.
-            </p>
-            <p className="text-[10px] text-gray-400">
-              Dúvidas: (94) 9209-0380 · vendas@ernaniff.com.br
-            </p>
+            <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
+            <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
           </div>
         </div>
       )
