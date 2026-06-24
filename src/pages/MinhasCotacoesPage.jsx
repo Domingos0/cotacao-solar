@@ -867,6 +867,21 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     const freteNome   = selFrete?.nome || quote.frete_nome || '—'
     const fretePct    = selFrete?.acrescimo || quote.frete_pct || 1
     const totalFinal  = newTotal ?? quote.total_final ?? 0
+
+    // Na primeira revisão, preserva o estado original (rev 0) nos itens atuais do banco
+    const prevRevisoes = kitData.revisoes || []
+    const jaTemRev0    = prevRevisoes.some(r => r.revisao === 0)
+    const snapshotRev0 = (!jaTemRev0 && (kitData.revisao || 0) === 0) ? {
+      revisao:     0,
+      data:        quote.created_at,
+      total_final: quote.total_final || 0,
+      frete:       quote.frete_nome || '—',
+      items:       (quote.quote_items || []).map(
+        ({ label, produto, codigo_sap, qty, unit, preco_unit, total }) =>
+          ({ label, produto, codigo_sap, qty, unit, preco_unit, total })
+      ),
+    } : null
+
     const historicoRevisao = {
       revisao:     novaRevisao,
       data:        new Date().toISOString(),
@@ -877,7 +892,11 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     const newData = {
       ...updatedData,
       revisao:  novaRevisao,
-      revisoes: [...(kitData.revisoes || []), historicoRevisao],
+      revisoes: [
+        ...(snapshotRev0 ? [snapshotRev0] : []),
+        ...prevRevisoes,
+        historicoRevisao,
+      ],
     }
     await supabaseAdmin.from('quotes').update({
       data:        newData,
@@ -2242,96 +2261,120 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                         </td>
                       </tr>
 
-                      {/* Revision sub-rows (expandable) */}
-                      {isExpanded && revisoes.map((r, ri) => {
-                        const rModulo   = r.items?.find(i => /módulo|painel/i.test(i.label))
-                        const rInversor = r.items?.find(i => /inversor|micro/i.test(i.label))
-                        const rCabos    = r.items?.filter(i => /cabo\s+cc/i.test(i.label)) || []
-                        const rSurge    = r.items?.find(i => /surto|protetor/i.test(i.label))
-                        const hasItems  = rModulo || rInversor
+                      {/* Revision sub-rows (expandable) — de Rev 0 (original) até atual */}
+                      {isExpanded && (() => {
+                        const hasRev0 = revisoes.some(r => r.revisao === 0)
+                        const displayRevisoes = hasRev0 ? revisoes : [
+                          { revisao: 0, data: q.created_at, total_final: null, items: [], frete: null, _synthetic: true },
+                          ...revisoes,
+                        ]
+                        return displayRevisoes.map((r, ri) => {
+                          const isOriginal = r.revisao === 0
+                          const isCurrent  = r.revisao === (kitData.revisao || 0)
+                          const rModulo    = r.items?.find(i => /módulo|painel/i.test(i.label))
+                          const rInversor  = r.items?.find(i => /inversor|micro/i.test(i.label))
+                          const rCabos     = r.items?.filter(i => /cabo\s+cc/i.test(i.label)) || []
+                          const rSurge     = r.items?.find(i => /surto|protetor/i.test(i.label))
+                          const hasItems   = rModulo || rInversor
 
-                        return (
-                          <tr key={`${q.id}-rev-${ri}`} className="bg-purple-50/40 border-b border-purple-100/50">
-                            <td className="px-4 py-2.5 text-xs text-gray-500 pl-8 whitespace-nowrap">
-                              {fmtDate(r.data)}
-                              <span className="block text-[10px] text-gray-400">{fmtTime(r.data)}</span>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <span className="font-mono text-xs text-gray-500">
-                                {kitData.numero_orcamento || ''}
-                              </span>
-                              {/* Mobile: resumo abaixo do número */}
-                              {hasItems && (
-                                <div className="mt-1 md:hidden space-y-0.5">
-                                  {rModulo && (
-                                    <p className="text-[10px] text-purple-600 truncate max-w-[150px]">
-                                      ☀️ {rModulo.produto} ×{rModulo.qty}
-                                    </p>
-                                  )}
-                                  {rInversor && (
-                                    <p className="text-[10px] text-purple-600 truncate max-w-[150px]">
-                                      ⚡ {rInversor.produto} ×{rInversor.qty}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5 text-center">
-                              <button
-                                onClick={() => setSelectedRevision({ quote: q, revision: r })}
-                                className="text-xs font-bold text-purple-600 hover:text-purple-800 hover:underline px-2 py-0.5 rounded transition-colors"
-                                title="Ver composição desta revisão"
-                              >
-                                {r.revisao}
-                              </button>
-                            </td>
-                            {/* Desktop: composição da revisão na coluna Referência */}
-                            <td className="px-4 py-2.5 hidden md:table-cell">
-                              {hasItems ? (
-                                <div className="space-y-0.5">
-                                  {rModulo && (
-                                    <p className="text-[10px] text-gray-600 truncate max-w-[180px] flex items-center gap-1">
-                                      <span>☀️</span>
-                                      <span className="truncate">{rModulo.produto}</span>
-                                      <span className="shrink-0 text-gray-400">×{rModulo.qty}</span>
-                                    </p>
-                                  )}
-                                  {rInversor && (
-                                    <p className="text-[10px] text-gray-600 truncate max-w-[180px] flex items-center gap-1">
-                                      <span>⚡</span>
-                                      <span className="truncate">{rInversor.produto}</span>
-                                      <span className="shrink-0 text-gray-400">×{rInversor.qty}</span>
-                                    </p>
-                                  )}
-                                  {rCabos.length > 0 && (
-                                    <p className="text-[10px] text-gray-400">
-                                      🔌 Cabos {rCabos.reduce((s, c) => s + (c.qty || 0), 0)}m
-                                      {rSurge && ` · Surto ×${rSurge.qty}`}
-                                    </p>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-[10px] text-gray-300 italic">sem detalhes</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <StatusBadge status="revisada" />
-                            </td>
-                            <td className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">
-                              {fmt(r.total_final)}
-                            </td>
-                            <td className="px-3 py-2.5 text-center">
-                              <button
-                                onClick={() => handlePrintRevision(q, r)}
-                                title="Imprimir esta revisão"
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-weg-blue/10 transition-colors"
-                              >
-                                <Printer size={13} />
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
+                          return (
+                            <tr key={`${q.id}-rev-${ri}`} className={`border-b border-purple-100/50 ${isOriginal ? 'bg-amber-50/40' : 'bg-purple-50/40'}`}>
+                              <td className="px-4 py-2.5 text-xs text-gray-500 pl-8 whitespace-nowrap">
+                                {fmtDate(r.data)}
+                                <span className="block text-[10px] text-gray-400">{fmtTime(r.data)}</span>
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <span className="font-mono text-xs text-gray-500">
+                                  {kitData.numero_orcamento || ''}
+                                </span>
+                                {hasItems && (
+                                  <div className="mt-1 md:hidden space-y-0.5">
+                                    {rModulo && (
+                                      <p className="text-[10px] text-purple-600 truncate max-w-[150px]">
+                                        ☀️ {rModulo.produto} ×{rModulo.qty}
+                                      </p>
+                                    )}
+                                    {rInversor && (
+                                      <p className="text-[10px] text-purple-600 truncate max-w-[150px]">
+                                        ⚡ {rInversor.produto} ×{rInversor.qty}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                                {isOriginal && !hasItems && (
+                                  <p className="mt-0.5 text-[10px] text-amber-600 italic md:hidden">cotação original</p>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                {r._synthetic ? (
+                                  <span className="text-xs font-bold text-amber-500 px-2 py-0.5">0</span>
+                                ) : (
+                                  <button
+                                    onClick={() => setSelectedRevision({ quote: q, revision: r })}
+                                    className="text-xs font-bold text-purple-600 hover:text-purple-800 hover:underline px-2 py-0.5 rounded transition-colors"
+                                    title="Ver composição desta revisão"
+                                  >
+                                    {r.revisao}
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5 hidden md:table-cell">
+                                {hasItems ? (
+                                  <div className="space-y-0.5">
+                                    {rModulo && (
+                                      <p className="text-[10px] text-gray-600 truncate max-w-[180px] flex items-center gap-1">
+                                        <span>☀️</span>
+                                        <span className="truncate">{rModulo.produto}</span>
+                                        <span className="shrink-0 text-gray-400">×{rModulo.qty}</span>
+                                      </p>
+                                    )}
+                                    {rInversor && (
+                                      <p className="text-[10px] text-gray-600 truncate max-w-[180px] flex items-center gap-1">
+                                        <span>⚡</span>
+                                        <span className="truncate">{rInversor.produto}</span>
+                                        <span className="shrink-0 text-gray-400">×{rInversor.qty}</span>
+                                      </p>
+                                    )}
+                                    {rCabos.length > 0 && (
+                                      <p className="text-[10px] text-gray-400">
+                                        🔌 Cabos {rCabos.reduce((s, c) => s + (c.qty || 0), 0)}m
+                                        {rSurge && ` · Surto ×${rSurge.qty}`}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : isOriginal ? (
+                                  <span className="text-[10px] text-amber-400 italic">cotação original</span>
+                                ) : (
+                                  <span className="text-[10px] text-gray-300 italic">sem detalhes</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                {isCurrent ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">Atual</span>
+                                ) : isOriginal ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">Original</span>
+                                ) : (
+                                  <StatusBadge status="revisada" />
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">
+                                {r.total_final != null ? fmt(r.total_final) : '—'}
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                {!r._synthetic && (
+                                  <button
+                                    onClick={() => handlePrintRevision(q, r)}
+                                    title="Imprimir esta revisão"
+                                    className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-weg-blue/10 transition-colors"
+                                  >
+                                    <Printer size={13} />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })
+                      })()}
                     </>
                   )
                 })}
