@@ -1131,81 +1131,88 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
 
   return (
     <>
-    {/* Revision print overlay — visible only during print */}
+    {/* Revision print overlay — layout unificado igual ao isPrinting */}
     {printRevision && (
       <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
-        <div className="bg-[#1B3A8A] text-white px-8 py-6 flex items-center justify-between print-header">
+        <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
           <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
             onError={e => { e.target.style.display = 'none' }} />
           <div className="text-right">
-            <p className="font-mono font-bold text-xl">
-              {kitData.numero_orcamento ? `${kitData.numero_orcamento}-R${printRevision.revisao}` : `Rev. ${printRevision.revisao}`}
-            </p>
-            <p className="text-white/70 text-sm">{quote.nome_projeto}</p>
-            <p className="text-white/60 text-xs">{fmtDate(printRevision.data)}</p>
+            <p className="text-white/70 text-xs">{fmtDate(printRevision.data)}</p>
+            <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
           </div>
         </div>
-        <div className="px-8 py-6 space-y-4">
-          {kitData.clienteNome && (
-            <p className="text-sm text-gray-600"><strong>Cliente:</strong> {kitData.clienteNome}</p>
-          )}
-          {(profile?.numero_usuario || profile?.nome || profile?.cnpj) && (
-            <p className="text-xs text-gray-500">
-              {(profile?.numero_usuario || profile?.nome) && (
-                <span>Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
-                  {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
-                </strong></span>
-              )}
-              {profile?.cnpj && <span className="ml-3 font-mono">CNPJ: {profile.cnpj}</span>}
-            </p>
-          )}
-          {printRevision.items?.length > 0 ? (
-            <div>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Composição do Kit</h3>
-              <table className="w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Item</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Produto / SAP</th>
-                    <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Qtd</th>
-                    <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unitário</th>
-                    <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {printRevision.items.map((item, i) => (
-                    <tr key={i} className="border-t border-gray-100">
-                      <td className="px-4 py-2 text-xs font-medium text-gray-800">{item.label}</td>
-                      <td className="px-4 py-2 text-xs text-gray-500">
-                        <div>{item.produto}</div>
-                        <div className="font-mono text-gray-400">{item.codigo_sap}</div>
-                      </td>
-                      <td className="px-3 py-2 text-center text-xs font-bold text-gray-700">{item.qty} {item.unit}</td>
-                      <td className="px-3 py-2 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
-                      <td className="px-4 py-2 text-right text-xs font-bold text-gray-800">{fmt(item.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 italic">Itens do kit não disponíveis para esta revisão.</p>
-          )}
-          <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-            {isAdmin && (
-              <div className="flex justify-between text-gray-500">
-                <span>Frete — {printRevision.frete}</span>
-                <span className="text-green-600 font-medium">Incluso</span>
-              </div>
+        <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{background:'#f8f9fa'}}>
+          <div>
+            <p className="text-base font-extrabold text-[#003087]">{quote.nome_projeto}</p>
+            {kitData.numero_orcamento && (
+              <p className="text-xs font-bold text-[#1B3A8A] mt-0.5">
+                Ref: {kitData.numero_orcamento} · Rev. {printRevision.revisao}
+              </p>
             )}
-            <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
-              <span>Total Final</span>
-              <span className="text-[#1B3A8A] text-lg">{fmt(printRevision.total_final)}</span>
-            </div>
+            {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
+            {(profile?.numero_usuario || profile?.nome) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                  {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                </strong>
+              </p>
+            )}
+            {profile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {profile.cnpj}</p>}
+            <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
           </div>
-          <p className="text-xs text-gray-400 text-center pt-4">
-            Revisão {printRevision.revisao} — emitida em {fmtDate(printRevision.data)}
-          </p>
+        </div>
+        <div className="px-8 pt-5 pb-3">
+          {printRevision.items?.length > 0 ? (
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
+                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
+                  <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {printRevision.items.map((item, i) => (
+                  <tr key={i} className="border-b border-gray-100">
+                    <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
+                    <td className="py-2.5">
+                      <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
+                      <p className="text-xs text-gray-500">{item.produto}</p>
+                      <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
+                    </td>
+                    <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
+                    <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt(item.preco_unit)}</td>
+                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                {isAdmin && printRevision.frete && (
+                  <tr className="border-t border-gray-200 bg-gray-50">
+                    <td colSpan="4" className="py-2.5 text-right text-sm text-gray-500 pr-4">{printRevision.frete}</td>
+                    <td className="py-2.5 text-right text-sm text-gray-600 whitespace-nowrap">Incluso</td>
+                  </tr>
+                )}
+                <tr style={{background:'#003087', color:'white'}}>
+                  <td colSpan="4" style={{padding:'14px 8px', textAlign:'right', fontWeight:800, fontSize:13, textTransform:'uppercase', letterSpacing:'0.08em'}}>Total do Kit</td>
+                  <td style={{padding:'14px 8px', textAlign:'right', fontSize:18, fontWeight:900, whiteSpace:'nowrap'}}>{fmt(printRevision.total_final)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
+            <p className="text-sm text-gray-400 italic py-4">Itens desta revisão não disponíveis.</p>
+          )}
+        </div>
+        <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
+          <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
+          <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+        </div>
+        <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
+          <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome}</span>
+          <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>
         </div>
       </div>
     )}
@@ -1354,6 +1361,10 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
             <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
             <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+          </div>
+          <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
+            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome}</span>
+            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>
           </div>
         </div>
       )
@@ -1884,89 +1895,91 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
 
   return (
     <>
-    {/* Revision print overlay (table rows) */}
+    {/* Revision print overlay (table rows) — layout unificado */}
     {printRevisionData && (() => {
       const { quote: pq, r } = printRevisionData
       const pkd = pq.data || {}
       return (
         <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
-          <div className="bg-[#1B3A8A] text-white px-8 py-6 flex items-center justify-between print-header">
+          <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
             <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
               onError={e => { e.target.style.display = 'none' }} />
             <div className="text-right">
-              <p className="font-mono font-bold text-xl">
-                {pkd.numero_orcamento ? `${pkd.numero_orcamento}-R${r.revisao}` : `Rev. ${r.revisao}`}
-              </p>
-              <p className="text-white/70 text-sm">{pq.nome_projeto}</p>
-              <p className="text-white/60 text-xs">{fmtDate(r.data)}</p>
+              <p className="text-white/70 text-xs">{fmtDate(r.data)}</p>
+              <p className="text-white/60 text-xs">{rootTableInfo?.nome}</p>
             </div>
           </div>
-          <div className="px-8 py-6 space-y-4">
-            {pkd.clienteNome && (
-              <p className="text-sm text-gray-600"><strong>Cliente:</strong> {pkd.clienteNome}</p>
-            )}
-            {(profile?.numero_usuario || profile?.nome || profile?.cnpj) && (
-              <p className="text-xs text-gray-500">
-                {(profile?.numero_usuario || profile?.nome) && (
-                  <span>Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
-                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
-                  </strong></span>
-                )}
-                {profile?.cnpj && <span className="ml-3 font-mono">CNPJ: {profile.cnpj}</span>}
-              </p>
-            )}
-            {r.items?.length > 0 ? (
-              <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Composição do Kit</h3>
-                <table className="w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Item</th>
-                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Produto / SAP</th>
-                      <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500">Qtd</th>
-                      <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Unitário</th>
-                      <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {r.items.map((item, i) => (
-                      <tr key={i} className="border-t border-gray-100">
-                        <td className="px-4 py-2 text-xs font-medium text-gray-800">{item.label}</td>
-                        <td className="px-4 py-2 text-xs text-gray-500">
-                          <div>{item.produto}</div>
-                          <div className="font-mono text-gray-400">{item.codigo_sap}</div>
-                        </td>
-                        <td className="px-3 py-2 text-center text-xs font-bold text-gray-700">{item.qty} {item.unit}</td>
-                        <td className="px-3 py-2 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
-                        <td className="px-4 py-2 text-right text-xs font-bold text-gray-800">{fmt(item.total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400 italic">Itens do kit não disponíveis para esta revisão.</p>
-            )}
-            <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-              {isAdmin && (
-                <div className="flex justify-between text-gray-500">
-                  <span>Frete — {r.frete}</span>
-                  <span className="text-green-600 font-medium">Incluso</span>
-                </div>
+          <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{background:'#f8f9fa'}}>
+            <div>
+              <p className="text-base font-extrabold text-[#003087]">{pq.nome_projeto}</p>
+              {pkd.numero_orcamento && (
+                <p className="text-xs font-bold text-[#1B3A8A] mt-0.5">
+                  Ref: {pkd.numero_orcamento} · Rev. {r.revisao}
+                </p>
               )}
-              <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
-                <span>Total Final</span>
-                <span className="text-[#1B3A8A] text-lg whitespace-nowrap">{fmt(r.total_final)}</span>
-              </div>
+              {pkd.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{pkd.clienteNome}</strong></p>}
+              {(profile?.numero_usuario || profile?.nome) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
+                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  </strong>
+                </p>
+              )}
+              {profile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {profile.cnpj}</p>}
+              <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
             </div>
-            <p className="text-xs text-gray-400 text-center pt-4">
-              Revisão {r.revisao} — emitida em {fmtDate(r.data)}
-            </p>
-            {/* Rodapé informativo */}
-            <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
-              <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
-              <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
-            </div>
+          </div>
+          <div className="px-8 pt-5 pb-3">
+            {r.items?.length > 0 ? (
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b-2 border-gray-200">
+                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
+                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
+                    <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
+                    <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
+                    <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.items.map((item, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
+                      <td className="py-2.5">
+                        <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
+                        <p className="text-xs text-gray-500">{item.produto}</p>
+                        <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
+                      </td>
+                      <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
+                      <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt(item.preco_unit)}</td>
+                      <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  {isAdmin && r.frete && (
+                    <tr className="border-t border-gray-200 bg-gray-50">
+                      <td colSpan="4" className="py-2.5 text-right text-sm text-gray-500 pr-4">{r.frete}</td>
+                      <td className="py-2.5 text-right text-sm text-gray-600 whitespace-nowrap">Incluso</td>
+                    </tr>
+                  )}
+                  <tr style={{background:'#003087', color:'white'}}>
+                    <td colSpan="4" style={{padding:'14px 8px', textAlign:'right', fontWeight:800, fontSize:13, textTransform:'uppercase', letterSpacing:'0.08em'}}>Total do Kit</td>
+                    <td style={{padding:'14px 8px', textAlign:'right', fontSize:18, fontWeight:900, whiteSpace:'nowrap'}}>{fmt(r.total_final)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            ) : (
+              <p className="text-sm text-gray-400 italic py-4">Itens desta revisão não disponíveis.</p>
+            )}
+          </div>
+          <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
+            <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
+            <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+          </div>
+          <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
+            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{rootTableInfo?.nome}</span>
+            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>
           </div>
         </div>
       )
