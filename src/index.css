@@ -84,6 +84,25 @@
     visibility: visible !important;
   }
 
+  /* ── Filhos do #kit-print: desfaz overflow e bordas que cortam conteúdo ── */
+  /* Mobile browsers só imprimem o viewport visível de overflow:auto/hidden    */
+  #kit-print > *,
+  #kit-print > * > * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Tabelas: sem scroll horizontal, ocupam a largura disponível */
+  #kit-print table {
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  #kit-print td,
+  #kit-print th {
+    word-break: break-word !important;
+    white-space: normal !important;
+  }
+
   /* Avoid breaking rows across pages */
   #kit-print tr {
     page-break-inside: avoid;

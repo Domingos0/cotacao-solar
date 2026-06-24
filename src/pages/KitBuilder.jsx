@@ -4372,16 +4372,34 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   }, [pendingPrint, showPrintedScreen])
 
   // Move #kit-print para filho direto do body antes de imprimir e restaura depois.
-  // Adiciona .is-printing ao body para CSS compatível com mobile (sem precisar de :has()).
+  // Sobrescreve estilos inline para evitar que overflow:hidden/auto e border-radius
+  // cortem conteúdo no mobile — mais confiável que depender só de @media print.
   const doPrint = () => {
     const el = document.getElementById('kit-print')
     if (!el) { window.print(); return }
-    const parent = el.parentNode
-    const next   = el.nextSibling
+    const parent     = el.parentNode
+    const next       = el.nextSibling
+    const savedStyle = el.style.cssText
+
+    el.style.cssText = [
+      'position:static',
+      'inset:auto',
+      'width:100%',
+      'max-width:none',
+      'height:auto',
+      'max-height:none',
+      'overflow:visible',
+      'border-radius:0',
+      'box-shadow:none',
+      'z-index:auto',
+      'background:white',
+    ].join(';')
+
     document.body.appendChild(el)
     document.body.classList.add('is-printing')
     const restore = () => {
       document.body.classList.remove('is-printing')
+      el.style.cssText = savedStyle
       if (el.parentNode === document.body) parent.insertBefore(el, next)
     }
     window.addEventListener('afterprint', restore, { once: true })
@@ -4563,7 +4581,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden max-w-3xl mx-auto print:shadow-none" id="kit-print">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden max-w-3xl mx-auto print:shadow-none print:overflow-visible print:rounded-none print:border-0 print:max-w-none" id="kit-print">
 
         {/* ── Print header: logo + date ── */}
         <div className="print-header hidden print:flex items-center justify-between px-6 py-4" style={{backgroundColor:'#1B3A8A'}}>
@@ -4643,7 +4661,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         </div>
 
         {/* Items table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">

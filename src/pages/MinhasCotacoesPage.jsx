@@ -13,18 +13,40 @@ import {
 } from 'lucide-react'
 
 // ─── Utilitário de impressão (mobile-safe) ────────────────────────────────────
-// Move #kit-print para filho direto do body, adiciona classe .is-printing,
-// aguarda 80ms para o browser processar o layout e então dispara window.print().
-// flushSync garante que o React commitou o render antes de buscar o elemento.
+// Move #kit-print para filho direto do body, sobrescreve estilos inline que
+// causam problemas no mobile (fixed + overflow:auto = só viewport é impresso),
+// adiciona .is-printing e dispara window.print().
 function execPrint(cleanup) {
   const el = document.getElementById('kit-print')
   if (!el) { window.print(); return }
-  const parent = el.parentNode
-  const next   = el.nextSibling
+  const parent     = el.parentNode
+  const next       = el.nextSibling
+  const savedStyle = el.style.cssText
+
+  // Inline styles sobrescrevem Tailwind na hora certa — mais confiável que
+  // @media print em mobile Safari/Chrome onde position:fixed e overflow:auto
+  // fazem o browser imprimir só o que cabe no viewport.
+  el.style.cssText = [
+    'position:static',
+    'inset:auto',
+    'top:auto', 'left:auto', 'right:auto', 'bottom:auto',
+    'width:100%',
+    'max-width:none',
+    'height:auto',
+    'max-height:none',
+    'overflow:visible',
+    'border-radius:0',
+    'box-shadow:none',
+    'z-index:auto',
+    'transform:none',
+    'background:white',
+  ].join(';')
+
   document.body.appendChild(el)
   document.body.classList.add('is-printing')
   const restore = () => {
     document.body.classList.remove('is-printing')
+    el.style.cssText = savedStyle
     if (el.parentNode === document.body) parent.insertBefore(el, next)
     cleanup?.()
   }
