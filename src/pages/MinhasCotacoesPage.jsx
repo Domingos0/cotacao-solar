@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import kitCompositions from '../data/kitCompositions.json'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
@@ -10,6 +11,30 @@ import {
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon,
 } from 'lucide-react'
+
+// ─── Utilitário de impressão (mobile-safe) ────────────────────────────────────
+// Move #kit-print para filho direto do body, adiciona classe .is-printing,
+// aguarda 80ms para o browser processar o layout e então dispara window.print().
+// flushSync garante que o React commitou o render antes de buscar o elemento.
+function execPrint(cleanup) {
+  const el = document.getElementById('kit-print')
+  if (!el) { window.print(); return }
+  const parent = el.parentNode
+  const next   = el.nextSibling
+  document.body.appendChild(el)
+  document.body.classList.add('is-printing')
+  const restore = () => {
+    document.body.classList.remove('is-printing')
+    if (el.parentNode === document.body) parent.insertBefore(el, next)
+    cleanup?.()
+  }
+  window.addEventListener('afterprint', restore, { once: true })
+  // Fallback: mobile Safari não dispara afterprint de forma confiável
+  setTimeout(() => {
+    if (document.body.classList.contains('is-printing')) restore()
+  }, 30000)
+  setTimeout(() => window.print(), 80)
+}
 
 // ─── Shared constants (mirror of KitBuilder) ──────────────────────────────────
 const KIT_SAPS = {
@@ -898,27 +923,13 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   }
 
   const handlePrint = () => {
-    setIsPrinting(true)
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const el = document.getElementById('kit-print')
-      if (!el) { window.print(); return }
-      const parent = el.parentNode; const next = el.nextSibling
-      document.body.appendChild(el)
-      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setIsPrinting(false) }, { once: true })
-      window.print()
-    }))
+    flushSync(() => setIsPrinting(true))
+    execPrint(() => setIsPrinting(false))
   }
 
   const handlePrintRevision = (r) => {
-    setPrintRevision(r)
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const el = document.getElementById('kit-print')
-      if (!el) { window.print(); return }
-      const parent = el.parentNode; const next = el.nextSibling
-      document.body.appendChild(el)
-      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setPrintRevision(null) }, { once: true })
-      window.print()
-    }))
+    flushSync(() => setPrintRevision(r))
+    execPrint(() => setPrintRevision(null))
   }
 
   // ── Confirmation overlay ──
@@ -1565,15 +1576,8 @@ function RevisionDetailModal({ quote, revision, onClose }) {
   const [isPrinting, setIsPrinting] = useState(false)
 
   const handlePrint = () => {
-    setIsPrinting(true)
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const el = document.getElementById('kit-print')
-      if (!el) { window.print(); return }
-      const parent = el.parentNode; const next = el.nextSibling
-      document.body.appendChild(el)
-      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setIsPrinting(false) }, { once: true })
-      window.print()
-    }))
+    flushSync(() => setIsPrinting(true))
+    execPrint(() => setIsPrinting(false))
   }
 
   return (
@@ -1780,15 +1784,8 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [teamLoading, setTeamLoading] = useState(false)
 
   const handlePrintRevision = (quote, r) => {
-    setPrintRevisionData({ quote, r })
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const el = document.getElementById('kit-print')
-      if (!el) { window.print(); return }
-      const parent = el.parentNode; const next = el.nextSibling
-      document.body.appendChild(el)
-      window.addEventListener('afterprint', () => { parent.insertBefore(el, next); setPrintRevisionData(null) }, { once: true })
-      window.print()
-    }))
+    flushSync(() => setPrintRevisionData({ quote, r }))
+    execPrint(() => setPrintRevisionData(null))
   }
 
   const activeQuotes = quotes.filter(q => !CLOSED_STATUSES.includes(q.status))

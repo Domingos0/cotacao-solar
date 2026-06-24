@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -4068,18 +4069,21 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     }
   }, [pendingPrint, showPrintedScreen])
 
-  // Move #kit-print para filho direto do body antes de imprimir e restaura depois
-  // Isso ativa o CSS portal (body:has(> #kit-print)) que elimina páginas em branco
+  // Move #kit-print para filho direto do body antes de imprimir e restaura depois.
+  // Adiciona .is-printing ao body para CSS compatível com mobile (sem precisar de :has()).
   const doPrint = () => {
     const el = document.getElementById('kit-print')
     if (!el) { window.print(); return }
     const parent = el.parentNode
     const next   = el.nextSibling
     document.body.appendChild(el)
-    window.addEventListener('afterprint', () => {
-      parent.insertBefore(el, next)
-    }, { once: true })
-    window.print()
+    document.body.classList.add('is-printing')
+    const restore = () => {
+      document.body.classList.remove('is-printing')
+      if (el.parentNode === document.body) parent.insertBefore(el, next)
+    }
+    window.addEventListener('afterprint', restore, { once: true })
+    setTimeout(() => window.print(), 80)
   }
 
   // ── Imprimir (salva automaticamente antes, muda status p/ em_analise) ──

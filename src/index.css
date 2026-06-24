@@ -15,21 +15,18 @@
     print-color-adjust: exact !important;
   }
 
-  /* ── Caso 1: AdminPage portal (#kit-print filho direto do body) ── */
-  /* Oculta irmãos apenas quando #kit-print é filho DIRETO do body */
-  body:has(> #kit-print) > *:not(#kit-print) {
+  /* ── Abordagem primária: classe .is-printing (compatível com mobile) ── */
+  /* O JS adiciona .is-printing ao body antes de window.print() */
+  body.is-printing > *:not(#kit-print) {
     display: none !important;
   }
-  /* Colapsa a altura do body para o conteúdo do kit (sem forçar 100vh) */
-  body:has(> #kit-print) {
+  body.is-printing {
     height: auto !important;
     min-height: 0 !important;
     background: white !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: flex-start !important;
+    display: block !important;
   }
-  body:has(> #kit-print) > #kit-print {
+  body.is-printing > #kit-print {
     display: block !important;
     position: static !important;
     inset: auto !important;
@@ -47,36 +44,44 @@
     border: none !important;
     box-shadow: none !important;
   }
-  body:has(> #kit-print) > #kit-print .print-paper {
+  body.is-printing > #kit-print .print-paper {
     max-width: none !important;
     width: 100% !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }
-  body:has(> #kit-print) > #kit-print,
-  body:has(> #kit-print) > #kit-print * {
+  body.is-printing > #kit-print,
+  body.is-printing > #kit-print * {
     visibility: visible !important;
   }
 
-  /* ── Caso 2: KitBuilder inline (#kit-print aninhado no DOM) ── */
-  /* Usa visibility para não quebrar o fluxo do #root */
-  body:not(:has(> #kit-print)):has(#kit-print) * {
-    visibility: hidden;
+  /* ── Fallback: seletor :has() para browsers modernos sem classe ── */
+  body:has(> #kit-print):not(.is-printing) > *:not(#kit-print) {
+    display: none !important;
   }
-  body:not(:has(> #kit-print)) #kit-print,
-  body:not(:has(> #kit-print)) #kit-print * {
-    visibility: visible !important;
+  body:has(> #kit-print):not(.is-printing) {
+    height: auto !important;
+    min-height: 0 !important;
+    background: white !important;
+    display: block !important;
   }
-  body:not(:has(> #kit-print)) #kit-print {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
+  body:has(> #kit-print):not(.is-printing) > #kit-print {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 760px !important;
     height: auto !important;
     max-height: none !important;
     min-height: 0 !important;
-    overflow: visible !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
     background: white !important;
+    overflow: visible !important;
+  }
+  body:has(> #kit-print):not(.is-printing) > #kit-print,
+  body:has(> #kit-print):not(.is-printing) > #kit-print * {
+    visibility: visible !important;
   }
 
   /* Avoid breaking rows across pages */
