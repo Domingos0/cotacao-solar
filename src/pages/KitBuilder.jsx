@@ -329,13 +329,14 @@ function BombDimStep({ data, onChange, products }) {
   const SUB_STEPS = ['tensao', 'metodo', 'motor', 'distancia', 'estrutura', 'resultado']
   const [sub, setSub] = useState(data.bombDimDone ? 'resultado' : 'tensao')
   const [form, setForm] = useState({
-    tensao:    data.bombTensao    || '',
-    metodo:    data.bombMetodo    || '',
-    cv:        data.bombCv        || '',
-    corrente:  data.bombCorrente  || '',
-    distancia: data.bombDistancia != null ? String(data.bombDistancia) : '',
-    roofType:  data.bombRoofType  || '',
-    hsp:       data.bombHsp       != null ? String(data.bombHsp) : String(SUN_HOURS),
+    tensao:      data.bombTensao      || '',
+    metodo:      data.bombMetodo      || '',
+    cv:          data.bombCv          || '',
+    corrente:    data.bombCorrente    || '',
+    fatServico:  data.bombFatServico  != null ? String(data.bombFatServico) : '1.00',
+    distancia:   data.bombDistancia   != null ? String(data.bombDistancia)  : '',
+    roofType:    data.bombRoofType    || '',
+    hsp:         data.bombHsp         != null ? String(data.bombHsp)        : String(SUN_HOURS),
   })
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -347,10 +348,12 @@ function BombDimStep({ data, onChange, products }) {
     .filter(p => p.categoria === CATEGORIES.INVERSORES_BOMBEAMENTO && p.preco)
     .sort((a, b) => (a.potencia || 0) - (b.potencia || 0))
 
-  const cvNum    = parseFloat(form.cv)       || 0
-  const corrNum  = parseFloat(form.corrente) || 0
-  const pMotorKw = form.metodo === 'cv'       ? cvNum * 0.736 : 0
-  const pFVMinKw = pMotorKw * 1.7
+  const cvNum      = parseFloat(form.cv)          || 0
+  const corrNum    = parseFloat(form.corrente)    || 0
+  const fatServico = Math.max(1, parseFloat(form.fatServico) || 1)
+  // Pin = P_nominal × FS  (fator de serviço da placa do motor)
+  const pMotorKw   = form.metodo === 'cv' ? round2(cvNum * 0.736 * fatServico) : 0
+  const pFVMinKw   = round2(pMotorKw * 1.7)
   const iMinInv  = form.metodo === 'corrente' ? corrNum * 1.2  : 0
   const distNum  = parseFloat(form.distancia) || 0
   const needsReact = distNum > 70
@@ -425,6 +428,7 @@ function BombDimStep({ data, onChange, products }) {
       bombDistancia: distNum,
       bombRoofType: form.roofType,
       bombNeedsReactance: needsReact,
+      bombFatServico: fatServico,
       bombPMotorKw: round2(pMotorKw),
       bombPFVMinKw: round2(pFVMinKw),
       bombHsp: hspNum,
@@ -561,40 +565,77 @@ function BombDimStep({ data, onChange, products }) {
           <span>A potência em CV dos drives é baseada nos motores VEC. Para outros fabricantes, reavaliar o dimensionamento. É indicado cotar pela corrente de saída. <strong>O dimensionamento é de total responsabilidade do integrador.</strong></span>
         </div>
       )}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
         {form.metodo === 'cv' ? (
           <>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Potência do motor (CV)</label>
-            <input type="number" min="0.5" step="0.5" value={form.cv}
-              onChange={e => sf('cv', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
-              placeholder="Ex: 5" />
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Potência do motor (CV)</label>
+              <input type="number" min="0.5" step="0.5" value={form.cv}
+                onChange={e => sf('cv', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-4 py-3 text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                placeholder="Ex: 5" />
+            </div>
+
+            {/* Fator de serviço */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Fator de serviço (FS) — placa do motor
+              </label>
+              <p className="text-xs text-gray-400 mb-2">
+                O FS indica a sobrecarga contínua permitida. Use 1,00 quando não informado.
+              </p>
+              <div className="flex gap-2 flex-wrap mb-2">
+                {['1.00', '1.05', '1.10', '1.15', '1.25'].map(v => (
+                  <button key={v} type="button"
+                    onClick={() => sf('fatServico', v)}
+                    className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition-all ${
+                      form.fatServico === v
+                        ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
+                        : 'border-gray-200 text-gray-600 hover:border-cyan-300'
+                    }`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <input type="number" min="1" max="2" step="0.01" value={form.fatServico}
+                onChange={e => sf('fatServico', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400" />
+            </div>
+
             {cvNum > 0 && (
-              <div className="mt-4 space-y-2 text-sm">
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between bg-gray-50 rounded-lg px-3 py-2">
-                  <span className="text-gray-600">Potência motor:</span>
+                  <span className="text-gray-600">Potência nominal:</span>
                   <span className="font-bold">{cvNum} CV = {round2(cvNum * 0.736)} kW</span>
                 </div>
+                {fatServico > 1 && (
+                  <div className="flex justify-between bg-amber-50 rounded-lg px-3 py-2">
+                    <span className="text-amber-700">Com FS {fatServico} (Pin):</span>
+                    <span className="font-bold text-amber-800">{round2(cvNum * 0.736 * fatServico)} kW</span>
+                  </div>
+                )}
                 <div className="flex justify-between bg-cyan-50 rounded-lg px-3 py-2">
                   <span className="text-cyan-700">Potência FV mínima (×1,7):</span>
-                  <span className="font-bold text-cyan-800">{round2(pFVMinKw)} kW</span>
+                  <span className="font-bold text-cyan-800">{round2(pFVMinKw)} kWp</span>
                 </div>
               </div>
             )}
           </>
         ) : (
           <>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Corrente nominal do motor (A)</label>
-            <input type="number" min="0.1" step="0.1" value={form.corrente}
-              onChange={e => sf('corrente', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
-              placeholder="Ex: 12.5" />
-            {corrNum > 0 && (
-              <div className="mt-4 bg-cyan-50 rounded-lg px-3 py-2 flex justify-between text-sm">
-                <span className="text-cyan-700">Corrente mínima do inversor (×1,2):</span>
-                <span className="font-bold text-cyan-800">{round2(iMinInv)} A</span>
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Corrente nominal do motor (A)</label>
+              <input type="number" min="0.1" step="0.1" value={form.corrente}
+                onChange={e => sf('corrente', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-4 py-3 text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                placeholder="Ex: 12.5" />
+              {corrNum > 0 && (
+                <div className="mt-4 bg-cyan-50 rounded-lg px-3 py-2 flex justify-between text-sm">
+                  <span className="text-cyan-700">Corrente mínima do inversor (×1,2):</span>
+                  <span className="font-bold text-cyan-800">{round2(iMinInv)} A</span>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -663,9 +704,18 @@ function BombDimStep({ data, onChange, products }) {
 
       <div className="flex flex-wrap gap-2 justify-center">
         <span className="bg-cyan-100 text-cyan-800 text-xs font-semibold px-3 py-1.5 rounded-full">{form.tensao}V</span>
-        {form.metodo === 'cv' && <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-full">{cvNum} CV → {round2(pMotorKw)} kW</span>}
+        {form.metodo === 'cv' && (
+          <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-full">
+            {cvNum} CV{fatServico > 1 ? ` × FS ${fatServico}` : ''} → {round2(pMotorKw)} kW
+          </span>
+        )}
         {form.metodo === 'corrente' && <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-full">Imotor {corrNum} A → Iinv ≥ {round2(iMinInv)} A</span>}
-        {form.metodo === 'cv' && <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1.5 rounded-full">FV mín.: {round2(pFVMinKw)} kW</span>}
+        {form.metodo === 'cv' && <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1.5 rounded-full">FV mín.: {round2(pFVMinKw)} kWp</span>}
+        {paralelos > 0 && selPanel && (
+          <span className="bg-cyan-600 text-white text-xs font-bold px-3 py-1.5 rounded-full">
+            {paralelos}×{seriesPorString} strings
+          </span>
+        )}
         {needsReact && <span className="bg-orange-100 text-orange-800 text-xs font-semibold px-3 py-1.5 rounded-full">⚠ Reatância ({distNum}m)</span>}
       </div>
 
