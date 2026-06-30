@@ -3423,7 +3423,22 @@ function AdminDashboard() {
     const importedRegular = imported.filter(imp => !fixedNomes.has(imp.nome))
 
     if (mode === 'full') {
-      saveProducts([...importedRegular, ...updatedFixed])
+      // Preserva estoque/estoque_previsao/kitRole dos produtos existentes por SAP
+      const estoqueMap = {}
+      products.forEach(p => {
+        if (p.estoque || p.estoque_previsao || p.kitRole) {
+          estoqueMap[p.codigo] = {
+            estoque: p.estoque || 'Disponível',
+            estoque_previsao: p.estoque_previsao || '',
+            kitRole: p.kitRole,
+          }
+        }
+      })
+      const importedWithEstoque = importedRegular.map(p => {
+        const ex = estoqueMap[p.codigo]
+        return ex ? { ...p, estoque: ex.estoque, estoque_previsao: ex.estoque_previsao, kitRole: ex.kitRole ?? p.kitRole } : p
+      })
+      saveProducts([...importedWithEstoque, ...updatedFixed])
     } else {
       // Atualiza preços por código SAP e adiciona produtos novos (apenas regulares)
       const base = products.filter(p => !fixedProducts.some(f => f.id === p.id))

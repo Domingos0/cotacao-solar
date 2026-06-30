@@ -1,4 +1,5 @@
 import { Sun, Zap, Battery, Droplets } from 'lucide-react'
+import { useProducts } from '../context/ProductsContext'
 
 const stats = [
   { icon: Sun, label: 'Módulos Fotovoltaicos', value: '6 modelos', color: 'text-amber-400' },
@@ -8,6 +9,7 @@ const stats = [
 ]
 
 export default function HeroBanner() {
+  const { tableInfo } = useProducts()
   return (
     <section className="bg-gradient-to-r from-weg-blue via-weg-blue-mid to-weg-blue-light text-white">
       <div className="max-w-7xl mx-auto px-4 py-6 md:py-12">
@@ -15,7 +17,7 @@ export default function HeroBanner() {
           <div className="flex-1">
             <div className="inline-flex items-center gap-2 bg-weg-orange/20 border border-weg-orange/40 rounded-full px-3 py-1.5 text-sm font-medium text-weg-orange mb-4">
               <span className="w-2 h-2 bg-weg-orange rounded-full animate-pulse" />
-              Lista de Preços — Novembro 2025
+              {tableInfo?.nome || 'Lista de Preços'}
             </div>
             <h1 className="text-3xl lg:text-4xl font-extrabold leading-tight mb-3">
               Catálogo WEG<br />

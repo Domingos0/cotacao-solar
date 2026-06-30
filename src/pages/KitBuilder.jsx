@@ -1523,20 +1523,28 @@ function Step2({ data, onChange, products, targetKwp }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {panelsSorted.map(panel => {
-          const qty = Math.ceil((targetKwp * 1000) / panel.potencia)
+          const qty     = Math.ceil((targetKwp * 1000) / panel.potencia)
           const realKwp = (qty * panel.potencia / 1000).toFixed(2)
           const selected = data.panel?.id === panel.id
+          const estoque  = panel.estoque || 'Disponível'
+          const isEsg    = estoque === 'Esgotado' || estoque === 'Sem estoque'
+          const isPrev   = estoque === 'Previsão'
+          const prev     = isPrev ? panel.estoque_previsao : null
+          const prevFmt  = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR') : null
 
           return (
             <button
               key={panel.id}
               onClick={() => {
-                const s = panel.estoque || 'Disponível'
-                if (s !== 'Disponível') { setStockAlert({ panel }); return }
+                if (isEsg || isPrev) { setStockAlert({ panel }); return }
                 selectPanel(panel)
               }}
               className={`text-left rounded-xl border-2 overflow-hidden transition-all ${
-                selected ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md'
+                selected
+                  ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100'
+                  : isEsg  ? 'border-red-300 bg-red-50/40 hover:border-red-400 hover:shadow-md'
+                  : isPrev ? 'border-yellow-300 bg-yellow-50/30 hover:border-yellow-400 hover:shadow-md'
+                  : 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md'
               }`}
             >
               {/* Panel image */}
@@ -1545,8 +1553,15 @@ function Step2({ data, onChange, products, targetKwp }) {
                   src={getProductImage(panel)}
                   alt={panel.nome}
                   fallback="☀️"
-                  className="w-full h-full object-contain p-3 transition-transform duration-500 hover:scale-105"
+                  className={`w-full h-full object-contain p-3 transition-transform duration-500 hover:scale-105 ${isEsg ? 'opacity-50 grayscale' : ''}`}
                 />
+                {/* Availability badge — top-left overlay */}
+                <div className={`absolute top-2 left-2 flex items-center gap-1 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm ${
+                  isEsg ? 'bg-red-500' : isPrev ? 'bg-yellow-500' : 'bg-green-500'
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-white inline-block shrink-0" />
+                  {isEsg ? 'Esgotado' : isPrev ? (prevFmt ? `Prev. ${prevFmt}` : 'Previsão') : 'Disponível'}
+                </div>
                 {selected && (
                   <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
                     <Check size={13} className="text-white" />
@@ -1589,34 +1604,6 @@ function Step2({ data, onChange, products, targetKwp }) {
                   <span className="text-gray-500">Total painéis:</span>
                   <span className="font-bold text-weg-orange">{fmt(moneyMul(panel.preco, qty))}</span>
                 </div>
-                {/* Disponibilidade */}
-                {(() => {
-                  const s = panel.estoque || 'Disponível'
-                  if (s === 'Esgotado' || s === 'Sem estoque') return (
-                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                      <span className="text-xs font-semibold text-red-600">Esgotado</span>
-                    </div>
-                  )
-                  if (s === 'Previsão') {
-                    const prev = panel.estoque_previsao
-                    const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR') : null
-                    return (
-                      <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5">
-                        <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 shrink-0" />
-                        <span className="text-xs font-semibold text-yellow-700">
-                          {prevFmt ? `Previsão: ${prevFmt}` : 'Previsão de entrega'}
-                        </span>
-                      </div>
-                    )
-                  }
-                  return (
-                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                      <span className="text-xs font-semibold text-green-700">Disponível</span>
-                    </div>
-                  )
-                })()}
               </div>
               </div>{/* /p-4 */}
             </button>
@@ -1895,11 +1882,27 @@ function BatteryStep({ data, onChange, products }) {
             </div>
             <p className="text-center mt-2 text-sm text-violet-700 font-semibold">{cbKwh.toFixed(2)} kWh total</p>
             {jbwNeeded && (
-              <div className="mt-3 flex items-center gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-sm mx-auto">
-                <Info size={12} className="shrink-0" />
-                {jbwQty}× JBW 41DC 50A adicionado automaticamente
-                {isSIW400H && <span className="ml-1">({batQty >= 6 ? '≥6 bat. → 2 JBW' : '≥3 bat. → 1 JBW'})</span>}
-                {isSIW200H && <span className="ml-1">(≥2 bat. em paralelo)</span>}
+              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-sm mx-auto space-y-1">
+                <div className="flex items-center gap-2 text-xs text-amber-800 font-medium">
+                  <Info size={12} className="shrink-0" />
+                  {jbwQty}× JBW 41DC 50A adicionado automaticamente
+                </div>
+                {isSIW400H && (
+                  <div className="text-[11px] text-amber-700 pl-4 space-y-0.5 border-l-2 border-amber-200 ml-1">
+                    {jbwQty === 1 ? (
+                      <>
+                        <p>Entrada 1 (JBW): {batQty - 1} {batQty - 1 === 1 ? 'bateria' : 'baterias'} em paralelo</p>
+                        <p>Entrada 2 (direta): 1 bateria</p>
+                      </>
+                    ) : (
+                      <>
+                        <p>Entrada 1 (JBW): {Math.ceil(batQty / 2)} baterias em paralelo</p>
+                        <p>Entrada 2 (JBW): {Math.floor(batQty / 2)} baterias em paralelo</p>
+                      </>
+                    )}
+                  </div>
+                )}
+                {isSIW200H && <p className="text-[11px] text-amber-700 pl-5">Baterias em paralelo via JBW</p>}
               </div>
             )}
           </div>
@@ -1973,7 +1976,18 @@ function BatteryStep({ data, onChange, products }) {
                 {data.batEco === 'CB' ? (
                   <ul className="text-sm text-violet-800 space-y-1">
                     <li>• <strong>{data.batQty}× {data.batType}</strong> — {((data.batType === 'CB100' ? 10.07 : 5.02) * data.batQty).toFixed(2)} kWh</li>
-                    {data.inclJBW41DC && <li>• {data.jbwQty || 1}× JBW 41DC 50A (paralelo)</li>}
+                    {data.inclJBW41DC && (
+                      <li>
+                        • {data.jbwQty || 1}× JBW 41DC 50A
+                        {isSIW400H && data.batQty > 0 && (
+                          <span className="text-violet-600 text-xs ml-1">
+                            {(data.jbwQty || 1) >= 2
+                              ? `(Ent.1: ${Math.ceil(data.batQty / 2)} bat. · Ent.2: ${Math.floor(data.batQty / 2)} bat.)`
+                              : `(Ent.1 JBW: ${data.batQty - 1} bat. · Ent.2: 1 bat.)`}
+                          </span>
+                        )}
+                      </li>
+                    )}
                   </ul>
                 ) : (
                   <ul className="text-sm text-violet-800 space-y-1">
@@ -2992,6 +3006,24 @@ function Step4({ data, onChange, products }) {
   const microStrings   = isMicro ? Math.ceil(microCount / microSeries) : 1
 
   const set  = (k, v) => onChange({ ...data, [k]: v })
+
+  // Battery qty change with auto JBW recalc
+  const invModel    = inv?.modelo || ''
+  const isSIW400HKit = /SIW400H/.test(invModel)
+  const isSIW200HKit = /SIW200H/.test(invModel)
+  const batMaxQty   = isSIW400HKit ? 8 : 4
+  const updateBatQty = (newQty) => {
+    const qty = Math.max(1, Math.min(batMaxQty, newQty))
+    const threshold = isSIW200HKit ? 2 : (isSIW400HKit ? 3 : null)
+    const needed = (isSIW200HKit || isSIW400HKit) && threshold !== null && qty >= threshold
+    const jQty = !needed ? 0 : (isSIW400HKit && qty >= 6 ? 2 : 1)
+    onChange({ ...data, batQty: qty, inclJBW41DC: needed, jbwQty: jQty })
+  }
+  const updateSbwGroups = (newQty) => {
+    const maxG = inv?.modelo ? (/SIW500H/.test(inv.modelo) ? 3 : 2) : 2
+    set('sbwGroups', Math.max(1, Math.min(maxG, newQty)))
+  }
+
   const bySAP = sap => products.find(p => p.codigo === sap)
   const byRole = role => products.find(p => p.kitRole === role)
 
@@ -3310,12 +3342,27 @@ function Step4({ data, onChange, products }) {
                     <p className="font-semibold text-gray-900 text-sm">{data.batProduct.nome || data.batProduct.modelo}</p>
                     <p className="text-xs text-gray-400 font-mono">{data.batProduct.codigo} • {fmt(data.batProduct.preco)}/un</p>
                   </div>
-                  <div className="text-right shrink-0">
-                    <span className="text-sm font-bold text-violet-700">{data.batQty}× = {fmt(moneyMul(data.batProduct.preco, data.batQty))}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button onClick={() => updateBatQty(data.batQty - 1)}
+                      className="w-6 h-6 rounded-full border border-violet-300 flex items-center justify-center hover:border-violet-500 hover:bg-violet-100 transition-colors text-violet-600">
+                      <Minus size={11} />
+                    </button>
+                    <span className="text-sm font-bold text-violet-700 w-14 text-center">{data.batQty}× = </span>
+                    <button onClick={() => updateBatQty(data.batQty + 1)}
+                      disabled={data.batQty >= batMaxQty}
+                      className="w-6 h-6 rounded-full border border-violet-300 flex items-center justify-center hover:border-violet-500 hover:bg-violet-100 transition-colors text-violet-600 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <Plus size={11} />
+                    </button>
+                    <span className="text-sm font-bold text-violet-700 ml-1">{fmt(moneyMul(data.batProduct.preco, data.batQty))}</span>
                   </div>
                 </div>
                 <p className="text-xs text-violet-600 mt-2 ml-11">
                   {((data.batType === 'CB100' ? 10.07 : 5.02) * data.batQty).toFixed(2)} kWh total
+                  {(isSIW400HKit || isSIW200HKit) && data.batQty >= (isSIW200HKit ? 2 : 3) && (
+                    <span className="ml-2 text-amber-600">
+                      • JBW: {data.batQty >= 6 && isSIW400HKit ? `Ent.1: ${Math.ceil(data.batQty/2)} bat. · Ent.2: ${Math.floor(data.batQty/2)} bat.` : `Ent.1: ${data.batQty-1} bat. · Ent.2: 1 bat.`}
+                    </span>
+                  )}
                 </p>
               </div>
             )}
@@ -3342,7 +3389,18 @@ function Step4({ data, onChange, products }) {
                         <p className="font-semibold text-gray-900 text-sm">{data.luna2000Product.nome || data.luna2000Product.modelo}</p>
                         <p className="text-xs text-gray-400 font-mono">{data.luna2000Product.codigo} • {fmt(data.luna2000Product.preco)}/un</p>
                       </div>
-                      <span className="text-sm font-bold text-violet-700 shrink-0">{data.sbwGroups}× = {fmt(moneyMul(data.luna2000Product.preco, data.sbwGroups))}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => updateSbwGroups(data.sbwGroups - 1)}
+                          className="w-6 h-6 rounded-full border border-violet-300 flex items-center justify-center hover:border-violet-500 hover:bg-violet-100 transition-colors text-violet-600">
+                          <Minus size={11} />
+                        </button>
+                        <span className="text-sm font-bold text-violet-700 w-8 text-center">{data.sbwGroups}×</span>
+                        <button onClick={() => updateSbwGroups(data.sbwGroups + 1)}
+                          className="w-6 h-6 rounded-full border border-violet-300 flex items-center justify-center hover:border-violet-500 hover:bg-violet-100 transition-colors text-violet-600">
+                          <Plus size={11} />
+                        </button>
+                        <span className="text-sm font-bold text-violet-700 ml-1">= {fmt(moneyMul(data.luna2000Product.preco, data.sbwGroups))}</span>
+                      </div>
                     </div>
                     <p className="text-xs text-violet-600 mt-2 ml-11">{(6.9 * data.sbwGroups).toFixed(1)} kWh total</p>
                   </div>
@@ -4765,26 +4823,35 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           </div>
         </div>
 
-        {/* Aviso de disponibilidade do módulo — tela e impressão */}
-        {data.panel && (() => {
-          const s = data.panel.estoque || 'Disponível'
-          if (s === 'Disponível') return null
-          const isEsgotado = s === 'Esgotado' || s === 'Sem estoque'
-          const prev = data.panel.estoque_previsao
-          const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
+        {/* Aviso de disponibilidade — todos os itens com problema */}
+        {(() => {
+          const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
+          const problemas = kitItems.filter(it => {
+            const s = it.product?.estoque || 'Disponível'
+            return s === 'Esgotado' || s === 'Sem estoque' || s === 'Previsão'
+          })
+          if (problemas.length === 0) return null
+          const temEsg = problemas.some(it => { const s = it.product.estoque; return s === 'Esgotado' || s === 'Sem estoque' })
           return (
             <div className={`mx-6 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${
-              isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'
+              temEsg ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'
             }`}>
-              <AlertTriangle size={15} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
-              <div>
-                <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
-                  {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
-                </p>
-                <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
-                  {isEsgotado
-                    ? 'Este módulo está indisponível no momento. Confirme disponibilidade antes de emitir o pedido.'
-                    : 'Prazo sujeito a alteração. Confirme disponibilidade com o fornecedor antes de finalizar o pedido.'}
+              <AlertTriangle size={15} className={`shrink-0 mt-1 ${temEsg ? 'text-red-500' : 'text-yellow-600'}`} />
+              <div className="space-y-1">
+                {problemas.map((it, i) => {
+                  const s = it.product.estoque
+                  const isEsg = s === 'Esgotado' || s === 'Sem estoque'
+                  const prev = it.product.estoque_previsao
+                  const prevFmt = fmtDate(prev)
+                  return (
+                    <p key={i} className={`text-xs font-semibold ${isEsg ? 'text-red-800' : 'text-yellow-800'}`}>
+                      {isEsg ? '✕' : '⏱'} <strong>{it.label}</strong>
+                      {isEsg ? ' — Esgotado' : prevFmt ? ` — Previsão de entrega: ${prevFmt}` : ' — Previsão de entrega (data a confirmar)'}
+                    </p>
+                  )
+                })}
+                <p className={`text-[10px] ${temEsg ? 'text-red-600' : 'text-yellow-700'}`}>
+                  Confirme a disponibilidade com o fornecedor antes de emitir o pedido.
                 </p>
               </div>
             </div>
@@ -4805,13 +4872,29 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               </tr>
             </thead>
             <tbody>
-              {kitItems.map((item, idx) => (
-                <tr key={idx} className={`border-b border-gray-100 hover:bg-gray-50 ${item.avulso ? 'bg-amber-50/40' : ''}`}>
+              {kitItems.map((item, idx) => {
+                const itemEstoque = item.product?.estoque || 'Disponível'
+                const itemIsEsg   = itemEstoque === 'Esgotado' || itemEstoque === 'Sem estoque'
+                const itemIsPrev  = itemEstoque === 'Previsão'
+                const itemPrev    = itemIsPrev ? item.product?.estoque_previsao : null
+                const itemPrevFmt = itemPrev ? new Date(itemPrev + 'T12:00:00').toLocaleDateString('pt-BR') : null
+                return (
+                <tr key={idx} className={`border-b border-gray-100 hover:bg-gray-50 ${
+                  item.avulso ? 'bg-amber-50/40' : itemIsEsg ? 'bg-red-50/30' : itemIsPrev ? 'bg-yellow-50/20' : ''
+                }`}>
                   <td className="px-4 py-3 text-sm text-gray-500">{idx + 1}</td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-semibold text-gray-900">{item.label}</p>
                       {item.avulso && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium print:hidden">avulso</span>}
+                      {itemIsEsg && (
+                        <span className="text-[10px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full leading-none">Esgotado</span>
+                      )}
+                      {itemIsPrev && (
+                        <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full leading-none">
+                          {itemPrevFmt ? `Prev. ${itemPrevFmt}` : 'Previsão'}
+                        </span>
+                      )}
                     </div>
                     {!item.avulso && <p className="text-xs text-gray-500">{item.product.nome}</p>}
                     <p className="text-xs font-mono text-gray-400">{item.product.codigo !== '—' ? `SAP: ${item.product.codigo}` : ''}</p>
@@ -4838,7 +4921,8 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                     )}
                   </td>
                 </tr>
-              ))}
+              )
+              })}
             </tbody>
             <tfoot>
               {/* Subtotal e Ajuste — visível só para admin */}

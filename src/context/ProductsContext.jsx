@@ -27,7 +27,12 @@ export const DEFAULT_FRETE = [
 ]
 
 // ─── Supabase persistence helpers ─────────────────────────────────────────────
+// Em desenvolvimento (localhost), todo acesso ao Supabase é bloqueado.
+// O catálogo usa apenas localStorage + dados padrão, sem conflito com produção.
+const IS_DEV = import.meta.env.DEV
+
 async function sbSave(key, value) {
+  if (IS_DEV) return
   try {
     await supabaseAdmin
       .from('app_settings')
@@ -36,6 +41,7 @@ async function sbSave(key, value) {
 }
 
 async function sbLoad(key) {
+  if (IS_DEV) return null
   try {
     const { data } = await supabaseAdmin
       .from('app_settings')
