@@ -869,6 +869,29 @@ function BombDimStep({ data, onChange, products }) {
                 <div className="text-xs text-gray-500 mt-0.5">
                   {m.potencia} Wp · <span className="font-bold text-cyan-700">{pal}×{seriesPorString}</span> = {n} un · {p} kWp · {fmt(m.preco)}/un
                 </div>
+                {(() => {
+                  const s = m.estoque || 'Disponível'
+                  if (s === 'Esgotado' || s === 'Sem estoque') return (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600 mt-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" /> Esgotado
+                    </span>
+                  )
+                  if (s === 'Previsão') {
+                    const prev = m.estoque_previsao
+                    const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR') : null
+                    return (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-yellow-700 mt-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
+                        {prevFmt ? `Previsão: ${prevFmt}` : 'Previsão de entrega'}
+                      </span>
+                    )
+                  }
+                  return (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 mt-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Disponível
+                    </span>
+                  )
+                })()}
               </button>
             )
           })}
@@ -1512,6 +1535,34 @@ function Step2({ data, onChange, products, targetKwp }) {
                   <span className="text-gray-500">Total painéis:</span>
                   <span className="font-bold text-weg-orange">{fmt(moneyMul(panel.preco, qty))}</span>
                 </div>
+                {/* Disponibilidade */}
+                {(() => {
+                  const s = panel.estoque || 'Disponível'
+                  if (s === 'Esgotado' || s === 'Sem estoque') return (
+                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                      <span className="text-xs font-semibold text-red-600">Esgotado</span>
+                    </div>
+                  )
+                  if (s === 'Previsão') {
+                    const prev = panel.estoque_previsao
+                    const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR') : null
+                    return (
+                      <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5">
+                        <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 shrink-0" />
+                        <span className="text-xs font-semibold text-yellow-700">
+                          {prevFmt ? `Previsão: ${prevFmt}` : 'Previsão de entrega'}
+                        </span>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                      <span className="text-xs font-semibold text-green-700">Disponível</span>
+                    </div>
+                  )
+                })()}
               </div>
               </div>{/* /p-4 */}
             </button>

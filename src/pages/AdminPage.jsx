@@ -26,7 +26,7 @@ const ALL_CATEGORIES = Object.values(CATEGORIES)
 const EMPTY_PRODUCT = {
   nome: '', codigo: '', modelo: '', categoria: CATEGORIES.MODULOS,
   tipo: '', fabricante: 'WEG', potencia: '', unidadePotencia: 'kW',
-  tensao: '', fase: '', preco: '', estoque: 'Disponível', descricao: '',
+  tensao: '', fase: '', preco: '', estoque: 'Disponível', estoque_previsao: '', descricao: '',
 }
 
 // ─── Login Screen ─────────────────────────────────────────────────────────────
@@ -642,6 +642,14 @@ function ProductRow({ product, onUpdate, onDelete }) {
                 <option>Esgotado</option>
               </select>
             </div>
+            {form.estoque === 'Previsão' && (
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase">Data de Previsão</label>
+                <input type="date" value={form.estoque_previsao || ''}
+                  onChange={e => setForm(f => ({ ...f, estoque_previsao: e.target.value }))}
+                  className="w-full border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-weg-blue" />
+              </div>
+            )}
           </div>
           <div>
             <label className="text-[10px] text-gray-500 uppercase">Descrição</label>
@@ -685,12 +693,17 @@ function ProductRow({ product, onUpdate, onDelete }) {
       </td>
       <td className="px-3 py-2.5">
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-          product.estoque === 'Disponível' ? 'bg-green-100 text-green-700' :
+          product.estoque === 'Disponível' || !product.estoque ? 'bg-green-100 text-green-700' :
           product.estoque === 'Esgotado' || product.estoque === 'Sem estoque' ? 'bg-red-100 text-red-600' :
           'bg-yellow-100 text-yellow-700'
         }`}>
           {product.estoque === 'Sem estoque' ? 'Esgotado' : (product.estoque || 'Disponível')}
         </span>
+        {product.estoque === 'Previsão' && product.estoque_previsao && (
+          <p className="text-[10px] text-yellow-700 mt-0.5">
+            {new Date(product.estoque_previsao + 'T12:00:00').toLocaleDateString('pt-BR')}
+          </p>
+        )}
       </td>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -808,6 +821,14 @@ function AddProductModal({ onAdd, onClose }) {
                 <option>Previsão</option>
                 <option>Esgotado</option>
               </select>
+              {form.estoque === 'Previsão' && (
+                <div className="mt-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Data de Previsão</label>
+                  <input type="date" value={form.estoque_previsao || ''}
+                    onChange={e => setForm(f => ({ ...f, estoque_previsao: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+                </div>
+              )}
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-gray-700 mb-1">Descrição</label>
