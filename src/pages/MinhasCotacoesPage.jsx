@@ -843,6 +843,10 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const alternativePanel = panelEsgotado
     ? findAlternativePanel(panelInQuote, quote.frete_nome, catalogProducts)
     : null
+  // Estoque atual do panel pelo catálogo (para print)
+  const catalogPanel     = catalogProducts?.find(p => panelInQuote && (p.id === panelInQuote.id || (panelInQuote.codigo && p.codigo === panelInQuote.codigo)))
+  const panelEstoqueAtual  = catalogPanel?.estoque || panelInQuote?.estoque || 'Disponível'
+  const panelPrevisaoAtual = catalogPanel?.estoque_previsao || panelInQuote?.estoque_previsao || null
 
   // Build structure composition (mirrors KitBuilder logic)
   const structureComposition = useMemo(() => {
@@ -1162,6 +1166,25 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
           </div>
         </div>
+        {/* Aviso de disponibilidade do módulo */}
+        {panelEstoqueAtual !== 'Disponível' && (() => {
+          const isEsgotado = panelEstoqueAtual === 'Esgotado' || panelEstoqueAtual === 'Sem estoque'
+          const prevFmt = panelPrevisaoAtual ? new Date(panelPrevisaoAtual + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
+          return (
+            <div className={`mx-8 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
+              <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
+              <div>
+                <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
+                  {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
+                </p>
+                <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
+                  {isEsgotado ? 'Confirme alternativas disponíveis antes de emitir o pedido.' : 'Prazo sujeito a alteração. Confirme com o fornecedor antes de finalizar.'}
+                </p>
+              </div>
+            </div>
+          )
+        })()}
+
         <div className="px-8 pt-5 pb-3">
           {printRevision.items?.length > 0 ? (
             <table className="w-full text-sm border-collapse">
@@ -1263,6 +1286,25 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </div>
             )}
           </div>
+
+          {/* Aviso de disponibilidade do módulo */}
+          {panelEstoqueAtual !== 'Disponível' && (() => {
+            const isEsgotado = panelEstoqueAtual === 'Esgotado' || panelEstoqueAtual === 'Sem estoque'
+            const prevFmt = panelPrevisaoAtual ? new Date(panelPrevisaoAtual + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
+            return (
+              <div className={`mx-8 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
+                <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
+                <div>
+                  <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
+                    {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
+                  </p>
+                  <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
+                    {isEsgotado ? 'Confirme alternativas disponíveis antes de emitir o pedido.' : 'Prazo sujeito a alteração. Confirme com o fornecedor antes de finalizar.'}
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Items table */}
           <div className="px-8 pt-5 pb-3">
@@ -1929,6 +1971,29 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
               <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
             </div>
           </div>
+          {/* Aviso de disponibilidade do módulo */}
+          {(() => {
+            const cp = catalogProducts?.find(p => pkd.panel && (p.id === pkd.panel.id || (pkd.panel.codigo && p.codigo === pkd.panel.codigo)))
+            const est = cp?.estoque || pkd.panel?.estoque || 'Disponível'
+            if (est === 'Disponível') return null
+            const isEsgotado = est === 'Esgotado' || est === 'Sem estoque'
+            const prev = cp?.estoque_previsao || pkd.panel?.estoque_previsao || null
+            const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
+            return (
+              <div className={`mx-8 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
+                <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
+                <div>
+                  <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
+                    {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
+                  </p>
+                  <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
+                    {isEsgotado ? 'Confirme alternativas disponíveis antes de emitir o pedido.' : 'Prazo sujeito a alteração. Confirme com o fornecedor antes de finalizar.'}
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
+
           <div className="px-8 pt-5 pb-3">
             {r.items?.length > 0 ? (
               <table className="w-full text-sm border-collapse">

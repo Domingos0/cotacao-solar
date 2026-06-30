@@ -1356,6 +1356,7 @@ function isNordestePanel(panel) {
 function Step2({ data, onChange, products, targetKwp }) {
   const { freteOpcoes } = useProducts()
   const [nordesteWarning, setNordesteWarning] = useState(null) // { panel, qty }
+  const [stockAlert, setStockAlert]           = useState(null) // { panel } when estoque ≠ Disponível
 
   const panels = products.filter(p => p.kitRole === KIT_ROLE.PANEL && p.preco)
 
@@ -1436,6 +1437,55 @@ function Step2({ data, onChange, products, targetKwp }) {
         </div>
       )}
 
+      {/* Modal de alerta: módulo com estoque restrito */}
+      {stockAlert && (() => {
+        const s = stockAlert.panel.estoque || 'Disponível'
+        const isEsgotado = s === 'Esgotado' || s === 'Sem estoque'
+        const prev = stockAlert.panel.estoque_previsao
+        const prevFmt = prev
+          ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})
+          : null
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${isEsgotado ? 'bg-red-100' : 'bg-yellow-100'}`}>
+                  <AlertTriangle size={22} className={isEsgotado ? 'text-red-600' : 'text-yellow-600'} />
+                </div>
+                <div>
+                  <h3 className={`font-bold text-gray-900 mb-0.5 ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
+                    {isEsgotado ? 'Módulo Esgotado' : 'Módulo com Previsão de Entrega'}
+                  </h3>
+                  <p className="text-xs text-gray-500">{stockAlert.panel.nome} · {stockAlert.panel.potencia} Wp</p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-700 mb-5">
+                {isEsgotado
+                  ? <>Este módulo está <strong className="text-red-600">esgotado</strong> no momento. Recomendamos selecionar outro módulo disponível para garantir o prazo de entrega.</>
+                  : <>Este módulo tem previsão de entrega para <strong className="text-yellow-700">{prevFmt || 'data a confirmar'}</strong>. Verifique com o fornecedor antes de fechar o pedido ou escolha outro módulo disponível.</>
+                }
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStockAlert(null)}
+                  className="flex-1 border-2 border-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl text-sm hover:border-gray-300 hover:bg-gray-50"
+                >
+                  Escolher outro
+                </button>
+                <button
+                  onClick={() => { selectPanel(stockAlert.panel); setStockAlert(null) }}
+                  className={`flex-1 font-semibold py-2.5 rounded-xl text-sm text-white ${
+                    isEsgotado ? 'bg-red-500 hover:bg-red-600' : 'bg-yellow-500 hover:bg-yellow-600'
+                  }`}
+                >
+                  Usar mesmo assim
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Modal de confirmação ao trocar painel nordeste por outro */}
       {nordesteWarning && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1480,7 +1530,11 @@ function Step2({ data, onChange, products, targetKwp }) {
           return (
             <button
               key={panel.id}
-              onClick={() => selectPanel(panel)}
+              onClick={() => {
+                const s = panel.estoque || 'Disponível'
+                if (s !== 'Disponível') { setStockAlert({ panel }); return }
+                selectPanel(panel)
+              }}
               className={`text-left rounded-xl border-2 overflow-hidden transition-all ${
                 selected ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white hover:border-weg-blue/50 hover:shadow-md'
               }`}
@@ -4710,6 +4764,32 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
             </div>
           </div>
         </div>
+
+        {/* Aviso de disponibilidade do módulo — tela e impressão */}
+        {data.panel && (() => {
+          const s = data.panel.estoque || 'Disponível'
+          if (s === 'Disponível') return null
+          const isEsgotado = s === 'Esgotado' || s === 'Sem estoque'
+          const prev = data.panel.estoque_previsao
+          const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
+          return (
+            <div className={`mx-6 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${
+              isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'
+            }`}>
+              <AlertTriangle size={15} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
+              <div>
+                <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
+                  {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
+                </p>
+                <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
+                  {isEsgotado
+                    ? 'Este módulo está indisponível no momento. Confirme disponibilidade antes de emitir o pedido.'
+                    : 'Prazo sujeito a alteração. Confirme disponibilidade com o fornecedor antes de finalizar o pedido.'}
+                </p>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Items table */}
         <div className="overflow-x-auto print:overflow-visible">
