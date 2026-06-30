@@ -1192,20 +1192,30 @@ function DisponibilidadeCard() {
                       <td className="px-3 py-2 font-mono text-gray-400 hidden md:table-cell">{p.codigo}</td>
                       <td className="px-3 py-2 text-gray-500 hidden lg:table-cell truncate max-w-[120px]">{p.categoria}</td>
                       <td className="px-4 py-2">
-                        <div className="flex items-center justify-center gap-1">
-                          {DISP_KEYS.map(key => (
-                            <button
-                              key={key}
-                              onClick={() => updateProduct(p.id, { estoque: key })}
-                              className={`px-2 py-0.5 rounded-full border font-semibold text-[10px] transition-all ${
-                                st === key
-                                  ? DISP_STATUS[key].badge
-                                  : 'bg-white text-gray-300 border-gray-200 hover:border-gray-400 hover:text-gray-500'
-                              }`}
-                            >
-                              {key}
-                            </button>
-                          ))}
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className="flex items-center justify-center gap-1">
+                            {DISP_KEYS.map(key => (
+                              <button
+                                key={key}
+                                onClick={() => updateProduct(p.id, { estoque: key, ...(key !== 'Previsão' ? { estoque_previsao: '' } : {}) })}
+                                className={`px-2 py-0.5 rounded-full border font-semibold text-[10px] transition-all ${
+                                  st === key
+                                    ? DISP_STATUS[key].badge
+                                    : 'bg-white text-gray-300 border-gray-200 hover:border-gray-400 hover:text-gray-500'
+                                }`}
+                              >
+                                {key}
+                              </button>
+                            ))}
+                          </div>
+                          {st === 'Previsão' && (
+                            <input
+                              type="date"
+                              value={p.estoque_previsao || ''}
+                              onChange={e => updateProduct(p.id, { estoque_previsao: e.target.value })}
+                              className="text-[10px] border border-yellow-300 rounded px-1.5 py-0.5 text-yellow-800 bg-yellow-50 focus:outline-none focus:ring-1 focus:ring-yellow-400 w-32"
+                            />
+                          )}
                         </div>
                       </td>
                     </tr>
