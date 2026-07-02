@@ -1653,13 +1653,9 @@ function Step2({ data, onChange, products, targetKwp }) {
 function getOverloadMax(inv) {
   const m = (inv.modelo || inv.nome || '').toUpperCase()
   if (/SIW420G.*K075/.test(m))   return 0.70
-  if (/SIW200H.*(W10|W20)/.test(m)) return 1.00
-  if (/SIW300H/.test(m))          return 1.00
-  if (/SIW400H.*K007/.test(m))   return 0.25
-  if (/SIW400H.*K008/.test(m))   return 0.07
-  if (/SIW400H.*K011/.test(m))   return 0.10
-  if (/SIW400H.*K014/.test(m))   return 0.12
-  if (/SIW400H.*K017/.test(m))   return 0.13
+  if (/SIW200H/.test(m))         return 1.00  // toda a linha SIW200H
+  if (/SIW300H/.test(m))         return 1.00
+  if (/SIW400H/.test(m))         return 1.00  // toda a linha SIW400H (K e T series)
   if (/SIW500H.*ST012/.test(m))  return 0.00
   if (/SIW500H.*ST020/.test(m))  return 0.13
   if (/SIW500G.*K075/.test(m))   return 0.00
@@ -1674,7 +1670,7 @@ function invOverloadPct(totalKwp, invKw) {
 // ── SIW400H K-series — potência e overload dependem da tensão da rede ─────────
 // inv.potencia = CA nominal 380V (ex: K008 = 15 kW); para rede 220/127V usar CA abaixo.
 const SIW400K_CA_220 = { '007': 7.5, '008': 8.6, '011': 11.5, '014': 14.4, '017': 17.3 }
-const SIW400K_OL_220 = { '007': 1.00, '008': 0.86, '011': 0.91, '014': 0.94, '017': 0.96 }
+const SIW400K_OL_220 = { '007': 1.00, '008': 1.00, '011': 1.00, '014': 1.00, '017': 1.00 }
 
 function getK400KVariant(inv) {
   const match = (inv?.modelo || inv?.nome || '').toUpperCase().match(/SIW400H.*\bK(\d{3})\b/)
@@ -2336,7 +2332,7 @@ function Step3({ data, onChange, products, realKwp }) {
             invName = data.inverter.nome
           } else if (mixMode && mixList.length > 0) {
             olPct = (realKwp / combinedKw - 1) * 100
-            maxOl = 50
+            maxOl = Math.min(...mixList.map(({ inverter: i }) => Math.round(getOverloadMaxGrid(i, gridConf) * 100)))
             invName = `${mixList.length} inversores`
           }
           if (olPct === null) return null
