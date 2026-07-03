@@ -1658,7 +1658,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                       <span className="flex items-center gap-1.5"><CheckCircle2 size={15} /> Total com desconto aprovado</span>
                       <span className="text-xl">{fmt(quote.total_final)}</span>
                     </div>
-                    {quote.desconto_resposta && (
+                    {quote.desconto_resposta && !/\d+%/.test(quote.desconto_resposta) && (
                       <p className="text-xs text-green-700 pt-1 border-t border-green-200">{quote.desconto_resposta}</p>
                     )}
                   </>
