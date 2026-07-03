@@ -2185,7 +2185,7 @@ const ADMIN_DOT_COLOR = {
 }
 
 const FUNIL_COLUMNS = [
-  { key: 'em_analise',          label: 'Em análise',            color: '#60a5fa', keys: ['em_analise', 'enviada'] },
+  { key: 'em_analise',          label: 'Em análise',            color: '#60a5fa', keys: ['em_analise', 'enviada', 'rascunho'] },
   { key: 'aguardando_desconto', label: 'Desc. pendente',        color: '#fbbf24', keys: ['aguardando_desconto'] },
   { key: 'aprovada',            label: 'Aprovada',              color: '#22c55e', keys: ['aprovada'] },
   { key: 'fechado',             label: 'Pedido',                color: '#fb923c', keys: ['fechado'] },
