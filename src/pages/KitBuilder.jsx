@@ -4472,7 +4472,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         const numeroOrcamento = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`
 
         const kitDataWithRef = { ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [] }
-        const payload = { ...buildQuotePayload(statusOverride || 'em_analise') }
+        const payload = { ...buildQuotePayload(statusOverride || 'enviada') }
         payload.data = kitDataWithRef
         delete payload.kit_data
         const { data: q, error } = await supabaseAdmin.from('quotes').insert(payload).select('id').single()
@@ -4506,11 +4506,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           total_final:  totalFinal,
           data: kitDataAtualizado,
           ...(statusOverride ? { status: statusOverride } : {}),
-          ...(shouldResetDiscount ? { status: 'em_analise', desconto_pct: 0, desconto_resposta: null } : {}),
+          ...(shouldResetDiscount ? { status: 'enviada', desconto_pct: 0, desconto_resposta: null } : {}),
         }).eq('id', quoteId)
         if (error) throw error
         if (shouldResetDiscount) {
-          setQuoteInfo(prev => ({ ...prev, status: 'em_analise', desconto_pct: 0, desconto_resposta: null }))
+          setQuoteInfo(prev => ({ ...prev, status: 'enviada', desconto_pct: 0, desconto_resposta: null }))
         }
         // Propaga revisão para o estado local
         onChange(kitDataAtualizado)
