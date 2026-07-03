@@ -2194,6 +2194,8 @@ function QuoteManagement() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [viewMode, setViewMode] = useState('cards')
+  const [draggingId, setDraggingId]   = useState(null)
+  const [dragOverCol, setDragOverCol] = useState(null)
   const [approvingId, setApprovingId] = useState(null)
   const [approveDiscount, setApproveDiscount] = useState('')
   const [approveMsg, setApproveMsg] = useState('')
@@ -2765,64 +2767,119 @@ function QuoteManagement() {
           {search && <button onClick={() => setSearch('')} className="mt-2 text-xs text-weg-blue underline">Limpar busca</button>}
         </div>
       ) : viewMode === 'funil' ? (
-        /* ── FUNIL (KANBAN) VIEW ── */
-        <div className="-mx-1 overflow-x-auto pb-4 pt-1">
+        /* ── FUNIL (KANBAN) VIEW — drag & drop ── */
+        <div className="-mx-1 overflow-x-auto pb-4 pt-1 select-none">
           <div className="flex gap-3 px-1 min-w-max items-start">
             {FUNIL_COLUMNS.map(col => {
-              const colQuotes = funilQuotes.filter(q => col.keys.includes(q.status))
-              const colTotal  = colQuotes.reduce((s, q) => s + (q.total_final || 0), 0)
+              const colQuotes  = funilQuotes.filter(q => col.keys.includes(q.status))
+              const colTotal   = colQuotes.reduce((s, q) => s + (q.total_final || 0), 0)
+              const isOver     = dragOverCol === col.key
+              const isDragging = draggingId !== null
+
+              const handleDragOver = e => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (dragOverCol !== col.key) setDragOverCol(col.key)
+              }
+              const handleDrop = async e => {
+                e.preventDefault()
+                const id = e.dataTransfer.getData('quoteId')
+                setDragOverCol(null)
+                setDraggingId(null)
+                if (!id) return
+                const q = quotes.find(x => x.id === id)
+                if (!q || col.keys.includes(q.status)) return
+                await updateQuote(id, { status: col.key })
+              }
+
               return (
-                <div key={col.key} className="w-[220px] shrink-0 flex flex-col">
+                <div key={col.key}
+                  className="w-[220px] shrink-0 flex flex-col"
+                  onDragOver={handleDragOver}
+                  onDragEnter={e => { e.preventDefault(); setDragOverCol(col.key) }}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCol(null) }}
+                  onDrop={handleDrop}
+                >
                   {/* Column header */}
                   <div className="mb-2 px-1">
-                    <div className="h-1 rounded-full mb-2" style={{ backgroundColor: col.color }} />
+                    <div className="h-1 rounded-full mb-2 transition-all" style={{ backgroundColor: col.color, opacity: isOver ? 1 : 0.6 }} />
                     <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide truncate leading-tight">{col.label}</p>
                     <p className="text-[10px] text-gray-400 mt-0.5">
                       {colQuotes.length} negócio{colQuotes.length !== 1 ? 's' : ''} · {fmt(colTotal)}
                     </p>
                   </div>
-                  {/* Cards */}
-                  <div className="space-y-2 max-h-[calc(100vh-380px)] overflow-y-auto pr-0.5">
-                    {colQuotes.map(q => {
-                      const kd  = q.data || {}
-                      const rev = kd.revisao || 0
-                      return (
-                        <div key={q.id}
-                          onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}
-                          className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 cursor-pointer hover:shadow-md hover:border-gray-200 transition-all group">
-                          <div className="flex items-start justify-between gap-1 mb-1.5">
-                            <span className="font-mono font-bold text-[11px] text-weg-blue leading-tight">
-                              {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
-                            </span>
-                            {rev > 0 && (
-                              <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full shrink-0 leading-tight">Rev.{rev}</span>
-                            )}
-                          </div>
-                          <p className="font-semibold text-gray-800 text-[12px] leading-snug line-clamp-2">
-                            {q.profiles?.nome || kd.clienteNome || '—'}
-                          </p>
-                          {q.profiles?.empresa && (
-                            <p className="text-[10px] text-gray-400 mt-0.5 truncate">{q.profiles.empresa}</p>
-                          )}
-                          <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between">
-                            <span className="text-[10px] text-gray-400">{fmtDt(q.created_at).split(',')[0]}</span>
-                            <span className="font-bold text-gray-900 text-[12px]">{fmt(q.total_final)}</span>
-                          </div>
-                          <div className="mt-1.5 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={e => { e.stopPropagation(); setPrintingQuote(q) }}
-                              title="Baixar proposta"
-                              className="p-1 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
-                              <Download size={11} />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {colQuotes.length === 0 && (
-                      <div className="border-2 border-dashed border-gray-100 rounded-xl py-6 text-center">
-                        <p className="text-[11px] text-gray-300">Nenhuma cotação</p>
+
+                  {/* Drop zone */}
+                  <div className={`flex flex-col gap-2 min-h-[80px] rounded-xl transition-all p-1.5 -m-1.5 ${
+                    isOver && isDragging ? 'bg-blue-50/60 ring-2 ring-weg-blue/30 ring-dashed' : ''
+                  }`}>
+                    {/* Drop hint */}
+                    {isOver && isDragging && (
+                      <div className="border-2 border-dashed border-weg-blue/40 rounded-xl py-3 text-center animate-pulse">
+                        <p className="text-[11px] text-weg-blue font-semibold">Soltar aqui → {col.label}</p>
                       </div>
                     )}
+
+                    {/* Cards */}
+                    <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto pr-0.5">
+                      {colQuotes.map(q => {
+                        const kd      = q.data || {}
+                        const rev     = kd.revisao || 0
+                        const isDraggingThis = draggingId === q.id
+                        return (
+                          <div key={q.id}
+                            draggable
+                            onDragStart={e => {
+                              e.dataTransfer.setData('quoteId', q.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggingId(q.id)
+                            }}
+                            onDragEnd={() => { setDraggingId(null); setDragOverCol(null) }}
+                            onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}
+                            className={`bg-white rounded-xl border shadow-sm p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group ${
+                              isDraggingThis
+                                ? 'opacity-40 border-weg-blue scale-95'
+                                : 'border-gray-100 hover:border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1 mb-1.5">
+                              <span className="font-mono font-bold text-[11px] text-weg-blue leading-tight">
+                                {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                              </span>
+                              {rev > 0 && (
+                                <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full shrink-0 leading-tight">Rev.{rev}</span>
+                              )}
+                            </div>
+                            <p className="font-semibold text-gray-800 text-[12px] leading-snug line-clamp-2">
+                              {q.profiles?.nome || kd.clienteNome || '—'}
+                            </p>
+                            {q.profiles?.empresa && (
+                              <p className="text-[10px] text-gray-400 mt-0.5 truncate">{q.profiles.empresa}</p>
+                            )}
+                            <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between">
+                              <span className="text-[10px] text-gray-400">{fmtDt(q.created_at).split(',')[0]}</span>
+                              <span className="font-bold text-gray-900 text-[12px]">{fmt(q.total_final)}</span>
+                            </div>
+                            <div className="mt-1.5 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={e => { e.stopPropagation(); setPrintingQuote(q) }}
+                                title="Baixar proposta"
+                                className="p-1 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
+                                <Download size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+
+                      {/* Empty column placeholder */}
+                      {colQuotes.length === 0 && !(isOver && isDragging) && (
+                        <div className="border-2 border-dashed border-gray-100 rounded-xl py-6 text-center">
+                          <p className="text-[11px] text-gray-300">
+                            {isDragging ? 'Soltar aqui' : 'Nenhuma cotação'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
