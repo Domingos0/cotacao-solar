@@ -15,7 +15,7 @@ import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
   Printer, Search, ChevronDown, ChevronUp, AlertTriangle, Save,
   FileText, Shield, Download, ArrowUpFromLine, Info, Truck,
-  Users, Package, LayoutList, LayoutGrid, List, Clock, CheckCircle2, XCircle,
+  Users, Package, LayoutList, LayoutGrid, List, LayoutDashboard, Clock, CheckCircle2, XCircle,
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
   Lock, UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
@@ -2178,6 +2178,16 @@ const ADMIN_DOT_COLOR = {
   perdida:             '#f87171',
 }
 
+const FUNIL_COLUMNS = [
+  { key: 'rascunho',            label: 'Rascunho',          color: '#9ca3af', keys: ['rascunho'] },
+  { key: 'em_analise',          label: 'Em análise',         color: '#60a5fa', keys: ['em_analise', 'enviada'] },
+  { key: 'aguardando_desconto', label: 'Desc. pendente',     color: '#fbbf24', keys: ['aguardando_desconto'] },
+  { key: 'aprovada',            label: 'Aprovada',           color: '#22c55e', keys: ['aprovada'] },
+  { key: 'fechado',             label: 'Aguard. Implant.',   color: '#fb923c', keys: ['fechado'] },
+  { key: 'implantado',          label: 'Implantado',         color: '#10b981', keys: ['implantado'] },
+  { key: 'perdida',             label: 'Perdida',            color: '#f87171', keys: ['perdida', 'recusada'] },
+]
+
 function QuoteManagement() {
   const { tableInfo } = useProducts()
   const [quotes, setQuotes] = useState([])
@@ -2311,17 +2321,18 @@ function QuoteManagement() {
   const pendingImplant  = quotes.filter(q => q.status === 'fechado')
 
   const byStatus = filter === 'all' ? quotes : quotes.filter(q => q.status === filter)
+  const matchSearch = (q, s) =>
+    (q.profiles?.cnpj || '').replace(/\D/g, '').includes(s.replace(/\D/g, '')) ||
+    (q.profiles?.nome || '').toLowerCase().includes(s) ||
+    (q.profiles?.empresa || '').toLowerCase().includes(s) ||
+    (q.data?.numero_orcamento || '').toLowerCase().includes(s)
   const filtered = search.trim()
-    ? byStatus.filter(q => {
-        const s = search.trim().toLowerCase()
-        return (
-          (q.profiles?.cnpj || '').replace(/\D/g, '').includes(s.replace(/\D/g, '')) ||
-          (q.profiles?.nome || '').toLowerCase().includes(s) ||
-          (q.profiles?.empresa || '').toLowerCase().includes(s) ||
-          (q.data?.numero_orcamento || '').toLowerCase().includes(s)
-        )
-      })
+    ? byStatus.filter(q => matchSearch(q, search.trim().toLowerCase()))
     : byStatus
+  // Para o funil: ignora o filtro de status (pills), aplica só a busca
+  const funilQuotes = search.trim()
+    ? quotes.filter(q => matchSearch(q, search.trim().toLowerCase()))
+    : quotes
 
   if (loading) return (
     <div className="flex items-center justify-center py-16">
@@ -2728,21 +2739,23 @@ function QuoteManagement() {
         </div>
       )}
 
-      {/* ── Toggle Cards / Lista ── */}
-      {filtered.length > 0 && (
-        <div className="flex justify-end">
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-            <button onClick={() => setViewMode('cards')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${viewMode === 'cards' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-              <LayoutGrid size={13} /> Cards
-            </button>
-            <button onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${viewMode === 'table' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-              <List size={13} /> Lista
-            </button>
-          </div>
+      {/* ── Toggle Cards / Lista / Funil ── */}
+      <div className="flex justify-end">
+        <div className="flex gap-0.5 bg-gray-100 p-1 rounded-xl">
+          <button onClick={() => setViewMode('cards')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'cards' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <LayoutGrid size={13} /> Cards
+          </button>
+          <button onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'table' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <List size={13} /> Lista
+          </button>
+          <button onClick={() => setViewMode('funil')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'funil' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <LayoutDashboard size={13} /> Funil
+          </button>
         </div>
-      )}
+      </div>
 
       {/* ── Cotações ── */}
       {filtered.length === 0 ? (
@@ -2750,6 +2763,71 @@ function QuoteManagement() {
           <FileText size={40} className="text-gray-200 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">Nenhuma cotação encontrada.</p>
           {search && <button onClick={() => setSearch('')} className="mt-2 text-xs text-weg-blue underline">Limpar busca</button>}
+        </div>
+      ) : viewMode === 'funil' ? (
+        /* ── FUNIL (KANBAN) VIEW ── */
+        <div className="-mx-1 overflow-x-auto pb-4 pt-1">
+          <div className="flex gap-3 px-1 min-w-max items-start">
+            {FUNIL_COLUMNS.map(col => {
+              const colQuotes = funilQuotes.filter(q => col.keys.includes(q.status))
+              const colTotal  = colQuotes.reduce((s, q) => s + (q.total_final || 0), 0)
+              return (
+                <div key={col.key} className="w-[220px] shrink-0 flex flex-col">
+                  {/* Column header */}
+                  <div className="mb-2 px-1">
+                    <div className="h-1 rounded-full mb-2" style={{ backgroundColor: col.color }} />
+                    <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide truncate leading-tight">{col.label}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {colQuotes.length} negócio{colQuotes.length !== 1 ? 's' : ''} · {fmt(colTotal)}
+                    </p>
+                  </div>
+                  {/* Cards */}
+                  <div className="space-y-2 max-h-[calc(100vh-380px)] overflow-y-auto pr-0.5">
+                    {colQuotes.map(q => {
+                      const kd  = q.data || {}
+                      const rev = kd.revisao || 0
+                      return (
+                        <div key={q.id}
+                          onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}
+                          className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 cursor-pointer hover:shadow-md hover:border-gray-200 transition-all group">
+                          <div className="flex items-start justify-between gap-1 mb-1.5">
+                            <span className="font-mono font-bold text-[11px] text-weg-blue leading-tight">
+                              {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                            </span>
+                            {rev > 0 && (
+                              <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full shrink-0 leading-tight">Rev.{rev}</span>
+                            )}
+                          </div>
+                          <p className="font-semibold text-gray-800 text-[12px] leading-snug line-clamp-2">
+                            {q.profiles?.nome || kd.clienteNome || '—'}
+                          </p>
+                          {q.profiles?.empresa && (
+                            <p className="text-[10px] text-gray-400 mt-0.5 truncate">{q.profiles.empresa}</p>
+                          )}
+                          <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400">{fmtDt(q.created_at).split(',')[0]}</span>
+                            <span className="font-bold text-gray-900 text-[12px]">{fmt(q.total_final)}</span>
+                          </div>
+                          <div className="mt-1.5 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={e => { e.stopPropagation(); setPrintingQuote(q) }}
+                              title="Baixar proposta"
+                              className="p-1 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
+                              <Download size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {colQuotes.length === 0 && (
+                      <div className="border-2 border-dashed border-gray-100 rounded-xl py-6 text-center">
+                        <p className="text-[11px] text-gray-300">Nenhuma cotação</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       ) : viewMode === 'table' ? (
         /* ── TABLE VIEW ── */
