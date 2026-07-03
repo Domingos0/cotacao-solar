@@ -144,7 +144,9 @@ export const STATUS_STYLE = {
   aguardando_desconto: { label: 'Aguardando desconto',    cls: 'bg-yellow-100 text-yellow-700',   icon: Clock },
   aprovada:            { label: 'Desconto aprovado',      cls: 'bg-green-100 text-green-700',     icon: CheckCircle2 },
   recusada:            { label: 'Desconto não aprovado',  cls: 'bg-red-100 text-red-600',         icon: XCircle },
-  fechado:             { label: 'Aguardando Implantação', cls: 'bg-orange-100 text-orange-700',   icon: Package },
+  fechado:             { label: 'Pedido',                 cls: 'bg-orange-100 text-orange-700',   icon: Package },
+  faturado:            { label: 'Pedido Faturado',        cls: 'bg-sky-100 text-sky-700',         icon: Package },
+  em_transporte:       { label: 'Pedido em Transporte',   cls: 'bg-violet-100 text-violet-700',   icon: Package },
   implantado:          { label: 'Implantado',             cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
   perdida:             { label: 'Proposta Perdida',       cls: 'bg-red-100 text-red-600',         icon: XCircle },
 }
@@ -152,6 +154,8 @@ export const STATUS_STYLE = {
 function getStatusBorderCls(status) {
   if (status === 'perdida' || status === 'recusada') return 'border-l-red-400'
   if (status === 'implantado')          return 'border-l-emerald-500'
+  if (status === 'em_transporte')       return 'border-l-violet-400'
+  if (status === 'faturado')            return 'border-l-sky-400'
   if (status === 'fechado')             return 'border-l-orange-400'
   if (status === 'aprovada')            return 'border-l-green-500'
   if (status === 'aguardando_desconto') return 'border-l-amber-400'
@@ -167,6 +171,8 @@ const STATUS_DOT_COLOR = {
   aprovada:            '#22c55e',
   recusada:            '#f87171',
   fechado:             '#fb923c',
+  faturado:            '#0ea5e9',
+  em_transporte:       '#8b5cf6',
   implantado:          '#10b981',
   perdida:             '#f87171',
 }
@@ -989,7 +995,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     : quote.total_final
   const freteAmt = (quote.total_final || 0) - (totalBase || 0)
 
-  const isClosed = ['fechado', 'implantado', 'perdida'].includes(quote.status)
+  const isClosed = ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'].includes(quote.status)
 
   const handleAction = async (type) => {
     setProcessing(true)
@@ -2016,7 +2022,7 @@ function RevisionDetailModal({ quote, revision, onClose }) {
 }
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
-const CLOSED_STATUSES = ['fechado', 'implantado', 'perdida']
+const CLOSED_STATUSES = ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida']
 
 export default function MinhasCotacoesPage({ onLoadQuote }) {
   const { session, profile, isAdmin } = useAuth()
@@ -2734,7 +2740,9 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
               { key: 'em_analise',          label: 'Em análise' },
               { key: 'aguardando_desconto', label: 'Desc. pendente' },
               { key: 'aprovada',            label: 'Aprovada' },
-              { key: 'fechado',             label: 'Aguard. Implant.' },
+              { key: 'fechado',             label: 'Pedido' },
+              { key: 'faturado',            label: 'Faturado' },
+              { key: 'em_transporte',       label: 'Em Transporte' },
               { key: 'implantado',          label: 'Implantado' },
               { key: 'perdida',             label: 'Perdida' },
             ].map(({ key, label }) => {

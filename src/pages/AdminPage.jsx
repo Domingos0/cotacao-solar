@@ -1932,7 +1932,7 @@ function DashboardPanel({ onGoToTab }) {
       const byStatus = (s) => quotes.filter(q => q.status === s).length
       const totalReceita = quotes.reduce((sum, q) => sum + (q.total_final || 0), 0)
       const totalKwp = quotes.reduce((sum, q) => sum + (parseFloat(q.kwp) || 0), 0)
-      const fechados   = quotes.filter(q => ['fechado', 'implantado'].includes(q.status))
+      const fechados   = quotes.filter(q => ['fechado', 'faturado', 'em_transporte', 'implantado'].includes(q.status))
       const perdidos   = quotes.filter(q => q.status === 'perdida')
 
       setStats({
@@ -1942,6 +1942,8 @@ function DashboardPanel({ onGoToTab }) {
         aprovada: byStatus('aprovada'),
         recusada: byStatus('recusada'),
         fechado: byStatus('fechado'),
+        faturado: byStatus('faturado'),
+        em_transporte: byStatus('em_transporte'),
         implantado: byStatus('implantado'),
         perdida: byStatus('perdida'),
         receita: totalReceita,
@@ -1969,7 +1971,7 @@ function DashboardPanel({ onGoToTab }) {
     { label: 'Valor em cotações',    value: fmt(stats.receita),         icon: DollarSign,  color: 'green',  sub: 'soma dos totais' },
     { label: 'Descontos pendentes',  value: stats.aguardando,           icon: BadgePercent,color: 'yellow', sub: 'aguardando resposta', onClick: () => onGoToTab('cotacoes') },
     { label: 'Clientes ativos',      value: stats.clientesAtivos,       icon: Users,       color: 'indigo', sub: `${stats.clientesPendentes} aguardando aprovação`, onClick: stats.clientesPendentes > 0 ? () => onGoToTab('usuarios') : undefined },
-    { label: 'Kits Fechados',        value: stats.fechado + stats.implantado, icon: Package, color: 'orange', sub: `${fmt(stats.valorFechados)} · ${stats.kwpFechados.toFixed(1)} kWp`, onClick: () => onGoToTab('kits_fechados') },
+    { label: 'Kits Fechados',        value: stats.fechado + (stats.faturado||0) + (stats.em_transporte||0) + stats.implantado, icon: Package, color: 'orange', sub: `${fmt(stats.valorFechados)} · ${stats.kwpFechados.toFixed(1)} kWp`, onClick: () => onGoToTab('kits_fechados') },
     { label: 'Kits Perdidos',        value: stats.perdida,              icon: XCircle,     color: 'red',    sub: fmt(stats.valorPerdidos), onClick: stats.perdida > 0 ? () => onGoToTab('kits_fechados') : undefined },
   ]
 
@@ -2159,6 +2161,8 @@ function AdminKitItems({ items }) {
 function getAdminBorderCls(status) {
   if (status === 'perdida' || status === 'recusada') return 'border-l-red-400'
   if (status === 'implantado')          return 'border-l-emerald-400'
+  if (status === 'em_transporte')       return 'border-l-violet-400'
+  if (status === 'faturado')            return 'border-l-sky-400'
   if (status === 'fechado')             return 'border-l-orange-400'
   if (status === 'aprovada')            return 'border-l-green-400'
   if (status === 'aguardando_desconto') return 'border-l-yellow-400'
@@ -2174,18 +2178,21 @@ const ADMIN_DOT_COLOR = {
   aprovada:            '#22c55e',
   recusada:            '#f87171',
   fechado:             '#fb923c',
+  faturado:            '#0ea5e9',
+  em_transporte:       '#8b5cf6',
   implantado:          '#10b981',
   perdida:             '#f87171',
 }
 
 const FUNIL_COLUMNS = [
-  { key: 'rascunho',            label: 'Rascunho',          color: '#9ca3af', keys: ['rascunho'] },
-  { key: 'em_analise',          label: 'Em análise',         color: '#60a5fa', keys: ['em_analise', 'enviada'] },
-  { key: 'aguardando_desconto', label: 'Desc. pendente',     color: '#fbbf24', keys: ['aguardando_desconto'] },
-  { key: 'aprovada',            label: 'Aprovada',           color: '#22c55e', keys: ['aprovada'] },
-  { key: 'fechado',             label: 'Aguard. Implant.',   color: '#fb923c', keys: ['fechado'] },
-  { key: 'implantado',          label: 'Implantado',         color: '#10b981', keys: ['implantado'] },
-  { key: 'perdida',             label: 'Perdida',            color: '#f87171', keys: ['perdida', 'recusada'] },
+  { key: 'em_analise',          label: 'Em análise',            color: '#60a5fa', keys: ['em_analise', 'enviada'] },
+  { key: 'aguardando_desconto', label: 'Desc. pendente',        color: '#fbbf24', keys: ['aguardando_desconto'] },
+  { key: 'aprovada',            label: 'Aprovada',              color: '#22c55e', keys: ['aprovada'] },
+  { key: 'fechado',             label: 'Pedido',                color: '#fb923c', keys: ['fechado'] },
+  { key: 'faturado',            label: 'Pedido Faturado',       color: '#0ea5e9', keys: ['faturado'] },
+  { key: 'em_transporte',       label: 'Pedido em Transporte',  color: '#8b5cf6', keys: ['em_transporte'] },
+  { key: 'implantado',          label: 'Implantado',            color: '#10b981', keys: ['implantado'] },
+  { key: 'perdida',             label: 'Perdida',               color: '#f87171', keys: ['perdida', 'recusada'] },
 ]
 
 function QuoteManagement() {
@@ -2310,6 +2317,8 @@ function QuoteManagement() {
     aprovada:             'bg-green-100 text-green-700',
     recusada:             'bg-red-100 text-red-700',
     fechado:              'bg-orange-100 text-orange-700',
+    faturado:             'bg-sky-100 text-sky-700',
+    em_transporte:        'bg-violet-100 text-violet-700',
     implantado:           'bg-emerald-100 text-emerald-700',
     perdida:              'bg-red-100 text-red-600',
   }
@@ -2317,12 +2326,13 @@ function QuoteManagement() {
     rascunho: 'Rascunho', enviada: 'Em análise', em_analise: 'Em análise',
     aguardando_desconto: 'Aguardando desconto',
     aprovada: 'Aprovada', recusada: 'Recusada',
-    fechado: 'Aguard. Implantação', implantado: 'Implantado', perdida: 'Perdida',
+    fechado: 'Pedido', faturado: 'Pedido Faturado', em_transporte: 'Pedido em Transporte',
+    implantado: 'Implantado', perdida: 'Perdida',
   }
 
   const [confirmingImplantId, setConfirmingImplantId] = useState(null)
-  const handleConfirmImplantacao = async (quoteId) => {
-    await updateQuote(quoteId, { status: 'implantado' })
+  const handleConfirmImplantacao = async (quoteId, newStatus = 'implantado') => {
+    await updateQuote(quoteId, { status: newStatus })
     setConfirmingImplantId(null)
   }
 
@@ -2330,7 +2340,7 @@ function QuoteManagement() {
   const [expandedId, setExpandedId] = useState(null)
 
   const pendingDiscount = quotes.filter(q => q.status === 'aguardando_desconto')
-  const pendingImplant  = quotes.filter(q => q.status === 'fechado')
+  const pendingImplant  = quotes.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status))
 
   const byStatus = filter === 'all' ? quotes : quotes.filter(q => q.status === filter)
   const matchSearch = (q, s) =>
@@ -2483,7 +2493,8 @@ function QuoteManagement() {
     rascunho: 'border-l-gray-300', enviada: 'border-l-blue-400',
     em_analise: 'border-l-blue-400', aguardando_desconto: 'border-l-yellow-400',
     aprovada: 'border-l-green-400', recusada: 'border-l-red-400',
-    fechado: 'border-l-orange-400', implantado: 'border-l-emerald-400',
+    fechado: 'border-l-orange-400', faturado: 'border-l-sky-400',
+    em_transporte: 'border-l-violet-400', implantado: 'border-l-emerald-400',
     perdida: 'border-l-red-300',
   }
 
@@ -2493,7 +2504,9 @@ function QuoteManagement() {
     { value: 'em_analise',          label: 'Em análise',      count: quotes.filter(q => ['em_analise','enviada'].includes(q.status)).length },
     { value: 'aguardando_desconto', label: 'Desc. pendente',  count: pendingDiscount.length },
     { value: 'aprovada',            label: 'Aprovada',        count: quotes.filter(q => q.status === 'aprovada').length },
-    { value: 'fechado',             label: 'Aguard. Implant.',count: pendingImplant.length },
+    { value: 'fechado',             label: 'Pedido',          count: quotes.filter(q => q.status === 'fechado').length },
+    { value: 'faturado',            label: 'Faturado',        count: quotes.filter(q => q.status === 'faturado').length },
+    { value: 'em_transporte',       label: 'Em Transporte',   count: quotes.filter(q => q.status === 'em_transporte').length },
     { value: 'implantado',          label: 'Implantado',      count: quotes.filter(q => q.status === 'implantado').length },
     { value: 'perdida',             label: 'Perdida',         count: quotes.filter(q => q.status === 'perdida').length },
   ]
@@ -3136,14 +3149,58 @@ function QuoteManagement() {
                       </div>
                     )}
 
-                    {/* Confirmar implantação */}
+                    {/* Pedido (cliente fechou) */}
                     {q.status === 'fechado' && (
                       <div className="px-5 pb-4 pt-3 bg-orange-50 border-t border-orange-100">
-                        <p className="text-xs text-orange-800 mb-2 font-semibold">⚡ Cliente solicitou implantação.</p>
+                        <p className="text-xs text-orange-800 mb-2 font-semibold">📦 Pedido recebido.</p>
+                        {confirmingImplantId === q.id ? (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-xs text-gray-700">Marcar como faturado?</span>
+                            <button onClick={() => handleConfirmImplantacao(q.id, 'faturado')}
+                              className="bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
+                              <Check size={12} /> Confirmar
+                            </button>
+                            <button onClick={() => setConfirmingImplantId(null)} className="text-xs text-gray-400 px-2 py-2">Cancelar</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmingImplantId(q.id)}
+                            className="bg-sky-100 hover:bg-sky-200 text-sky-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
+                            🧾 Marcar como Faturado
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Pedido Faturado */}
+                    {q.status === 'faturado' && (
+                      <div className="px-5 pb-4 pt-3 bg-sky-50 border-t border-sky-100">
+                        <p className="text-xs text-sky-800 mb-2 font-semibold">🧾 Pedido faturado.</p>
+                        {confirmingImplantId === q.id ? (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-xs text-gray-700">Marcar como em transporte?</span>
+                            <button onClick={() => handleConfirmImplantacao(q.id, 'em_transporte')}
+                              className="bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
+                              <Check size={12} /> Confirmar
+                            </button>
+                            <button onClick={() => setConfirmingImplantId(null)} className="text-xs text-gray-400 px-2 py-2">Cancelar</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmingImplantId(q.id)}
+                            className="bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
+                            🚛 Marcar em Transporte
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Pedido em Transporte */}
+                    {q.status === 'em_transporte' && (
+                      <div className="px-5 pb-4 pt-3 bg-violet-50 border-t border-violet-100">
+                        <p className="text-xs text-violet-800 mb-2 font-semibold">🚛 Pedido em transporte.</p>
                         {confirmingImplantId === q.id ? (
                           <div className="flex gap-2 items-center">
                             <span className="text-xs text-gray-700">Confirmar implantação?</span>
-                            <button onClick={() => handleConfirmImplantacao(q.id)}
+                            <button onClick={() => handleConfirmImplantacao(q.id, 'implantado')}
                               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
                               <Check size={12} /> Confirmar
                             </button>
@@ -3152,7 +3209,7 @@ function QuoteManagement() {
                         ) : (
                           <button onClick={() => setConfirmingImplantId(q.id)}
                             className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
-                            <CheckCircle2 size={12} /> Confirmar implantação
+                            <CheckCircle2 size={12} /> Confirmar Implantação
                           </button>
                         )}
                       </div>
@@ -3365,11 +3422,11 @@ function KitsFechadosPanel({ onBadgeChange }) {
     const { data } = await supabaseAdmin
       .from('quotes')
       .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
-      .in('status', ['fechado', 'implantado', 'perdida'])
+      .in('status', ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'])
       .order('created_at', { ascending: false })
     const list = data || []
     setQuotes(list)
-    const pendCount = list.filter(q => q.status === 'fechado').length
+    const pendCount = list.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status)).length
     onBadgeChange?.(pendCount)
     if (!silent) setLoading(false)
   }
@@ -3393,13 +3450,13 @@ function KitsFechadosPanel({ onBadgeChange }) {
       const updated = qs.map(q => q.id === id
         ? { ...q, status, data: ovNumero ? { ...(q.data || {}), ov_numero: ovNumero } : q.data }
         : q)
-      onBadgeChange?.(updated.filter(q => q.status === 'fechado').length)
+      onBadgeChange?.(updated.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status)).length)
       return updated
     })
     setActing(a => ({ ...a, [id]: null }))
   }
 
-  const pending   = quotes.filter(q => q.status === 'fechado')
+  const pending   = quotes.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status))
   const implanted = quotes.filter(q => q.status === 'implantado')
   const lost      = quotes.filter(q => q.status === 'perdida')
 
@@ -3408,12 +3465,18 @@ function KitsFechadosPanel({ onBadgeChange }) {
     const [confirmMode, setConfirmMode] = useState(null) // 'implantar' | 'perdida'
     const [ovNumber, setOvNumber] = useState('')
     const busy = acting[q.id]
-    const isImpl = q.status === 'implantado'
-    const isPerd = q.status === 'perdida'
+    const isImpl       = q.status === 'implantado'
+    const isPerd       = q.status === 'perdida'
+    const isFechado    = q.status === 'fechado'
+    const isFaturado   = q.status === 'faturado'
+    const isTransporte = q.status === 'em_transporte'
+    const isPending    = isFechado || isFaturado || isTransporte
 
     return (
       <div className={`bg-white rounded-2xl border-2 shadow-sm p-5 space-y-4 ${
-        isImpl ? 'border-emerald-200' : isPerd ? 'border-red-200' : 'border-orange-200'
+        isImpl ? 'border-emerald-200' : isPerd ? 'border-red-200'
+          : isFaturado ? 'border-sky-200' : isTransporte ? 'border-violet-200'
+          : 'border-orange-200'
       }`}>
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
@@ -3434,9 +3497,19 @@ function KitsFechadosPanel({ onBadgeChange }) {
                   <XCircle size={10} /> Perdida
                 </span>
               )}
-              {!isImpl && !isPerd && (
+              {isFechado && (
                 <span className="text-xs bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                  <Package size={10} /> Aguard. Confirmação
+                  <Package size={10} /> Pedido
+                </span>
+              )}
+              {isFaturado && (
+                <span className="text-xs bg-sky-100 text-sky-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                  🧾 Pedido Faturado
+                </span>
+              )}
+              {isTransporte && (
+                <span className="text-xs bg-violet-100 text-violet-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                  🚛 Pedido em Transporte
                 </span>
               )}
             </div>
@@ -3492,7 +3565,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
         )}
 
         {/* Actions — only for pending */}
-        {!isImpl && !isPerd && (
+        {isPending && (
           confirmMode === 'implantar' ? (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
               <p className="text-sm font-semibold text-emerald-800">Confirmar implantação</p>
@@ -3535,10 +3608,24 @@ function KitsFechadosPanel({ onBadgeChange }) {
             </div>
           ) : (
             <div className="flex gap-2">
-              <button onClick={() => setConfirmMode('implantar')}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
-                <CheckCircle2 size={16} /> Confirmar implantação
-              </button>
+              {isFechado && (
+                <button onClick={() => updateStatus(q.id, 'faturado')} disabled={!!busy}
+                  className="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🧾 Marcar Faturado</>}
+                </button>
+              )}
+              {isFaturado && (
+                <button onClick={() => updateStatus(q.id, 'em_transporte')} disabled={!!busy}
+                  className="flex-1 bg-violet-500 hover:bg-violet-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🚛 Marcar em Transporte</>}
+                </button>
+              )}
+              {isTransporte && (
+                <button onClick={() => setConfirmMode('implantar')}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                  <CheckCircle2 size={16} /> Confirmar Implantação
+                </button>
+              )}
               <button onClick={() => setConfirmMode('perdida')}
                 className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
                 <XCircle size={15} /> Perdida
@@ -3581,7 +3668,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
             <CheckCircle2 size={20} className="text-emerald-500" /> Kits Fechados
           </h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            {pending.length} aguardando confirmação · {implanted.length} implantados · {lost.length} perdidos
+            {pending.length} em andamento · {implanted.length} implantados · {lost.length} perdidos
           </p>
         </div>
         <button onClick={fetchQuotes} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue px-3 py-2 rounded-lg hover:bg-gray-100">
@@ -3814,7 +3901,7 @@ function AdminDashboard() {
       .eq('status', 'aguardando_desconto')
       .then(({ count }) => setPendingDiscounts(count || 0))
     supabaseAdmin.from('quotes').select('id', { count: 'exact', head: true })
-      .eq('status', 'fechado')
+      .in('status', ['fechado', 'faturado', 'em_transporte'])
       .then(({ count }) => setPendingImplants(count || 0))
     supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true })
       .eq('status', 'pendente')
