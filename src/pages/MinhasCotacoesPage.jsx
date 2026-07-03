@@ -1608,8 +1608,9 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           {/* Financial summary */}
           {(() => {
             const hasApprovedDiscount = !isAdmin && quote.status === 'aprovada' && (quote.desconto_pct || 0) > 0
-            const totalComDesc = hasApprovedDiscount
-              ? Math.round(quote.total_final * (1 - quote.desconto_pct / 100) * 100) / 100
+            // total_antes_desconto é salvo pelo admin ao aprovar; total_final já é o valor com desconto
+            const totalOriginal = hasApprovedDiscount
+              ? (quote.data?.total_antes_desconto || null)
               : null
             return (
               <div className={`rounded-xl p-4 space-y-2 ${hasApprovedDiscount ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
@@ -1641,19 +1642,21 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                 {/* Cliente: desconto aprovado — mostra os dois valores */}
                 {hasApprovedDiscount ? (
                   <>
-                    <div className="flex justify-between text-sm text-gray-500">
-                      <span>Valor sem desconto adicional</span>
-                      <span className="font-medium line-through text-gray-400">{fmt(quote.total_final)}</span>
-                    </div>
+                    {totalOriginal != null && (
+                      <div className="flex justify-between text-sm text-gray-500">
+                        <span>Valor cotado (com desconto comercial)</span>
+                        <span className="font-medium line-through text-gray-400">{fmt(totalOriginal)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm text-green-700 font-semibold">
                       <span className="flex items-center gap-1">
                         <Tag size={13} /> Desconto aprovado ({quote.desconto_pct}%)
                       </span>
-                      <span>−{fmt(quote.total_final * quote.desconto_pct / 100)}</span>
+                      <span>−{fmt(totalOriginal != null ? totalOriginal * quote.desconto_pct / 100 : 0)}</span>
                     </div>
                     <div className="border-t border-green-200 pt-2 flex justify-between font-extrabold text-green-800">
-                      <span className="flex items-center gap-1.5"><CheckCircle2 size={15} /> Total com desconto</span>
-                      <span className="text-xl">{fmt(totalComDesc)}</span>
+                      <span className="flex items-center gap-1.5"><CheckCircle2 size={15} /> Total com desconto aprovado</span>
+                      <span className="text-xl">{fmt(quote.total_final)}</span>
                     </div>
                     {quote.desconto_resposta && (
                       <p className="text-xs text-green-700 pt-1 border-t border-green-200">{quote.desconto_resposta}</p>

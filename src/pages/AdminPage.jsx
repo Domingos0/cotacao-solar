@@ -2238,10 +2238,21 @@ function QuoteManagement() {
     const pct = parseFloat(approveDiscount.replace(',', '.'))
     if (isNaN(pct) || pct < 0 || pct > 100) return
     const resposta = approveMsg.trim() || `Desconto de ${pct}% aprovado para este kit.`
+
+    // Recalcula total substituindo o desconto comercial pelo desconto aprovado
+    const oldDesconto = quote.desconto_pct || 0
+    const fretePct    = quote.frete_pct    || 1
+    // base = subtotal * fatores técnicos (sem desconto comercial e sem frete)
+    const base           = (quote.total_final || 0) / ((1 - oldDesconto / 100) * fretePct)
+    const newTotalFinal  = Math.round(base * (1 - pct / 100) * fretePct * 100) / 100
+    const totalOriginal  = quote.total_final || 0
+
     await updateQuote(quote.id, {
       status: 'aprovada',
       desconto_pct: pct,
+      total_final: newTotalFinal,
       desconto_resposta: resposta,
+      data: { ...(quote.data || {}), total_antes_desconto: totalOriginal },
     })
     setApprovingId(null)
     setApproveDiscount('')
@@ -2250,7 +2261,6 @@ function QuoteManagement() {
     // Notifica cliente
     try {
       const authUser = await getClientAuth(quote.user_id)
-      const totalComDesconto = (quote.total_final || 0) * (1 - pct / 100)
       notifyDescontoAprovado({
         clienteNome: quote.profiles?.nome || authUser?.email || 'Cliente',
         clienteEmail: authUser?.email || '',
@@ -2258,8 +2268,8 @@ function QuoteManagement() {
         clienteWaKey: authUser?.user_metadata?.whatsapp_apikey || '',
         kitNome: quote.nome_projeto || `Kit ${quote.kwp} kWp`,
         descontoPct: pct,
-        totalOriginal: quote.total_final || 0,
-        totalFinal: totalComDesconto,
+        totalOriginal,
+        totalFinal: newTotalFinal,
         resposta,
       })
     } catch (_) {}
