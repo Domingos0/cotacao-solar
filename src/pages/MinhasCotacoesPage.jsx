@@ -1650,7 +1650,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                     )}
                     <div className="flex justify-between text-sm text-green-700 font-semibold">
                       <span className="flex items-center gap-1">
-                        <Tag size={13} /> Desconto aprovado ({quote.desconto_pct}%)
+                        <Tag size={13} /> Desconto aprovado
                       </span>
                       <span>−{fmt(totalOriginal != null ? totalOriginal * quote.desconto_pct / 100 : 0)}</span>
                     </div>

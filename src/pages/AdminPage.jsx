@@ -2237,7 +2237,7 @@ function QuoteManagement() {
   const handleApprove = async (quote) => {
     const pct = parseFloat(approveDiscount.replace(',', '.'))
     if (isNaN(pct) || pct < 0 || pct > 100) return
-    const resposta = approveMsg.trim() || `Desconto de ${pct}% aprovado para este kit.`
+    const resposta = approveMsg.trim() || `Desconto especial aprovado para este kit.`
 
     // Recalcula total substituindo o desconto comercial pelo desconto aprovado
     const oldDesconto = quote.desconto_pct || 0
