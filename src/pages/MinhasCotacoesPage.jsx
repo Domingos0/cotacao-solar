@@ -144,10 +144,10 @@ export const STATUS_STYLE = {
   aguardando_desconto: { label: 'Aguardando desconto',    cls: 'bg-yellow-100 text-yellow-700',   icon: Clock },
   aprovada:            { label: 'Desconto aprovado',      cls: 'bg-green-100 text-green-700',     icon: CheckCircle2 },
   recusada:            { label: 'Desconto não aprovado',  cls: 'bg-red-100 text-red-600',         icon: XCircle },
-  fechado:             { label: 'Pedido',                 cls: 'bg-orange-100 text-orange-700',   icon: Package },
+  fechado:             { label: 'Kit Fechado',            cls: 'bg-orange-100 text-orange-700',   icon: Package },
+  implantado:          { label: 'Pedido Implantando',     cls: 'bg-indigo-100 text-indigo-700',   icon: Package },
   faturado:            { label: 'Pedido Faturado',        cls: 'bg-sky-100 text-sky-700',         icon: Package },
-  em_transporte:       { label: 'Pedido em Transporte',   cls: 'bg-violet-100 text-violet-700',   icon: Package },
-  implantado:          { label: 'Implantado',             cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
+  em_transporte:       { label: 'Em Transporte',          cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
   perdida:             { label: 'Proposta Perdida',       cls: 'bg-red-100 text-red-600',         icon: XCircle },
 }
 
@@ -2740,10 +2740,10 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
               { key: 'em_analise',          label: 'Em análise' },
               { key: 'aguardando_desconto', label: 'Desc. pendente' },
               { key: 'aprovada',            label: 'Aprovada' },
-              { key: 'fechado',             label: 'Pedido' },
+              { key: 'fechado',             label: 'Kit Fechado' },
+              { key: 'implantado',          label: 'Implantando' },
               { key: 'faturado',            label: 'Faturado' },
               { key: 'em_transporte',       label: 'Em Transporte' },
-              { key: 'implantado',          label: 'Implantado' },
               { key: 'perdida',             label: 'Perdida' },
             ].map(({ key, label }) => {
               const count = key === 'todas'

@@ -2185,14 +2185,11 @@ const ADMIN_DOT_COLOR = {
 }
 
 const FUNIL_COLUMNS = [
-  { key: 'em_analise',          label: 'Em análise',            color: '#60a5fa', keys: ['em_analise', 'enviada', 'rascunho'] },
-  { key: 'aguardando_desconto', label: 'Desc. pendente',        color: '#fbbf24', keys: ['aguardando_desconto'] },
-  { key: 'aprovada',            label: 'Aprovada',              color: '#22c55e', keys: ['aprovada'] },
-  { key: 'fechado',             label: 'Pedido',                color: '#fb923c', keys: ['fechado'] },
-  { key: 'faturado',            label: 'Pedido Faturado',       color: '#0ea5e9', keys: ['faturado'] },
-  { key: 'em_transporte',       label: 'Pedido em Transporte',  color: '#8b5cf6', keys: ['em_transporte'] },
-  { key: 'implantado',          label: 'Implantado',            color: '#10b981', keys: ['implantado'] },
-  { key: 'perdida',             label: 'Perdida',               color: '#f87171', keys: ['perdida', 'recusada'] },
+  { key: 'em_analise',    label: 'Em análise',        color: '#60a5fa', keys: ['em_analise', 'enviada', 'rascunho', 'aguardando_desconto', 'aprovada', 'recusada'] },
+  { key: 'fechado',       label: 'Kit Fechado',        color: '#fb923c', keys: ['fechado'] },
+  { key: 'implantado',    label: 'Pedido Implantando', color: '#6366f1', keys: ['implantado'] },
+  { key: 'faturado',      label: 'Pedido Faturado',    color: '#0ea5e9', keys: ['faturado'] },
+  { key: 'em_transporte', label: 'Em Transporte',      color: '#10b981', keys: ['em_transporte'] },
 ]
 
 function QuoteManagement() {
@@ -2326,8 +2323,8 @@ function QuoteManagement() {
     rascunho: 'Rascunho', enviada: 'Em análise', em_analise: 'Em análise',
     aguardando_desconto: 'Aguardando desconto',
     aprovada: 'Aprovada', recusada: 'Recusada',
-    fechado: 'Pedido', faturado: 'Pedido Faturado', em_transporte: 'Pedido em Transporte',
-    implantado: 'Implantado', perdida: 'Perdida',
+    fechado: 'Kit Fechado', implantado: 'Pedido Implantando',
+    faturado: 'Pedido Faturado', em_transporte: 'Em Transporte', perdida: 'Perdida',
   }
 
   const [confirmingImplantId, setConfirmingImplantId] = useState(null)
@@ -3149,10 +3146,32 @@ function QuoteManagement() {
                       </div>
                     )}
 
-                    {/* Pedido (cliente fechou) */}
+                    {/* Kit Fechado → Pedido Implantando */}
                     {q.status === 'fechado' && (
                       <div className="px-5 pb-4 pt-3 bg-orange-50 border-t border-orange-100">
-                        <p className="text-xs text-orange-800 mb-2 font-semibold">📦 Pedido recebido.</p>
+                        <p className="text-xs text-orange-800 mb-2 font-semibold">📦 Kit fechado pelo cliente.</p>
+                        {confirmingImplantId === q.id ? (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-xs text-gray-700">Marcar como implantando?</span>
+                            <button onClick={() => handleConfirmImplantacao(q.id, 'implantado')}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
+                              <Check size={12} /> Confirmar
+                            </button>
+                            <button onClick={() => setConfirmingImplantId(null)} className="text-xs text-gray-400 px-2 py-2">Cancelar</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmingImplantId(q.id)}
+                            className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
+                            🔧 Marcar Pedido Implantando
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Pedido Implantando → Pedido Faturado */}
+                    {q.status === 'implantado' && (
+                      <div className="px-5 pb-4 pt-3 bg-indigo-50 border-t border-indigo-100">
+                        <p className="text-xs text-indigo-800 mb-2 font-semibold">🔧 Pedido implantando.</p>
                         {confirmingImplantId === q.id ? (
                           <div className="flex gap-2 items-center">
                             <span className="text-xs text-gray-700">Marcar como faturado?</span>
@@ -3171,7 +3190,7 @@ function QuoteManagement() {
                       </div>
                     )}
 
-                    {/* Pedido Faturado */}
+                    {/* Pedido Faturado → Em Transporte */}
                     {q.status === 'faturado' && (
                       <div className="px-5 pb-4 pt-3 bg-sky-50 border-t border-sky-100">
                         <p className="text-xs text-sky-800 mb-2 font-semibold">🧾 Pedido faturado.</p>
@@ -3179,28 +3198,6 @@ function QuoteManagement() {
                           <div className="flex gap-2 items-center">
                             <span className="text-xs text-gray-700">Marcar como em transporte?</span>
                             <button onClick={() => handleConfirmImplantacao(q.id, 'em_transporte')}
-                              className="bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
-                              <Check size={12} /> Confirmar
-                            </button>
-                            <button onClick={() => setConfirmingImplantId(null)} className="text-xs text-gray-400 px-2 py-2">Cancelar</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setConfirmingImplantId(q.id)}
-                            className="bg-violet-100 hover:bg-violet-200 text-violet-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
-                            🚛 Marcar em Transporte
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Pedido em Transporte */}
-                    {q.status === 'em_transporte' && (
-                      <div className="px-5 pb-4 pt-3 bg-violet-50 border-t border-violet-100">
-                        <p className="text-xs text-violet-800 mb-2 font-semibold">🚛 Pedido em transporte.</p>
-                        {confirmingImplantId === q.id ? (
-                          <div className="flex gap-2 items-center">
-                            <span className="text-xs text-gray-700">Confirmar implantação?</span>
-                            <button onClick={() => handleConfirmImplantacao(q.id, 'implantado')}
                               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
                               <Check size={12} /> Confirmar
                             </button>
@@ -3209,15 +3206,15 @@ function QuoteManagement() {
                         ) : (
                           <button onClick={() => setConfirmingImplantId(q.id)}
                             className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
-                            <CheckCircle2 size={12} /> Confirmar Implantação
+                            🚛 Marcar em Transporte
                           </button>
                         )}
                       </div>
                     )}
 
-                    {q.status === 'implantado' && (
+                    {q.status === 'em_transporte' && (
                       <div className="px-5 py-3 border-t border-emerald-100 bg-emerald-50 text-xs text-emerald-800 font-semibold flex items-center gap-1.5">
-                        <CheckCircle2 size={13} /> Implantação confirmada.
+                        <CheckCircle2 size={13} /> Em transporte — pedido concluído.
                         {kd.ov_numero && <span className="font-mono ml-1">OV: {kd.ov_numero}</span>}
                       </div>
                     )}
@@ -3456,8 +3453,8 @@ function KitsFechadosPanel({ onBadgeChange }) {
     setActing(a => ({ ...a, [id]: null }))
   }
 
-  const pending   = quotes.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status))
-  const implanted = quotes.filter(q => q.status === 'implantado')
+  const pending   = quotes.filter(q => ['fechado', 'implantado', 'faturado', 'em_transporte'].includes(q.status))
+  const concluido = quotes.filter(q => q.status === 'em_transporte')
   const lost      = quotes.filter(q => q.status === 'perdida')
 
   const KitCard = ({ q }) => {
@@ -3465,17 +3462,18 @@ function KitsFechadosPanel({ onBadgeChange }) {
     const [confirmMode, setConfirmMode] = useState(null) // 'implantar' | 'perdida'
     const [ovNumber, setOvNumber] = useState('')
     const busy = acting[q.id]
-    const isImpl       = q.status === 'implantado'
     const isPerd       = q.status === 'perdida'
     const isFechado    = q.status === 'fechado'
+    const isImplant    = q.status === 'implantado'
     const isFaturado   = q.status === 'faturado'
     const isTransporte = q.status === 'em_transporte'
-    const isPending    = isFechado || isFaturado || isTransporte
+    const isPending    = isFechado || isImplant || isFaturado
+    const isConcluido  = isTransporte
 
     return (
       <div className={`bg-white rounded-2xl border-2 shadow-sm p-5 space-y-4 ${
-        isImpl ? 'border-emerald-200' : isPerd ? 'border-red-200'
-          : isFaturado ? 'border-sky-200' : isTransporte ? 'border-violet-200'
+        isConcluido ? 'border-emerald-200' : isPerd ? 'border-red-200'
+          : isImplant ? 'border-indigo-200' : isFaturado ? 'border-sky-200'
           : 'border-orange-200'
       }`}>
         {/* Header */}
@@ -3487,9 +3485,9 @@ function KitsFechadosPanel({ onBadgeChange }) {
                   {kd.numero_orcamento}{(kd.revisao || 0) > 0 ? ` · Rev.${kd.revisao}` : ''}
                 </span>
               )}
-              {isImpl && (
+              {isConcluido && (
                 <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <CheckCircle2 size={10} /> Implantado
+                  🚛 Em Transporte
                 </span>
               )}
               {isPerd && (
@@ -3499,17 +3497,17 @@ function KitsFechadosPanel({ onBadgeChange }) {
               )}
               {isFechado && (
                 <span className="text-xs bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                  <Package size={10} /> Pedido
+                  <Package size={10} /> Kit Fechado
+                </span>
+              )}
+              {isImplant && (
+                <span className="text-xs bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                  🔧 Pedido Implantando
                 </span>
               )}
               {isFaturado && (
                 <span className="text-xs bg-sky-100 text-sky-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
                   🧾 Pedido Faturado
-                </span>
-              )}
-              {isTransporte && (
-                <span className="text-xs bg-violet-100 text-violet-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                  🚛 Pedido em Transporte
                 </span>
               )}
             </div>
@@ -3564,38 +3562,9 @@ function KitsFechadosPanel({ onBadgeChange }) {
           </div>
         )}
 
-        {/* Actions — only for pending */}
-        {isPending && (
-          confirmMode === 'implantar' ? (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-emerald-800">Confirmar implantação</p>
-              <div>
-                <label className="block text-xs font-medium text-emerald-700 mb-1">
-                  Número da OV <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={ovNumber}
-                  onChange={e => setOvNumber(e.target.value)}
-                  placeholder="Ex: OV-2026-001"
-                  autoFocus
-                  className="w-full text-sm border-2 border-emerald-300 focus:border-emerald-500 rounded-lg px-3 py-2 focus:outline-none bg-white font-mono"
-                />
-                {ovNumber.trim() === '' && (
-                  <p className="text-xs text-red-500 mt-1">Informe o número da OV para confirmar</p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => ovNumber.trim() && updateStatus(q.id, 'implantado', ovNumber.trim())}
-                  disabled={!!busy || ovNumber.trim() === ''}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Confirmar implantação</>}
-                </button>
-                <button onClick={() => { setConfirmMode(null); setOvNumber('') }} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
-              </div>
-            </div>
-          ) : confirmMode === 'perdida' ? (
+        {/* Actions */}
+        {(isPending || isConcluido) && (
+          confirmMode === 'perdida' ? (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3">
               <p className="text-sm font-semibold text-red-700 mb-2">Marcar como proposta perdida?</p>
               <div className="flex gap-2">
@@ -3609,35 +3578,42 @@ function KitsFechadosPanel({ onBadgeChange }) {
           ) : (
             <div className="flex gap-2">
               {isFechado && (
+                <button onClick={() => updateStatus(q.id, 'implantado')} disabled={!!busy}
+                  className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🔧 Pedido Implantando</>}
+                </button>
+              )}
+              {isImplant && (
                 <button onClick={() => updateStatus(q.id, 'faturado')} disabled={!!busy}
                   className="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🧾 Marcar Faturado</>}
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🧾 Pedido Faturado</>}
                 </button>
               )}
               {isFaturado && (
                 <button onClick={() => updateStatus(q.id, 'em_transporte')} disabled={!!busy}
-                  className="flex-1 bg-violet-500 hover:bg-violet-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🚛 Marcar em Transporte</>}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🚛 Em Transporte</>}
                 </button>
               )}
-              {isTransporte && (
-                <button onClick={() => setConfirmMode('implantar')}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
-                  <CheckCircle2 size={16} /> Confirmar Implantação
+              {isConcluido && (
+                <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl py-3 text-center text-xs text-emerald-700 font-semibold flex items-center justify-center gap-1.5">
+                  <CheckCircle2 size={14} /> Pedido em transporte
+                </div>
+              )}
+              {!isConcluido && (
+                <button onClick={() => setConfirmMode('perdida')}
+                  className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
+                  <XCircle size={15} /> Perdida
                 </button>
               )}
-              <button onClick={() => setConfirmMode('perdida')}
-                className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
-                <XCircle size={15} /> Perdida
-              </button>
             </div>
           )
         )}
 
-        {isImpl && (
+        {isConcluido && (
           <div className="bg-emerald-50 rounded-xl px-3 py-2 space-y-0.5">
             <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
-              <CheckCircle2 size={13} /> Implantação confirmada
+              <CheckCircle2 size={13} /> 🚛 Em Transporte
             </div>
             {kd.ov_numero && (
               <p className="text-xs text-emerald-600 font-mono pl-5">OV: <strong>{kd.ov_numero}</strong></p>
@@ -3668,7 +3644,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
             <CheckCircle2 size={20} className="text-emerald-500" /> Kits Fechados
           </h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            {pending.length} em andamento · {implanted.length} implantados · {lost.length} perdidos
+            {pending.length} em andamento · {concluido.length} em transporte · {lost.length} perdidos
           </p>
         </div>
         <button onClick={fetchQuotes} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue px-3 py-2 rounded-lg hover:bg-gray-100">
