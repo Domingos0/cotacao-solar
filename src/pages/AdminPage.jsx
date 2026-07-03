@@ -3674,15 +3674,15 @@ function KitsFechadosPanel({ onBadgeChange }) {
         )}
       </section>
 
-      {/* Implanted */}
-      {implanted.length > 0 && (
+      {/* Concluídos (em transporte) */}
+      {concluido.length > 0 && (
         <section>
           <h4 className="font-bold text-gray-800 text-sm flex items-center gap-1.5 mb-3">
-            <CheckCircle2 size={15} className="text-emerald-500" /> Implantados
-            <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">{implanted.length}</span>
+            <CheckCircle2 size={15} className="text-emerald-500" /> Em Transporte
+            <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">{concluido.length}</span>
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {implanted.map(q => <KitCard key={q.id} q={q} />)}
+            {concluido.map(q => <KitCard key={q.id} q={q} />)}
           </div>
         </section>
       )}
