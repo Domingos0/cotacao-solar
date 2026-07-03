@@ -15,7 +15,7 @@ import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
   Printer, Search, ChevronDown, ChevronUp, AlertTriangle, Save,
   FileText, Shield, Download, ArrowUpFromLine, Info, Truck,
-  Users, Package, LayoutList, Clock, CheckCircle2, XCircle,
+  Users, Package, LayoutList, LayoutGrid, List, Clock, CheckCircle2, XCircle,
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
   Lock, UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
@@ -2156,11 +2156,34 @@ function AdminKitItems({ items }) {
 }
 
 // ─── Quote Management ─────────────────────────────────────────────────────────
+function getAdminBorderCls(status) {
+  if (status === 'perdida' || status === 'recusada') return 'border-l-red-400'
+  if (status === 'implantado')          return 'border-l-emerald-400'
+  if (status === 'fechado')             return 'border-l-orange-400'
+  if (status === 'aprovada')            return 'border-l-green-400'
+  if (status === 'aguardando_desconto') return 'border-l-yellow-400'
+  if (status === 'em_analise' || status === 'enviada') return 'border-l-blue-400'
+  return 'border-l-gray-300'
+}
+
+const ADMIN_DOT_COLOR = {
+  rascunho:            '#d1d5db',
+  enviada:             '#60a5fa',
+  em_analise:          '#60a5fa',
+  aguardando_desconto: '#fbbf24',
+  aprovada:            '#22c55e',
+  recusada:            '#f87171',
+  fechado:             '#fb923c',
+  implantado:          '#10b981',
+  perdida:             '#f87171',
+}
+
 function QuoteManagement() {
   const { tableInfo } = useProducts()
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [viewMode, setViewMode] = useState('cards')
   const [approvingId, setApprovingId] = useState(null)
   const [approveDiscount, setApproveDiscount] = useState('')
   const [approveMsg, setApproveMsg] = useState('')
@@ -2705,20 +2728,110 @@ function QuoteManagement() {
         </div>
       )}
 
-      {/* ── Cards de cotações ── */}
+      {/* ── Toggle Cards / Lista ── */}
+      {filtered.length > 0 && (
+        <div className="flex justify-end">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <button onClick={() => setViewMode('cards')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${viewMode === 'cards' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+              <LayoutGrid size={13} /> Cards
+            </button>
+            <button onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${viewMode === 'table' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+              <List size={13} /> Lista
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cotações ── */}
       {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
           <FileText size={40} className="text-gray-200 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">Nenhuma cotação encontrada.</p>
           {search && <button onClick={() => setSearch('')} className="mt-2 text-xs text-weg-blue underline">Limpar busca</button>}
         </div>
+      ) : viewMode === 'table' ? (
+        /* ── TABLE VIEW ── */
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100 bg-blue-50/40">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cotação</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente / Empresa</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">kWp</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
+                  <th className="px-3 py-3 w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(q => {
+                  const kd = q.data || {}
+                  const dotColor = ADMIN_DOT_COLOR[q.status] || '#d1d5db'
+                  return (
+                    <tr key={q.id}
+                      className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors cursor-pointer"
+                      onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-sm text-gray-600">{fmtDt(q.created_at).split(', ')[0]}</span>
+                        <span className="block text-xs text-gray-400">{fmtDt(q.created_at).split(', ')[1]}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-1.5 h-6 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                          <div>
+                            <span className="font-mono font-bold text-weg-blue text-sm">
+                              {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                            </span>
+                            {(kd.revisao || 0) > 0 && (
+                              <span className="ml-1.5 text-[10px] font-bold text-amber-600">Rev. {kd.revisao}</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-gray-900 text-sm truncate max-w-[200px]">
+                          {q.profiles?.nome || kd.clienteNome || '—'}
+                        </p>
+                        {q.profiles?.empresa && (
+                          <p className="text-xs text-gray-400 truncate max-w-[200px]">{q.profiles.empresa}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className="text-sm font-semibold text-gray-700">{q.kwp} kWp</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[q.status]}`}>
+                          {STATUS_LABEL[q.status] || q.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-gray-800 text-sm whitespace-nowrap">
+                        {fmt(q.total_final)}
+                      </td>
+                      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setPrintingQuote(q)} title="Baixar proposta"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
+                          <Download size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* ── CARDS VIEW ── */
         <div className="space-y-3">
           {filtered.map(q => {
             const kd = q.data || {}
             const isExpanded = expandedId === q.id
             const rev = kd.revisao || 0
-            const borderCls = STATUS_BORDER[q.status] || 'border-l-gray-200'
+            const borderCls = getAdminBorderCls(q.status)
 
             return (
               <div key={q.id} className={`bg-white rounded-xl border border-gray-100 border-l-4 ${borderCls} shadow-sm overflow-hidden transition-shadow hover:shadow-md`}>
@@ -2924,7 +3037,7 @@ function QuoteManagement() {
   )
 }
 
-// ─── Notification Settings ────────────────────────────────────────────────────
+// ─── Notification Settings ─────────────────────────────────────────────────────
 function NotificationSettings() {
   const [s, setS] = useState(() => getNotifySettings())
   const [showWaKey, setShowWaKey] = useState(false)
