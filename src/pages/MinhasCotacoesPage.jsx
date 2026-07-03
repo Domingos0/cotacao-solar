@@ -145,7 +145,7 @@ export const STATUS_STYLE = {
   aprovada:            { label: 'Desconto aprovado',      cls: 'bg-green-100 text-green-700',     icon: CheckCircle2 },
   recusada:            { label: 'Desconto não aprovado',  cls: 'bg-red-100 text-red-600',         icon: XCircle },
   fechado:             { label: 'Kit Fechado',            cls: 'bg-orange-100 text-orange-700',   icon: Package },
-  implantado:          { label: 'Pedido Implantando',     cls: 'bg-indigo-100 text-indigo-700',   icon: Package },
+  implantado:          { label: 'Pedido Implantando — Aguardando Faturamento', cls: 'bg-indigo-100 text-indigo-700', icon: Package },
   faturado:            { label: 'Pedido Faturado',        cls: 'bg-sky-100 text-sky-700',         icon: Package },
   em_transporte:       { label: 'Em Transporte',          cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
   perdida:             { label: 'Proposta Perdida',       cls: 'bg-red-100 text-red-600',         icon: XCircle },

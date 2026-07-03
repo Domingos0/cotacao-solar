@@ -2200,6 +2200,8 @@ function QuoteManagement() {
   const [viewMode, setViewMode] = useState('cards')
   const [draggingId, setDraggingId]   = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
+  const [dragConfirm, setDragConfirm] = useState(null)
+  const [dragInputValue, setDragInputValue] = useState('')
   const [approvingId, setApprovingId] = useState(null)
   const [approveDiscount, setApproveDiscount] = useState('')
   const [approveMsg, setApproveMsg] = useState('')
@@ -2213,22 +2215,36 @@ function QuoteManagement() {
     return () => clearTimeout(t)
   }, [printingQuote])
 
-  const fetchQuotes = async () => {
-    setLoading(true)
+  const fetchQuotes = async (silent = false) => {
+    if (!silent) setLoading(true)
     const { data } = await supabaseAdmin
       .from('quotes')
       .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
       .order('created_at', { ascending: false })
     setQuotes(data || [])
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
-  useEffect(() => { fetchQuotes() }, [])
+  useEffect(() => {
+    fetchQuotes()
+    const id = setInterval(() => fetchQuotes(true), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   const updateQuote = async (id, patch) => {
     const { error } = await supabaseAdmin.from('quotes').update(patch).eq('id', id)
     if (!error) setQuotes(qs => qs.map(q => q.id === id ? { ...q, ...patch } : q))
     return error
+  }
+
+  const confirmDragDrop = async () => {
+    if (!dragConfirm || !dragInputValue.trim()) return
+    const { quoteId, targetStatus, field } = dragConfirm
+    const q = quotes.find(x => x.id === quoteId)
+    const patch = { status: targetStatus, data: { ...(q?.data || {}), [field]: dragInputValue.trim() } }
+    await updateQuote(quoteId, patch)
+    setDragConfirm(null)
+    setDragInputValue('')
   }
 
   const getClientAuth = async (userId) => {
@@ -2809,6 +2825,16 @@ function QuoteManagement() {
                 if (!id) return
                 const q = quotes.find(x => x.id === id)
                 if (!q || col.keys.includes(q.status)) return
+                if (col.key === 'implantado') {
+                  setDragConfirm({ quoteId: id, targetStatus: 'implantado', field: 'ov_numero', label: 'OV', placeholder: 'Ex: OV-2026-001', question: 'Mover para Pedido Implantando' })
+                  setDragInputValue('')
+                  return
+                }
+                if (col.key === 'faturado') {
+                  setDragConfirm({ quoteId: id, targetStatus: 'faturado', field: 'nf_numero', label: 'NF', placeholder: 'Ex: NF-2026-001', question: 'Mover para Pedido Faturado' })
+                  setDragInputValue('')
+                  return
+                }
                 await updateQuote(id, { status: col.key })
               }
 
@@ -3232,6 +3258,41 @@ function QuoteManagement() {
         </div>
       )}
     </div>
+
+    {/* Modal drag-and-drop OV / NF */}
+    {dragConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDragConfirm(null)}>
+        <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+          <div>
+            <p className="font-bold text-gray-900 text-base mb-0.5">{dragConfirm.question}</p>
+            <p className="text-xs text-gray-400">Informe o número da {dragConfirm.label} para prosseguir</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Número da {dragConfirm.label} <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              autoFocus
+              value={dragInputValue}
+              onChange={e => setDragInputValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') confirmDragDrop(); if (e.key === 'Escape') setDragConfirm(null) }}
+              placeholder={dragConfirm.placeholder}
+              className="w-full border-2 border-gray-200 focus:border-weg-blue rounded-xl px-3 py-2.5 font-mono text-sm focus:outline-none"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={confirmDragDrop}
+              disabled={!dragInputValue.trim()}
+              className="flex-1 bg-weg-blue hover:bg-weg-blue/90 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-1.5 disabled:opacity-40">
+              <CheckCircle2 size={15} /> Confirmar
+            </button>
+            <button onClick={() => setDragConfirm(null)} className="px-4 py-2.5 border border-gray-200 text-gray-500 rounded-xl text-sm hover:bg-gray-50">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   )
 }
@@ -3435,19 +3496,22 @@ function KitsFechadosPanel({ onBadgeChange }) {
     return () => clearInterval(id)
   }, [])
 
-  const updateStatus = async (id, status, ovNumero = null) => {
+  const updateStatus = async (id, status, ovNumero = null, extraData = {}) => {
     setActing(a => ({ ...a, [id]: status }))
+    const q = quotes.find(q => q.id === id)
     const patch = { status }
-    if (ovNumero) {
-      const q = quotes.find(q => q.id === id)
-      patch.data = { ...(q?.data || {}), ov_numero: ovNumero }
+    const dataFields = {}
+    if (ovNumero) dataFields.ov_numero = ovNumero
+    Object.assign(dataFields, extraData)
+    if (Object.keys(dataFields).length > 0) {
+      patch.data = { ...(q?.data || {}), ...dataFields }
     }
     await supabaseAdmin.from('quotes').update(patch).eq('id', id)
     setQuotes(qs => {
       const updated = qs.map(q => q.id === id
-        ? { ...q, status, data: ovNumero ? { ...(q.data || {}), ov_numero: ovNumero } : q.data }
+        ? { ...q, status, data: Object.keys(dataFields).length > 0 ? { ...(q.data || {}), ...dataFields } : q.data }
         : q)
-      onBadgeChange?.(updated.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status)).length)
+      onBadgeChange?.(updated.filter(q => ['fechado', 'implantado', 'faturado', 'em_transporte'].includes(q.status)).length)
       return updated
     })
     setActing(a => ({ ...a, [id]: null }))
@@ -3459,24 +3523,19 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
   const KitCard = ({ q }) => {
     const kd = q.data || {}
-    const [confirmMode, setConfirmMode] = useState(null) // 'next' | 'perdida'
+    const [confirmMode, setConfirmMode] = useState(null)
+    // 'implant_ov' | 'faturado_nf' | 'transporte' | 'perdida'
     const [ovNumber, setOvNumber] = useState('')
+    const [nfNumber, setNfNumber] = useState('')
     const busy = acting[q.id]
     const isPerd       = q.status === 'perdida'
     const isFechado    = q.status === 'fechado'
     const isImplant    = q.status === 'implantado'
     const isFaturado   = q.status === 'faturado'
     const isTransporte = q.status === 'em_transporte'
-    const isPending    = isFechado || isImplant || isFaturado
     const isConcluido  = isTransporte
 
-    // próximo status e label baseado no status atual
-    const NEXT = {
-      fechado:    { status: 'implantado',    label: 'Pedido Implantando', color: 'indigo' },
-      implantado: { status: 'faturado',      label: 'Pedido Faturado',    color: 'sky'    },
-      faturado:   { status: 'em_transporte', label: 'Em Transporte',      color: 'emerald'},
-    }
-    const next = NEXT[q.status]
+    const reset = () => { setConfirmMode(null); setOvNumber(''); setNfNumber('') }
 
     return (
       <div className={`bg-white rounded-2xl border-2 shadow-sm p-5 space-y-4 ${
@@ -3570,14 +3629,14 @@ function KitsFechadosPanel({ onBadgeChange }) {
           </div>
         )}
 
-        {/* Actions */}
-        {isPending && (
-          confirmMode === 'next' ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-sm font-semibold text-gray-800">Confirmar: <span className="text-weg-blue">{next?.label}</span></p>
+        {/* FECHADO: Confirmar Pedido Implantando? */}
+        {isFechado && (
+          confirmMode === 'implant_ov' ? (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-indigo-800">Confirmar implantação</p>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Número da OV <span className="text-gray-400">(opcional)</span>
+                  Número da OV <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -3585,39 +3644,113 @@ function KitsFechadosPanel({ onBadgeChange }) {
                   onChange={e => setOvNumber(e.target.value)}
                   placeholder="Ex: OV-2026-001"
                   autoFocus
-                  className="w-full text-sm border-2 border-gray-200 focus:border-weg-blue rounded-lg px-3 py-2 focus:outline-none bg-white font-mono"
+                  className="w-full text-sm border-2 border-indigo-200 focus:border-indigo-500 rounded-lg px-3 py-2 focus:outline-none bg-white font-mono"
                 />
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => { updateStatus(q.id, next.status, ovNumber.trim() || null); setConfirmMode(null); setOvNumber('') }}
-                  disabled={!!busy}
-                  className="flex-1 bg-weg-blue hover:bg-weg-blue/90 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-50">
-                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Confirmar</>}
+                  onClick={() => { if (ovNumber.trim()) { updateStatus(q.id, 'implantado', ovNumber.trim()); reset() } }}
+                  disabled={!!busy || !ovNumber.trim()}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-50">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Confirmar implantação</>}
                 </button>
-                <button onClick={() => { setConfirmMode(null); setOvNumber('') }} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+                <button onClick={reset} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
               </div>
             </div>
           ) : confirmMode === 'perdida' ? (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3">
               <p className="text-sm font-semibold text-red-700 mb-2">Marcar como proposta perdida?</p>
               <div className="flex gap-2">
-                <button onClick={() => updateStatus(q.id, 'perdida')} disabled={!!busy}
+                <button onClick={() => { updateStatus(q.id, 'perdida'); reset() }} disabled={!!busy}
                   className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
                   {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><XCircle size={14} /> Sim, perdida</>}
                 </button>
-                <button onClick={() => setConfirmMode(null)} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+                <button onClick={reset} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
               </div>
             </div>
           ) : (
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmMode('next')}
-                className="flex-1 bg-weg-blue hover:bg-weg-blue/90 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
-                <CheckCircle2 size={16} /> Confirmar: {next?.label}
+            <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
+              <p className="text-sm font-semibold text-orange-800 mb-3">📦 Confirmar Pedido Implantando?</p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmMode('implant_ov')}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                  <CheckCircle2 size={16} /> Sim
+                </button>
+                <button onClick={() => setConfirmMode('perdida')}
+                  className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
+                  <XCircle size={15} /> Rejeitar
+                </button>
+              </div>
+            </div>
+          )
+        )}
+
+        {/* IMPLANTADO: Confirmar Pedido Faturado? */}
+        {isImplant && (
+          confirmMode === 'faturado_nf' ? (
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-sky-800">Confirmar faturamento</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Número da NF <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={nfNumber}
+                  onChange={e => setNfNumber(e.target.value)}
+                  placeholder="Ex: NF-2026-001"
+                  autoFocus
+                  className="w-full text-sm border-2 border-sky-200 focus:border-sky-500 rounded-lg px-3 py-2 focus:outline-none bg-white font-mono"
+                />
+                {kd.ov_numero && (
+                  <p className="text-xs text-gray-400 mt-1.5">OV: <strong className="font-mono text-gray-600">{kd.ov_numero}</strong></p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { if (nfNumber.trim()) { updateStatus(q.id, 'faturado', null, { nf_numero: nfNumber.trim() }); reset() } }}
+                  disabled={!!busy || !nfNumber.trim()}
+                  className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-50">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Confirmar faturamento</>}
+                </button>
+                <button onClick={reset} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4">
+              <p className="text-sm font-semibold text-indigo-800 mb-1">🔧 Pedido Implantando</p>
+              {kd.ov_numero && <p className="text-xs text-indigo-600 font-mono mb-3">OV: <strong>{kd.ov_numero}</strong></p>}
+              <p className="text-sm font-semibold text-sky-700 mb-3">Confirmar Pedido Faturado?</p>
+              <button onClick={() => setConfirmMode('faturado_nf')}
+                className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                <CheckCircle2 size={16} /> Sim, faturado
               </button>
-              <button onClick={() => setConfirmMode('perdida')}
-                className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
-                <XCircle size={15} /> Perdida
+            </div>
+          )
+        )}
+
+        {/* FATURADO: Confirmar Em Transporte? */}
+        {isFaturado && (
+          confirmMode === 'transporte' ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+              <p className="text-sm font-semibold text-emerald-700 mb-2">Confirmar envio em transporte?</p>
+              <div className="flex gap-2">
+                <button onClick={() => { updateStatus(q.id, 'em_transporte'); reset() }} disabled={!!busy}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Confirmar</>}
+                </button>
+                <button onClick={reset} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-sky-50 border-2 border-sky-200 rounded-xl p-4">
+              <p className="text-sm font-semibold text-sky-800 mb-1">🧾 Pedido Faturado</p>
+              {kd.ov_numero && <p className="text-xs text-sky-600 font-mono">OV: <strong>{kd.ov_numero}</strong></p>}
+              {kd.nf_numero && <p className="text-xs text-sky-600 font-mono mb-3">NF: <strong>{kd.nf_numero}</strong></p>}
+              <p className="text-sm font-semibold text-emerald-700 mb-3 mt-2">Confirmar Em Transporte?</p>
+              <button onClick={() => setConfirmMode('transporte')}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                🚛 Sim, em transporte
               </button>
             </div>
           )
@@ -3630,6 +3763,9 @@ function KitsFechadosPanel({ onBadgeChange }) {
             </div>
             {kd.ov_numero && (
               <p className="text-xs text-emerald-600 font-mono pl-5">OV: <strong>{kd.ov_numero}</strong></p>
+            )}
+            {kd.nf_numero && (
+              <p className="text-xs text-emerald-600 font-mono pl-5">NF: <strong>{kd.nf_numero}</strong></p>
             )}
           </div>
         )}
