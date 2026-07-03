@@ -4588,11 +4588,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     setTimeout(() => window.print(), 80)
   }
 
-  // ── Imprimir (salva automaticamente antes, muda status p/ em_analise) ──
+  // ── Imprimir (salva automaticamente antes, muda status p/ enviada) ──
   const handlePrint = async () => {
     if (session) {
       // silent:false → mostra "Erro ao salvar" se falhar; retorna null se erro
-      const qid = await saveQuote({ silent: false, statusOverride: savedId ? undefined : 'em_analise' })
+      const qid = await saveQuote({ silent: false, statusOverride: savedId ? undefined : 'enviada' })
       if (!qid) return   // erro visível na UI, não avança para impressão
     }
     doPrint()
