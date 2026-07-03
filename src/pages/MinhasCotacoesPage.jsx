@@ -9,7 +9,7 @@ import {
   FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
-  Users, Building2, AtSign, Phone as PhoneIcon, Search,
+  Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
 } from 'lucide-react'
 
 // ─── Utilitário de impressão (mobile-safe) ────────────────────────────────────
@@ -146,6 +146,28 @@ export const STATUS_STYLE = {
   fechado:             { label: 'Aguardando Implantação', cls: 'bg-orange-100 text-orange-700',   icon: Package },
   implantado:          { label: 'Implantado',             cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
   perdida:             { label: 'Proposta Perdida',       cls: 'bg-red-100 text-red-600',         icon: XCircle },
+}
+
+function getStatusBorderCls(status) {
+  if (status === 'perdida' || status === 'recusada') return 'border-l-red-400'
+  if (status === 'implantado')          return 'border-l-emerald-500'
+  if (status === 'fechado')             return 'border-l-orange-400'
+  if (status === 'aprovada')            return 'border-l-green-500'
+  if (status === 'aguardando_desconto') return 'border-l-amber-400'
+  if (status === 'em_analise' || status === 'enviada') return 'border-l-blue-400'
+  return 'border-l-gray-300'
+}
+
+const STATUS_DOT_COLOR = {
+  rascunho:            '#d1d5db',
+  enviada:             '#60a5fa',
+  em_analise:          '#60a5fa',
+  aguardando_desconto: '#fbbf24',
+  aprovada:            '#22c55e',
+  recusada:            '#f87171',
+  fechado:             '#fb923c',
+  implantado:          '#10b981',
+  perdida:             '#f87171',
 }
 
 function StatusBadge({ status }) {
@@ -1883,6 +1905,8 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [allQuotesLoaded, setAllQuotesLoaded]   = useState(false)
   const [adminSearch, setAdminSearch]           = useState('')
   const [adminStatusFilter, setAdminStatusFilter] = useState('todas')
+  const [adminViewMode, setAdminViewMode]       = useState('cards') // 'cards' | 'table'
+  const [adminExpandedId, setAdminExpandedId]   = useState(null)
 
   const handlePrintRevision = (quote, r) => {
     flushSync(() => setPrintRevisionData({ quote, r }))
@@ -2606,6 +2630,29 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
             })}
           </div>
 
+          {/* View toggle + count */}
+          {!allQuotesLoading && adminFilteredQuotes.length > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-400 px-1">
+                Exibindo <strong className="text-gray-600">{adminFilteredQuotes.length}</strong> de <strong className="text-gray-600">{allQuotes.length}</strong> cotações
+              </p>
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg shrink-0">
+                <button
+                  onClick={() => setAdminViewMode('cards')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${adminViewMode === 'cards' ? 'bg-white text-violet-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <LayoutGrid size={13} /> Cards
+                </button>
+                <button
+                  onClick={() => setAdminViewMode('table')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${adminViewMode === 'table' ? 'bg-white text-violet-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <List size={13} /> Lista
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Content */}
           {allQuotesLoading ? (
             <div className="flex items-center justify-center py-20">
@@ -2619,92 +2666,217 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
               </h3>
               {adminSearch && <p className="text-sm text-gray-400 mt-1">Tente outros termos de busca.</p>}
             </div>
-          ) : (
+
+          ) : adminViewMode === 'cards' ? (
+            /* ── CARDS VIEW ── */
             <div className="space-y-3">
-              <p className="text-xs text-gray-400 px-1">
-                Exibindo <strong className="text-gray-600">{adminFilteredQuotes.length}</strong> de <strong className="text-gray-600">{allQuotes.length}</strong> cotações
-              </p>
               {adminFilteredQuotes.map(q => {
-                const kd   = q.data || {}
-                const qp   = q.profiles || {}
-                const st   = STATUS_STYLE[q.status] || STATUS_STYLE.rascunho
-                const Icon = st.icon
+                const kd        = q.data || {}
+                const qp        = q.profiles || {}
+                const st        = STATUS_STYLE[q.status] || STATUS_STYLE.rascunho
+                const Icon      = st.icon
+                const revisoes  = kd.revisoes || []
+                const isExp     = adminExpandedId === q.id
+                const borderCls = getStatusBorderCls(q.status)
                 return (
-                  <div
-                    key={q.id}
-                    className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:border-violet-200 hover:shadow-md transition-all cursor-pointer"
-                    onClick={() => setSelectedQuote(q)}
-                  >
-                    {/* Top: number + badges + date */}
-                    <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2">
-                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                        <span className="font-mono font-bold text-violet-700 text-sm">
-                          {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
-                        </span>
-                        {(kd.revisao || 0) > 0 && (
-                          <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                            Rev. {kd.revisao}
+                  <div key={q.id} className={`bg-white rounded-2xl border border-gray-100 border-l-4 shadow-sm overflow-hidden hover:shadow-md transition-all ${borderCls}`}>
+                    {/* Clickable main area */}
+                    <div className="cursor-pointer" onClick={() => setSelectedQuote(q)}>
+                      {/* Top: number + badges + icons */}
+                      <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2">
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                          <span className="font-mono font-bold text-violet-700 text-sm">
+                            {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
                           </span>
-                        )}
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${st.cls}`}>
-                          <Icon size={10} /> {st.label}
-                        </span>
-                        {q.desconto_pct > 0 && (
-                          <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                            -{q.desconto_pct}% desc.
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
-                        {fmtDate(q.created_at)}, {fmtTime(q.created_at)}
-                      </span>
-                    </div>
-
-                    {/* Bottom: client info + metrics */}
-                    <div className="px-4 pb-3.5 flex items-end justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="font-bold text-gray-900 text-sm truncate">
-                          {kd.clienteNome || qp.nome || q.nome_projeto || '—'}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
-                          {qp.empresa && (
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
-                              <Building2 size={11} className="shrink-0 text-gray-400" /> {qp.empresa}
+                          {(kd.revisao || 0) > 0 && (
+                            <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              Rev. {kd.revisao}
                             </span>
                           )}
-                          {qp.cnpj && (
-                            <span className="text-xs text-gray-400 font-mono">{qp.cnpj}</span>
-                          )}
-                          {qp.telefone && (
-                            <span className="text-xs text-gray-400 flex items-center gap-1">
-                              <PhoneIcon size={10} /> {qp.telefone}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${st.cls}`}>
+                            <Icon size={10} /> {st.label}
+                          </span>
+                          {q.desconto_pct > 0 && (
+                            <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              -{q.desconto_pct}% desc.
                             </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+                          <span className="text-xs text-gray-400 whitespace-nowrap mr-1 hidden sm:inline">
+                            {fmtDate(q.created_at)}, {fmtTime(q.created_at)}
+                          </span>
+                          <button
+                            onClick={() => setSelectedQuote(q)}
+                            title="Ver / Imprimir"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                          >
+                            <Printer size={14} />
+                          </button>
+                          {revisoes.length > 0 && (
+                            <button
+                              onClick={() => setAdminExpandedId(isExp ? null : q.id)}
+                              title="Histórico de revisões"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                            >
+                              {isExp ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </button>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex items-end gap-5 shrink-0 text-right">
-                        {q.kwp && (
+                      {/* Bottom: client info + metrics */}
+                      <div className="px-4 pb-3.5 flex items-end justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-sm truncate">
+                            {kd.clienteNome || qp.nome || q.nome_projeto || '—'}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
+                            {qp.empresa && (
+                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                                <Building2 size={11} className="shrink-0 text-gray-400" /> {qp.empresa}
+                              </span>
+                            )}
+                            {qp.cnpj && <span className="text-xs text-gray-400 font-mono">{qp.cnpj}</span>}
+                            {qp.telefone && (
+                              <span className="text-xs text-gray-400 flex items-center gap-1">
+                                <PhoneIcon size={10} /> {qp.telefone}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-end gap-5 shrink-0 text-right">
+                          {q.kwp && (
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">kWp</p>
+                              <p className="text-sm font-bold text-gray-700">{q.kwp}</p>
+                            </div>
+                          )}
+                          {q.frete_nome && (
+                            <div className="hidden sm:block">
+                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Frete</p>
+                              <p className="text-xs text-gray-500 max-w-[110px] truncate">{q.frete_nome}</p>
+                            </div>
+                          )}
                           <div>
-                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">kWp</p>
-                            <p className="text-sm font-bold text-gray-700">{q.kwp}</p>
+                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p>
+                            <p className="text-base font-extrabold text-gray-900 whitespace-nowrap">{fmt(q.total_final)}</p>
                           </div>
-                        )}
-                        {q.frete_nome && (
-                          <div className="hidden sm:block">
-                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">Frete</p>
-                            <p className="text-xs text-gray-500 max-w-[110px] truncate">{q.frete_nome}</p>
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p>
-                          <p className="text-base font-extrabold text-gray-900 whitespace-nowrap">{fmt(q.total_final)}</p>
                         </div>
                       </div>
                     </div>
+
+                    {/* Revision history (expandable) */}
+                    {isExp && revisoes.length > 0 && (
+                      <div className="border-t border-gray-100 bg-gray-50/70">
+                        {revisoes.map((r, ri) => (
+                          <div key={ri} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 last:border-0 text-xs">
+                            <div className="flex items-center gap-3 text-gray-500 min-w-0">
+                              <span className="font-bold text-purple-600 shrink-0">Rev. {r.revisao}</span>
+                              <span className="text-gray-400 shrink-0">{fmtDate(r.data)}</span>
+                              {r.frete && <span className="text-gray-300 hidden sm:inline truncate max-w-[140px]">{r.frete}</span>}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {r.total_final != null && (
+                                <span className="font-bold text-gray-700 whitespace-nowrap">{fmt(r.total_final)}</span>
+                              )}
+                              <button
+                                onClick={() => handlePrintRevision(q, r)}
+                                title="Imprimir esta revisão"
+                                className="p-1 rounded text-gray-400 hover:text-violet-600 hover:bg-violet-50"
+                              >
+                                <Printer size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}
+            </div>
+
+          ) : (
+            /* ── TABLE VIEW ── */
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-violet-50/60">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cotação</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente / Empresa</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">kWp</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
+                      <th className="px-3 py-3 w-10" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminFilteredQuotes.map(q => {
+                      const kd   = q.data || {}
+                      const qp   = q.profiles || {}
+                      const st   = STATUS_STYLE[q.status] || STATUS_STYLE.rascunho
+                      const Icon = st.icon
+                      const dotColor = STATUS_DOT_COLOR[q.status] || '#d1d5db'
+                      return (
+                        <tr
+                          key={q.id}
+                          className="border-b border-gray-50 hover:bg-violet-50/20 transition-colors cursor-pointer"
+                          onClick={() => setSelectedQuote(q)}
+                        >
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="text-sm text-gray-600">{fmtDate(q.created_at)}</span>
+                            <span className="block text-xs text-gray-400">{fmtTime(q.created_at)}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="w-1.5 h-6 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                              <div>
+                                <span className="font-mono font-bold text-violet-700 text-sm">
+                                  {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                                </span>
+                                {(kd.revisao || 0) > 0 && (
+                                  <span className="ml-1.5 text-[10px] font-bold text-amber-600">Rev. {kd.revisao}</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-900 text-sm truncate max-w-[200px]">
+                              {kd.clienteNome || qp.nome || '—'}
+                            </p>
+                            {qp.empresa && (
+                              <p className="text-xs text-gray-400 truncate max-w-[200px]">{qp.empresa}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <span className="text-sm font-semibold text-gray-700">{q.kwp} kWp</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${st.cls}`}>
+                              <Icon size={11} /> {st.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-gray-800 text-sm whitespace-nowrap">
+                            {fmt(q.total_final)}
+                          </td>
+                          <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => setSelectedQuote(q)}
+                              title="Ver / Imprimir"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-violet-600 hover:bg-violet-50"
+                            >
+                              <Printer size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
