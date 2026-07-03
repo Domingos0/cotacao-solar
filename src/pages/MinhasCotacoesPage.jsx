@@ -9,7 +9,7 @@ import {
   FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
-  Users, Building2, AtSign, Phone as PhoneIcon,
+  Users, Building2, AtSign, Phone as PhoneIcon, Search,
 } from 'lucide-react'
 
 // ─── Utilitário de impressão (mobile-safe) ────────────────────────────────────
@@ -1877,6 +1877,12 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [selectedRevision, setSelectedRevision] = useState(null) // { quote, revision }
   const [teamMembers, setTeamMembers] = useState([])
   const [teamLoading, setTeamLoading] = useState(false)
+  // Admin: all quotes
+  const [allQuotes, setAllQuotes]               = useState([])
+  const [allQuotesLoading, setAllQuotesLoading] = useState(false)
+  const [allQuotesLoaded, setAllQuotesLoaded]   = useState(false)
+  const [adminSearch, setAdminSearch]           = useState('')
+  const [adminStatusFilter, setAdminStatusFilter] = useState('todas')
 
   const handlePrintRevision = (quote, r) => {
     flushSync(() => setPrintRevisionData({ quote, r }))
@@ -1885,6 +1891,17 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
 
   const activeQuotes = quotes.filter(q => !CLOSED_STATUSES.includes(q.status))
   const closedQuotes = quotes.filter(q => CLOSED_STATUSES.includes(q.status))
+
+  const adminFilteredQuotes = useMemo(() => {
+    return allQuotes.filter(q => {
+      const qp  = q.profiles || {}
+      const kd  = q.data || {}
+      const hay = `${qp.nome || ''} ${qp.empresa || ''} ${kd.clienteNome || ''} ${kd.numero_orcamento || ''} ${q.nome_projeto || ''}`.toLowerCase()
+      const matchSearch = !adminSearch || hay.includes(adminSearch.toLowerCase())
+      const matchStatus = adminStatusFilter === 'todas' || q.status === adminStatusFilter
+      return matchSearch && matchStatus
+    })
+  }, [allQuotes, adminSearch, adminStatusFilter])
 
   const fetchQuotes = async (silent = false) => {
     if (!session?.user?.id) return
@@ -1898,7 +1915,23 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     if (!silent) setLoading(false)
   }
 
-  useEffect(() => { fetchQuotes() }, [session?.user?.id])
+  const fetchAllQuotes = async (silent = false) => {
+    if (!isAdmin) return
+    if (!silent) setAllQuotesLoading(true)
+    const { data } = await supabaseAdmin
+      .from('quotes')
+      .select('*, quote_items(*), profiles(nome, empresa, cnpj, telefone)')
+      .order('created_at', { ascending: false })
+    setAllQuotes(data || [])
+    if (!silent) setAllQuotesLoading(false)
+    setAllQuotesLoaded(true)
+  }
+
+  useEffect(() => { fetchQuotes() }, [session?.user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeTab === 'todos' && isAdmin && !allQuotesLoaded) fetchAllQuotes()
+  }, [activeTab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const cnpj = profile?.cnpj
@@ -2112,6 +2145,23 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
             {teamMembers.length > 0 && (
               <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${activeTab === 'equipe' ? 'bg-white/20' : 'bg-indigo-100 text-indigo-600'}`}>
                 {teamMembers.length}
+              </span>
+            )}
+          </button>
+        )}
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('todos')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors shrink-0 ${
+              activeTab === 'todos'
+                ? 'bg-violet-600 text-white border-violet-600'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-violet-400'
+            }`}
+          >
+            <Shield size={15} /> Todas as Cotações
+            {allQuotes.length > 0 && (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${activeTab === 'todos' ? 'bg-white/20' : 'bg-violet-100 text-violet-600'}`}>
+                {allQuotes.length}
               </span>
             )}
           </button>
@@ -2490,6 +2540,176 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
         </div>
       ))}
 
+      {/* ── TODAS AS COTAÇÕES (ADMIN) TAB ── */}
+      {activeTab === 'todos' && isAdmin && (
+        <div className="space-y-4">
+
+          {/* Search + Refresh */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Buscar por cliente, empresa ou número da cotação…"
+                value={adminSearch}
+                onChange={e => setAdminSearch(e.target.value)}
+                className="w-full pl-9 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+              />
+              {adminSearch && (
+                <button onClick={() => setAdminSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => fetchAllQuotes()}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-violet-600 px-4 py-2.5 rounded-xl border border-gray-200 hover:border-violet-300 bg-white shrink-0"
+            >
+              <RefreshCw size={14} /> Atualizar
+            </button>
+          </div>
+
+          {/* Status filter pills */}
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { key: 'todas',               label: 'Todas' },
+              { key: 'rascunho',            label: 'Rascunho' },
+              { key: 'em_analise',          label: 'Em análise' },
+              { key: 'aguardando_desconto', label: 'Desc. pendente' },
+              { key: 'aprovada',            label: 'Aprovada' },
+              { key: 'fechado',             label: 'Aguard. Implant.' },
+              { key: 'implantado',          label: 'Implantado' },
+              { key: 'perdida',             label: 'Perdida' },
+            ].map(({ key, label }) => {
+              const count = key === 'todas'
+                ? allQuotes.length
+                : allQuotes.filter(q => q.status === key).length
+              const isActive = adminStatusFilter === key
+              return (
+                <button
+                  key={key}
+                  onClick={() => setAdminStatusFilter(key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-colors ${
+                    isActive
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-violet-400'
+                  }`}
+                >
+                  {label}
+                  {count > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Content */}
+          {allQuotesLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-4 border-violet-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : adminFilteredQuotes.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-16 text-center">
+              <Shield size={44} className="text-gray-200 mx-auto mb-3" />
+              <h3 className="text-base font-semibold text-gray-500">
+                {allQuotes.length === 0 ? 'Nenhuma cotação salva ainda' : 'Nenhuma cotação encontrada'}
+              </h3>
+              {adminSearch && <p className="text-sm text-gray-400 mt-1">Tente outros termos de busca.</p>}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-400 px-1">
+                Exibindo <strong className="text-gray-600">{adminFilteredQuotes.length}</strong> de <strong className="text-gray-600">{allQuotes.length}</strong> cotações
+              </p>
+              {adminFilteredQuotes.map(q => {
+                const kd   = q.data || {}
+                const qp   = q.profiles || {}
+                const st   = STATUS_STYLE[q.status] || STATUS_STYLE.rascunho
+                const Icon = st.icon
+                return (
+                  <div
+                    key={q.id}
+                    className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:border-violet-200 hover:shadow-md transition-all cursor-pointer"
+                    onClick={() => setSelectedQuote(q)}
+                  >
+                    {/* Top: number + badges + date */}
+                    <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2">
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="font-mono font-bold text-violet-700 text-sm">
+                          {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                        </span>
+                        {(kd.revisao || 0) > 0 && (
+                          <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            Rev. {kd.revisao}
+                          </span>
+                        )}
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${st.cls}`}>
+                          <Icon size={10} /> {st.label}
+                        </span>
+                        {q.desconto_pct > 0 && (
+                          <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                            -{q.desconto_pct}% desc.
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+                        {fmtDate(q.created_at)}, {fmtTime(q.created_at)}
+                      </span>
+                    </div>
+
+                    {/* Bottom: client info + metrics */}
+                    <div className="px-4 pb-3.5 flex items-end justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-900 text-sm truncate">
+                          {kd.clienteNome || qp.nome || q.nome_projeto || '—'}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
+                          {qp.empresa && (
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <Building2 size={11} className="shrink-0 text-gray-400" /> {qp.empresa}
+                            </span>
+                          )}
+                          {qp.cnpj && (
+                            <span className="text-xs text-gray-400 font-mono">{qp.cnpj}</span>
+                          )}
+                          {qp.telefone && (
+                            <span className="text-xs text-gray-400 flex items-center gap-1">
+                              <PhoneIcon size={10} /> {qp.telefone}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-end gap-5 shrink-0 text-right">
+                        {q.kwp && (
+                          <div>
+                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">kWp</p>
+                            <p className="text-sm font-bold text-gray-700">{q.kwp}</p>
+                          </div>
+                        )}
+                        {q.frete_nome && (
+                          <div className="hidden sm:block">
+                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">Frete</p>
+                            <p className="text-xs text-gray-500 max-w-[110px] truncate">{q.frete_nome}</p>
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Total</p>
+                          <p className="text-base font-extrabold text-gray-900 whitespace-nowrap">{fmt(q.total_final)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Detail Modal */}
       {selectedQuote && (
         <QuoteDetailModal
@@ -2497,8 +2717,12 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
           onClose={() => setSelectedQuote(null)}
           onLoadQuote={onLoadQuote}
           onStatusChange={handleStatusChange}
-          onRefresh={fetchQuotes}
-          onGoToFechados={async () => { await fetchQuotes(true); setActiveTab('fechados'); setSelectedQuote(null) }}
+          onRefresh={activeTab === 'todos' ? fetchAllQuotes : fetchQuotes}
+          onGoToFechados={async () => {
+            await fetchQuotes(true)
+            setActiveTab('fechados')
+            setSelectedQuote(null)
+          }}
         />
       )}
 

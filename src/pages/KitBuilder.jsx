@@ -2537,6 +2537,12 @@ function Step3({ data, onChange, products, realKwp }) {
           const compatible = usePowerFilter ? isInvCompatibleGrid(inv, realKwp, gridConf) : true
           // Divider before the first non-suggested inverter in the list
           const firstNotSugg = usePowerFilter && showAll && listIdx === sortedSuggested.length && notSuggested.length > 0
+          // Availability
+          const invEstoque  = inv.estoque || 'Disponível'
+          const invIsEsg    = invEstoque === 'Esgotado' || invEstoque === 'Sem estoque'
+          const invIsPrev   = invEstoque === 'Previsão'
+          const invPrev     = invIsPrev ? inv.estoque_previsao : null
+          const invPrevFmt  = invPrev ? new Date(invPrev + 'T12:00:00').toLocaleDateString('pt-BR') : null
 
           // ── SINGLE MODE ──
           if (!mixMode) {
@@ -2564,6 +2570,8 @@ function Step3({ data, onChange, products, realKwp }) {
                   onClick={() => handleInvClick(inv, olPct, maxOlPct, effKw)}
                   className={`text-left rounded-xl border-2 overflow-hidden transition-all flex flex-col ${
                     selected ? 'border-weg-blue ring-2 ring-blue-100' :
+                    invIsEsg  ? 'border-red-300 bg-white hover:border-red-400 hover:shadow-md' :
+                    invIsPrev ? 'border-yellow-300 bg-white hover:border-yellow-400 hover:shadow-md' :
                     compatible ? 'border-gray-200 bg-white hover:border-weg-blue/60 hover:shadow-md' :
                     'border-gray-200 bg-white opacity-65 hover:opacity-100 hover:shadow-md'
                   }`}
@@ -2571,12 +2579,18 @@ function Step3({ data, onChange, products, realKwp }) {
                   {/* Image */}
                   <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center shrink-0">
                     <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
-                      className="w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105" />
+                      className={`w-full h-full object-contain p-2 transition-transform duration-500 hover:scale-105 ${invIsEsg ? 'opacity-50 grayscale' : ''}`} />
                     <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[85%]">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
                       {typeBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${typeBadge.cls}`}>{typeBadge.label}</span>}
                       {hybridSubBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${hybridSubBadge.cls}`}>{hybridSubBadge.label}</span>}
                       {compatible && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm bg-green-500 text-white">✓ Sugerido</span>}
+                      {(invIsEsg || invIsPrev) && (
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 ${invIsEsg ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-white inline-block shrink-0" />
+                          {invIsEsg ? 'Esgotado' : invPrevFmt ? `Prev. ${invPrevFmt}` : 'Previsão'}
+                        </span>
+                      )}
                     </div>
                     {selected && (
                       <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
@@ -2665,17 +2679,26 @@ function Step3({ data, onChange, products, realKwp }) {
               )}
             <div
               className={`rounded-xl border-2 overflow-hidden transition-all ${
-                inMix ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white'
+                inMix    ? 'border-weg-blue bg-blue-50 ring-2 ring-blue-100' :
+                invIsEsg  ? 'border-red-300 bg-white' :
+                invIsPrev ? 'border-yellow-300 bg-white' :
+                'border-gray-200 bg-white'
               }`}
             >
               <div className="relative h-28 bg-gradient-to-br from-gray-50 to-blue-50 overflow-hidden flex items-center justify-center">
                 <ProductImg src={getProductImage(inv)} alt={inv.nome} fallback="⚡"
-                  className="w-full h-full object-contain p-2" />
+                  className={`w-full h-full object-contain p-2 ${invIsEsg ? 'opacity-50 grayscale' : ''}`} />
                 <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[85%]">
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${badge.cls}`}>{badge.label}</span>
                   {typeBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${typeBadge.cls}`}>{typeBadge.label}</span>}
                   {hybridSubBadge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm ${hybridSubBadge.cls}`}>{hybridSubBadge.label}</span>}
                   {compatible && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm bg-green-500 text-white">✓</span>}
+                  {(invIsEsg || invIsPrev) && (
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 ${invIsEsg ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'}`}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-white inline-block shrink-0" />
+                      {invIsEsg ? 'Esgotado' : invPrevFmt ? `Prev. ${invPrevFmt}` : 'Previsão'}
+                    </span>
+                  )}
                 </div>
                 {inMix && (
                   <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-weg-blue flex items-center justify-center shadow-md">
