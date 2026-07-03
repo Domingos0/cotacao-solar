@@ -3459,7 +3459,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
   const KitCard = ({ q }) => {
     const kd = q.data || {}
-    const [confirmMode, setConfirmMode] = useState(null) // 'implantar' | 'perdida'
+    const [confirmMode, setConfirmMode] = useState(null) // 'next' | 'perdida'
     const [ovNumber, setOvNumber] = useState('')
     const busy = acting[q.id]
     const isPerd       = q.status === 'perdida'
@@ -3469,6 +3469,14 @@ function KitsFechadosPanel({ onBadgeChange }) {
     const isTransporte = q.status === 'em_transporte'
     const isPending    = isFechado || isImplant || isFaturado
     const isConcluido  = isTransporte
+
+    // próximo status e label baseado no status atual
+    const NEXT = {
+      fechado:    { status: 'implantado',    label: 'Pedido Implantando', color: 'indigo' },
+      implantado: { status: 'faturado',      label: 'Pedido Faturado',    color: 'sky'    },
+      faturado:   { status: 'em_transporte', label: 'Em Transporte',      color: 'emerald'},
+    }
+    const next = NEXT[q.status]
 
     return (
       <div className={`bg-white rounded-2xl border-2 shadow-sm p-5 space-y-4 ${
@@ -3563,8 +3571,34 @@ function KitsFechadosPanel({ onBadgeChange }) {
         )}
 
         {/* Actions */}
-        {(isPending || isConcluido) && (
-          confirmMode === 'perdida' ? (
+        {isPending && (
+          confirmMode === 'next' ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-gray-800">Confirmar: <span className="text-weg-blue">{next?.label}</span></p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Número da OV <span className="text-gray-400">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={ovNumber}
+                  onChange={e => setOvNumber(e.target.value)}
+                  placeholder="Ex: OV-2026-001"
+                  autoFocus
+                  className="w-full text-sm border-2 border-gray-200 focus:border-weg-blue rounded-lg px-3 py-2 focus:outline-none bg-white font-mono"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { updateStatus(q.id, next.status, ovNumber.trim() || null); setConfirmMode(null); setOvNumber('') }}
+                  disabled={!!busy}
+                  className="flex-1 bg-weg-blue hover:bg-weg-blue/90 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-50">
+                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Confirmar</>}
+                </button>
+                <button onClick={() => { setConfirmMode(null); setOvNumber('') }} className="px-3 py-2 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+              </div>
+            </div>
+          ) : confirmMode === 'perdida' ? (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3">
               <p className="text-sm font-semibold text-red-700 mb-2">Marcar como proposta perdida?</p>
               <div className="flex gap-2">
@@ -3577,35 +3611,14 @@ function KitsFechadosPanel({ onBadgeChange }) {
             </div>
           ) : (
             <div className="flex gap-2">
-              {isFechado && (
-                <button onClick={() => updateStatus(q.id, 'implantado')} disabled={!!busy}
-                  className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🔧 Pedido Implantando</>}
-                </button>
-              )}
-              {isImplant && (
-                <button onClick={() => updateStatus(q.id, 'faturado')} disabled={!!busy}
-                  className="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🧾 Pedido Faturado</>}
-                </button>
-              )}
-              {isFaturado && (
-                <button onClick={() => updateStatus(q.id, 'em_transporte')} disabled={!!busy}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                  {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <>🚛 Em Transporte</>}
-                </button>
-              )}
-              {isConcluido && (
-                <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl py-3 text-center text-xs text-emerald-700 font-semibold flex items-center justify-center gap-1.5">
-                  <CheckCircle2 size={14} /> Pedido em transporte
-                </div>
-              )}
-              {!isConcluido && (
-                <button onClick={() => setConfirmMode('perdida')}
-                  className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
-                  <XCircle size={15} /> Perdida
-                </button>
-              )}
+              <button onClick={() => setConfirmMode('next')}
+                className="flex-1 bg-weg-blue hover:bg-weg-blue/90 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+                <CheckCircle2 size={16} /> Confirmar: {next?.label}
+              </button>
+              <button onClick={() => setConfirmMode('perdida')}
+                className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
+                <XCircle size={15} /> Perdida
+              </button>
             </div>
           )
         )}
@@ -3613,7 +3626,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
         {isConcluido && (
           <div className="bg-emerald-50 rounded-xl px-3 py-2 space-y-0.5">
             <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
-              <CheckCircle2 size={13} /> 🚛 Em Transporte
+              <CheckCircle2 size={13} /> Em Transporte — pedido concluído
             </div>
             {kd.ov_numero && (
               <p className="text-xs text-emerald-600 font-mono pl-5">OV: <strong>{kd.ov_numero}</strong></p>
