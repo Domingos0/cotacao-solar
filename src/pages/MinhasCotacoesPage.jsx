@@ -10,6 +10,7 @@ import {
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
+  BadgePercent, Tag,
 } from 'lucide-react'
 
 // ─── Utilitário de impressão (mobile-safe) ────────────────────────────────────
@@ -902,6 +903,26 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const [isPrinting, setIsPrinting]       = useState(false)
   const [printRevision, setPrintRevision] = useState(null)
 
+  // Discount request (client-side)
+  const [showDiscountModal, setShowDiscountModal] = useState(false)
+  const [discountMotivo, setDiscountMotivo]       = useState('')
+  const [discountSending, setDiscountSending]     = useState(false)
+  const [discountSent, setDiscountSent]           = useState(false)
+
+  const handleRequestDiscount = async () => {
+    if (!discountMotivo.trim() || discountSending) return
+    setDiscountSending(true)
+    try {
+      await supabaseAdmin.from('quotes').update({
+        status: 'aguardando_desconto',
+        desconto_motivo: discountMotivo.trim(),
+      }).eq('id', quote.id)
+      setDiscountSent(true)
+      onRefresh?.()
+    } catch (e) { console.error(e) }
+    setDiscountSending(false)
+  }
+
   // Auto-close after success
   useEffect(() => {
     if (!successData) return
@@ -1585,45 +1606,84 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           )}
 
           {/* Financial summary */}
-          <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-            {isAdmin && (
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Valor de tabela (bruto)</span>
-                <span className="font-medium">{fmt(quote.subtotal)}</span>
-              </div>
-            )}
-            {isAdmin && quote.desconto_pct > 0 && (
-              <div className="flex justify-between text-sm text-green-600">
-                <span>Desconto comercial ({quote.desconto_pct}%)</span>
-                <span className="font-medium">−{fmt((quote.subtotal || 0) * (quote.desconto_pct / 100))}</span>
-              </div>
-            )}
-            {isAdmin && freteAmt > 0 && (
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Frete — {quote.frete_nome}</span>
-                <span className="font-medium">+{fmt(freteAmt)}</span>
-              </div>
-            )}
-            {isAdmin && freteAmt === 0 && quote.frete_nome && (
-              <div className="flex justify-between text-sm text-gray-400">
-                <span>Frete — {quote.frete_nome}</span>
-                <span className="text-green-600 font-medium">Incluso (FOB)</span>
-              </div>
-            )}
-            <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
-              <span>Total Final</span>
-              <span className="text-weg-blue text-lg">{fmt(quote.total_final)}</span>
-            </div>
-          </div>
+          {(() => {
+            const hasApprovedDiscount = !isAdmin && quote.status === 'aprovada' && (quote.desconto_pct || 0) > 0
+            const totalComDesc = hasApprovedDiscount
+              ? Math.round(quote.total_final * (1 - quote.desconto_pct / 100) * 100) / 100
+              : null
+            return (
+              <div className={`rounded-xl p-4 space-y-2 ${hasApprovedDiscount ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
+                {isAdmin && (
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>Valor de tabela (bruto)</span>
+                    <span className="font-medium">{fmt(quote.subtotal)}</span>
+                  </div>
+                )}
+                {isAdmin && quote.desconto_pct > 0 && (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>Desconto comercial ({quote.desconto_pct}%)</span>
+                    <span className="font-medium">−{fmt((quote.subtotal || 0) * (quote.desconto_pct / 100))}</span>
+                  </div>
+                )}
+                {isAdmin && freteAmt > 0 && (
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>Frete — {quote.frete_nome}</span>
+                    <span className="font-medium">+{fmt(freteAmt)}</span>
+                  </div>
+                )}
+                {isAdmin && freteAmt === 0 && quote.frete_nome && (
+                  <div className="flex justify-between text-sm text-gray-400">
+                    <span>Frete — {quote.frete_nome}</span>
+                    <span className="text-green-600 font-medium">Incluso (FOB)</span>
+                  </div>
+                )}
 
-          {/* Admin discount response */}
-          {quote.desconto_resposta && (
-            <div className={`rounded-xl p-4 text-sm ${
-              quote.status === 'aprovada' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-gray-50 border border-gray-200 text-gray-600'
-            }`}>
-              <p className="font-semibold mb-0.5">
-                {quote.status === 'aprovada' ? '✓ Desconto aprovado' : 'Resposta do administrador'}
-              </p>
+                {/* Cliente: desconto aprovado — mostra os dois valores */}
+                {hasApprovedDiscount ? (
+                  <>
+                    <div className="flex justify-between text-sm text-gray-500">
+                      <span>Valor sem desconto adicional</span>
+                      <span className="font-medium line-through text-gray-400">{fmt(quote.total_final)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-green-700 font-semibold">
+                      <span className="flex items-center gap-1">
+                        <Tag size={13} /> Desconto aprovado ({quote.desconto_pct}%)
+                      </span>
+                      <span>−{fmt(quote.total_final * quote.desconto_pct / 100)}</span>
+                    </div>
+                    <div className="border-t border-green-200 pt-2 flex justify-between font-extrabold text-green-800">
+                      <span className="flex items-center gap-1.5"><CheckCircle2 size={15} /> Total com desconto</span>
+                      <span className="text-xl">{fmt(totalComDesc)}</span>
+                    </div>
+                    {quote.desconto_resposta && (
+                      <p className="text-xs text-green-700 pt-1 border-t border-green-200">{quote.desconto_resposta}</p>
+                    )}
+                  </>
+                ) : (
+                  <div className={`${isAdmin ? 'border-t border-gray-200 pt-2' : ''} flex justify-between font-extrabold text-gray-900`}>
+                    <span>Total Final</span>
+                    <span className="text-weg-blue text-lg">{fmt(quote.total_final)}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Aguardando desconto — banner para cliente */}
+          {!isAdmin && quote.status === 'aguardando_desconto' && (
+            <div className="rounded-xl p-4 bg-yellow-50 border border-yellow-200 flex items-start gap-3 text-sm text-yellow-800">
+              <Clock size={16} className="shrink-0 mt-0.5 text-yellow-500" />
+              <div>
+                <p className="font-semibold">Solicitação de desconto enviada</p>
+                <p className="text-xs mt-0.5 text-yellow-700">Aguardando análise do administrador. Você será notificado assim que houver resposta.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Desconto recusado */}
+          {!isAdmin && quote.desconto_resposta && quote.status !== 'aprovada' && quote.status !== 'aguardando_desconto' && (
+            <div className="rounded-xl p-4 bg-gray-50 border border-gray-200 text-sm text-gray-600">
+              <p className="font-semibold mb-0.5 flex items-center gap-1.5"><XCircle size={14} className="text-red-400" /> Resposta do administrador</p>
               <p className="text-xs">{quote.desconto_resposta}</p>
             </div>
           )}
@@ -1648,6 +1708,16 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             >
               <Printer size={15} /> Imprimir / PDF
             </button>
+
+            {/* Solicitar desconto — só para cliente, cotação ativa sem desconto já pendente/aprovado */}
+            {!isAdmin && !isClosed && !['aguardando_desconto', 'aprovada'].includes(quote.status) && (
+              <button
+                onClick={() => { setShowDiscountModal(true); setDiscountSent(false); setDiscountMotivo('') }}
+                className="flex items-center gap-1.5 text-sm text-amber-600 border-2 border-amber-400 bg-amber-50 hover:bg-amber-100 px-4 py-2 rounded-xl font-semibold"
+              >
+                <BadgePercent size={15} /> Solicitar desconto
+              </button>
+            )}
 
             {!isClosed && (
               <>
@@ -1677,6 +1747,66 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </>
             )}
           </div>
+
+          {/* ── Modal: Solicitar Desconto ── */}
+          {showDiscountModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                    <BadgePercent size={20} className="text-amber-500" /> Solicitar Desconto
+                  </h3>
+                  <button onClick={() => setShowDiscountModal(false)} className="p-1.5 rounded-full hover:bg-gray-100">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {discountSent ? (
+                  <div className="text-center py-6">
+                    <CheckCircle2 size={48} className="text-green-500 mx-auto mb-3" />
+                    <h4 className="font-bold text-gray-900 mb-2">Solicitação enviada!</h4>
+                    <p className="text-gray-500 text-sm mb-4">O administrador irá analisar e responder em breve.</p>
+                    <button onClick={() => setShowDiscountModal(false)} className="btn-primary px-6 py-2.5">Fechar</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
+                      <p><strong>Valor total:</strong> {fmt(quote.total_final)}</p>
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Motivo / justificativa *
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={discountMotivo}
+                        onChange={e => setDiscountMotivo(e.target.value)}
+                        placeholder="Descreva o motivo (ex: volume de compra, projeto específico, concorrência)..."
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowDiscountModal(false)}
+                        className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleRequestDiscount}
+                        disabled={!discountMotivo.trim() || discountSending}
+                        className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+                      >
+                        {discountSending
+                          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Enviando…</>
+                          : <><BadgePercent size={15} /> Enviar solicitação</>}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           </>)}
         </div>
       </div>
