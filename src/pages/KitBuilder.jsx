@@ -4968,17 +4968,17 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                   </td>
                 </tr>
               )}
-              {/* Freight row — visível só para admin */}
-              {isAdmin && freteOpcao.acrescimo !== 1 && (
-                <tr className="bg-gray-50">
-                  <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
-                    {freteOpcao.nome}
-                  </td>
-                  <td className="px-4 py-2 text-right text-sm font-bold text-gray-700">
-                    + {fmt(freteAmt)}
-                  </td>
-                </tr>
-              )}
+              {/* Freight row — nome visível para todos, valor só admin */}
+              <tr className="bg-gray-50 border-t border-gray-100">
+                <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
+                  🚛 {freteOpcao.nome}
+                </td>
+                <td className="px-4 py-2 text-right text-sm font-bold text-gray-700">
+                  {isAdmin && freteOpcao.acrescimo !== 1
+                    ? `+ ${fmt(freteAmt)}`
+                    : freteOpcao.acrescimo === 1 ? 'Incluso' : '—'}
+                </td>
+              </tr>
               {/* Grand total */}
               <tr className="bg-weg-blue text-white">
                 <td colSpan="4" className="px-4 py-4 text-right font-bold uppercase tracking-wide">
