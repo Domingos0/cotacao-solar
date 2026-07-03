@@ -4835,6 +4835,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                 </p>
               )}
               {profile?.cnpj && <p style={{fontSize:10, color:'#777', margin:'1px 0 0', fontFamily:'monospace'}}>CNPJ: {profile.cnpj}</p>}
+              <p style={{fontSize:10, color:'#555', margin:'2px 0 0'}}>
+                🚛 {freteOpcao.nome}
+              </p>
               <p style={{fontSize:10, color:'#1B3A8A', margin:'2px 0 0', fontWeight:600}}>
                 Validade: {prop.validade || 7} dias
               </p>
@@ -4968,17 +4971,17 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                   </td>
                 </tr>
               )}
-              {/* Freight row — nome visível para todos, valor só admin */}
-              <tr className="bg-gray-50 border-t border-gray-100">
-                <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
-                  🚛 {freteOpcao.nome}
-                </td>
-                <td className="px-4 py-2 text-right text-sm font-bold text-gray-700">
-                  {isAdmin && freteOpcao.acrescimo !== 1
-                    ? `+ ${fmt(freteAmt)}`
-                    : freteOpcao.acrescimo === 1 ? 'Incluso' : '—'}
-                </td>
-              </tr>
+              {/* Freight row — valor só admin */}
+              {isAdmin && freteOpcao.acrescimo !== 1 && (
+                <tr className="bg-gray-50 border-t border-gray-100">
+                  <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
+                    🚛 {freteOpcao.nome}
+                  </td>
+                  <td className="px-4 py-2 text-right text-sm font-bold text-gray-700">
+                    + {fmt(freteAmt)}
+                  </td>
+                </tr>
+              )}
               {/* Grand total */}
               <tr className="bg-weg-blue text-white">
                 <td colSpan="4" className="px-4 py-4 text-right font-bold uppercase tracking-wide">
