@@ -2,14 +2,35 @@
 // WhatsApp: CallMeBot (gratuito, requer ativação pelo destinatário)
 // Email: EmailJS (gratuito, 200 emails/mês, client-side)
 
-const STORAGE_KEY = 'ernaniff_notify_v1'
+import { supabaseAdmin } from './supabaseAdmin'
 
+const STORAGE_KEY = 'ernaniff_notify_v1'
+const REMOTE_KEY  = 'notify_settings'
+const IS_DEV = import.meta.env.DEV
+
+// As configs do admin (telefone/API key/email) precisam estar disponíveis também
+// no navegador do CLIENTE, que é quem dispara os eventos de cadastro/desconto.
+// localStorage é só o cache local do próprio dispositivo — a fonte compartilhada
+// entre todos os navegadores é a tabela app_settings do Supabase.
 export function getNotifySettings() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') }
   catch { return {} }
 }
 export function saveNotifySettings(s) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
+  if (!IS_DEV) {
+    supabaseAdmin.from('app_settings')
+      .upsert({ key: REMOTE_KEY, value: s, updated_at: new Date().toISOString() })
+      .then(() => {}, e => console.warn('[notify] settings sync error:', e?.message))
+  }
+}
+
+export async function getRemoteNotifySettings() {
+  if (IS_DEV) return {}
+  try {
+    const { data } = await supabaseAdmin.from('app_settings').select('value').eq('key', REMOTE_KEY).maybeSingle()
+    return data?.value || {}
+  } catch { return {} }
 }
 
 // ─── WhatsApp via CallMeBot ───────────────────────────────────────────────────
@@ -45,7 +66,7 @@ function fmt(v) {
 }
 
 async function dispatchNotifications(adminMsg, clientMsg, clientEmail, clientPhone, clientWaKey) {
-  const s = getNotifySettings()
+  const s = { ...getNotifySettings(), ...(await getRemoteNotifySettings()) }
   const tasks = []
 
   // Notificações para o ADMIN
@@ -61,9 +82,8 @@ async function dispatchNotifications(adminMsg, clientMsg, clientEmail, clientPho
     if (clientPhone && clientWaKey)
       tasks.push(sendWhatsApp(clientPhone, clientWaKey, clientMsg))
     if (clientEmail) {
-      const s2 = getNotifySettings()
-      if (s2.emailServiceId && s2.emailTemplateId && s2.emailPublicKey)
-        tasks.push(sendEmail({ serviceId: s2.emailServiceId, templateId: s2.emailTemplateId, publicKey: s2.emailPublicKey, toEmail: clientEmail, subject: clientMsg.split('\n')[0].replace(/[*_]/g, ''), message: clientMsg }))
+      if (s.emailServiceId && s.emailTemplateId && s.emailPublicKey)
+        tasks.push(sendEmail({ serviceId: s.emailServiceId, templateId: s.emailTemplateId, publicKey: s.emailPublicKey, toEmail: clientEmail, subject: clientMsg.split('\n')[0].replace(/[*_]/g, ''), message: clientMsg }))
     }
   }
 
@@ -78,15 +98,16 @@ export async function notifyClienteRegistered({ nome, userEmail, empresa, telefo
   await dispatchNotifications(msg, null, null, null, null)
 }
 
-// 2. Cliente solicitou desconto → notifica admin
-export async function notifyDescontoSolicitado({ clienteNome, kitNome, totalFinal, motivo }) {
-  const msg = `💰 *Solicitação de desconto — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nValor: ${fmt(totalFinal)}\n\nMotivo: ${motivo}\n\nAcesse o painel para responder.`
-  await dispatchNotifications(msg, null, null, null, null)
+// 2. Cliente solicitou desconto → notifica admin e confirma recebimento ao cliente
+export async function notifyDescontoSolicitado({ clienteNome, revendedorNome, revendedorEmail, revendedorPhone, revendedorWaKey, kitNome, totalFinal, motivo }) {
+  const adminMsg  = `💰 *Solicitação de desconto — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nValor: ${fmt(totalFinal)}\n\nMotivo: ${motivo}\n\nAcesse o painel para responder.`
+  const clientMsg = `✅ *Desconto enviado — Ernaniff*\n\nOlá, ${revendedorNome || clienteNome}!\n\nSua solicitação de desconto para o kit "${kitNome}" foi enviada com sucesso. O administrador irá analisar e responder em breve.`
+  await dispatchNotifications(adminMsg, clientMsg, revendedorEmail, revendedorPhone, revendedorWaKey)
 }
 
-// 3. Admin aprovou cadastro → notifica cliente
+// 3. Admin autorizou cadastro → notifica cliente
 export async function notifyClienteApproved({ clienteNome, clienteEmail, clientePhone, clienteWaKey }) {
-  const msg = `✅ *Cadastro aprovado — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSeu cadastro foi aprovado. Acesse agora o sistema e monte seu kit solar! 🌞`
+  const msg = `✅ *Cadastro autorizado — Ernaniff*\n\nOlá, ${clienteNome}!\n\nVocê está autorizado! Agora você já pode seguir cotando seus kits solares no sistema. 🌞`
   await dispatchNotifications(null, msg, clienteEmail, clientePhone, clienteWaKey)
 }
 
@@ -99,6 +120,19 @@ export async function notifyDescontoAprovado({ clienteNome, clienteEmail, client
 // 5. Admin recusou desconto → notifica cliente
 export async function notifyDescontoRecusado({ clienteNome, clienteEmail, clientePhone, clienteWaKey, kitNome, resposta }) {
   const msg = `📋 *Resposta sobre desconto — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto para o kit "${kitNome}" foi analisada.\n\nMensagem: ${resposta}\n\nQualquer dúvida, entre em contato.`
+  await dispatchNotifications(null, msg, clienteEmail, clientePhone, clienteWaKey)
+}
+
+// 6. Status do kit fechado avançou (implantado/faturado/em transporte) → notifica cliente
+const KIT_STATUS_TEXT = {
+  implantado:    ({ ovNumero }) => `🔧 Seu pedido entrou em processo de implantação.${ovNumero ? `\nOV: ${ovNumero}` : ''}`,
+  faturado:      ({ ovNumero, nfNumero }) => `🧾 Seu pedido foi faturado.${ovNumero ? `\nOV: ${ovNumero}` : ''}${nfNumero ? `\nNF: ${nfNumero}` : ''}`,
+  em_transporte: ({ nfNumero }) => `🚛 Seu pedido foi despachado e está a caminho!${nfNumero ? `\nNF: ${nfNumero}` : ''}`,
+}
+export async function notifyKitStatusChanged({ clienteNome, clienteEmail, clientePhone, clienteWaKey, kitNome, status, ovNumero, nfNumero }) {
+  const buildCorpo = KIT_STATUS_TEXT[status]
+  if (!buildCorpo) return
+  const msg = `📦 *Atualização do pedido — Ernaniff*\n\nOlá, ${clienteNome}!\n\nKit: ${kitNome}\n\n${buildCorpo({ ovNumero, nfNumero })}`
   await dispatchNotifications(null, msg, clienteEmail, clientePhone, clienteWaKey)
 }
 

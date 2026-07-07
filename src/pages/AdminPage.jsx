@@ -8,8 +8,8 @@ import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
 import kitCompositions from '../data/kitCompositions.json'
 import {
-  getNotifySettings, saveNotifySettings, sendWhatsApp, sendEmail,
-  notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado,
+  getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
+  notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado, notifyKitStatusChanged,
 } from '../lib/notify'
 import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
@@ -22,6 +22,14 @@ import {
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
+
+// Busca dados de auth (email, whatsapp_apikey) de um cliente para envio de notificações
+async function getClientAuth(userId) {
+  try {
+    const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId)
+    return user
+  } catch { return null }
+}
 
 const EMPTY_PRODUCT = {
   nome: '', codigo: '', modelo: '', categoria: CATEGORIES.MODULOS,
@@ -1497,27 +1505,28 @@ function UserManagement() {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
   const [acting, setActing]   = useState({}) // id → 'ativo'|'recusado'|null
+  const [discMsg, setDiscMsg] = useState('')
 
-  const fetchUsers = async () => {
-    setLoading(true)
+  const fetchUsers = async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(null)
     const [profilesRes, authRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('*').order('created_at', { ascending: false }),
       supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }),
     ])
-    if (profilesRes.error) { setError(profilesRes.error.message); setLoading(false); return }
+    if (profilesRes.error) { setError(profilesRes.error.message); if (!silent) setLoading(false); return }
     setUsers(profilesRes.data || [])
     const map = {}
     ;(authRes.data?.users || []).forEach(u => { map[u.id] = u.email })
     setEmails(map)
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   useEffect(() => { fetchUsers() }, [])
 
   // Auto-refresh a cada 30s para detectar novas solicitações
   useEffect(() => {
-    const id = setInterval(() => fetchUsers(), 30000)
+    const id = setInterval(() => fetchUsers(true), 30000)
     return () => clearInterval(id)
   }, [])
 
@@ -1528,11 +1537,12 @@ function UserManagement() {
     if (status === 'ativo') {
       try {
         const profile = users.find(p => p.id === id) || {}
+        const authUser = await getClientAuth(id)
         notifyClienteApproved({
           clienteNome:  profile.nome || emails[id] || '',
           clienteEmail: emails[id] || '',
           clientePhone: profile.telefone || '',
-          clienteWaKey: '',
+          clienteWaKey: authUser?.user_metadata?.whatsapp_apikey || '',
         })
       } catch (_) {}
     }
@@ -1548,6 +1558,9 @@ function UserManagement() {
     const val = value === '' ? null : Math.max(0, Math.min(100, parseFloat(value)))
     await supabaseAdmin.from('profiles').update({ desconto_comercial: val }).eq('id', id)
     setUsers(u => u.map(p => p.id === id ? { ...p, desconto_comercial: val } : p))
+    const nome = users.find(p => p.id === id)?.nome || emails[id] || 'cliente'
+    setDiscMsg(`Desconto para ${nome} alterado.`)
+    setTimeout(() => setDiscMsg(''), 4000)
   }
 
   const pending   = users.filter(u => u.status === 'pendente')
@@ -1751,6 +1764,14 @@ function UserManagement() {
           <RefreshCw size={14} /> Atualizar
         </button>
       </div>
+
+      {/* Discount change toast */}
+      {discMsg && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2 text-sm text-green-800">
+          <CheckCircle2 size={15} className="text-green-600 shrink-0" />
+          {discMsg}
+        </div>
+      )}
 
       {/* Loading / Error */}
       {loading && (
@@ -2245,13 +2266,6 @@ function QuoteManagement() {
     await updateQuote(quoteId, patch)
     setDragConfirm(null)
     setDragInputValue('')
-  }
-
-  const getClientAuth = async (userId) => {
-    try {
-      const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId)
-      return user
-    } catch { return null }
   }
 
   const handleApprove = async (quote) => {
@@ -3304,6 +3318,13 @@ function NotificationSettings() {
   const [testStatus, setTestStatus] = useState({})
   const [saved, setSaved] = useState(false)
 
+  // Busca a versão compartilhada (Supabase) — cobre o caso de abrir de outro dispositivo
+  useEffect(() => {
+    getRemoteNotifySettings().then(remote => {
+      if (remote && Object.keys(remote).length > 0) setS(remote)
+    })
+  }, [])
+
   const set = (key) => (e) => setS(prev => ({ ...prev, [key]: e.target.value }))
 
   const saveAll = () => {
@@ -3351,7 +3372,7 @@ function NotificationSettings() {
 
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800 space-y-1">
           <p className="font-semibold">Como ativar em 3 passos:</p>
-          <p>1. Adicione <strong>+34 644 97 74 49</strong> aos seus contatos do WhatsApp com o nome "CallMeBot".</p>
+          <p>1. Adicione <strong>+34 611 01 16 37</strong> aos seus contatos do WhatsApp com o nome "CallMeBot".</p>
           <p>2. Envie a mensagem: <code className="bg-green-100 px-1 rounded">I allow callmebot to send me messages</code></p>
           <p>3. Você receberá seu <strong>API Key</strong> por WhatsApp. Cole abaixo.</p>
         </div>
@@ -3514,6 +3535,25 @@ function KitsFechadosPanel({ onBadgeChange }) {
       onBadgeChange?.(updated.filter(q => ['fechado', 'implantado', 'faturado', 'em_transporte'].includes(q.status)).length)
       return updated
     })
+
+    // Notifica cliente sobre avanço do status do pedido
+    if (q && ['implantado', 'faturado', 'em_transporte'].includes(status)) {
+      try {
+        const mergedData = { ...(q.data || {}), ...dataFields }
+        const authUser = await getClientAuth(q.user_id)
+        notifyKitStatusChanged({
+          clienteNome:  q.profiles?.nome || 'Cliente',
+          clienteEmail: authUser?.email || '',
+          clientePhone: q.profiles?.telefone || '',
+          clienteWaKey: authUser?.user_metadata?.whatsapp_apikey || '',
+          kitNome:      q.nome_projeto || `Kit ${q.kwp} kWp`,
+          status,
+          ovNumero: mergedData.ov_numero,
+          nfNumero: mergedData.nf_numero,
+        })
+      } catch (_) {}
+    }
+
     setActing(a => ({ ...a, [id]: null }))
   }
 

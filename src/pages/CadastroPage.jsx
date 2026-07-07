@@ -233,7 +233,7 @@ export default function CadastroPage({ onGoToLogin }) {
               <div className="space-y-2 pt-1">
                 <div className="bg-green-50 rounded-lg p-2.5 text-xs text-green-700 space-y-0.5">
                   <p className="font-semibold">3 passos para ativar:</p>
-                  <p>1. Adicione <strong>+34 644 97 74 49</strong> como "CallMeBot" no WhatsApp</p>
+                  <p>1. Adicione <strong>+34 611 01 16 37</strong> como "CallMeBot" no WhatsApp</p>
                   <p>2. Envie: <code className="bg-green-100 px-1 rounded">I allow callmebot to send me messages</code></p>
                   <p>3. Receba seu API Key e cole abaixo</p>
                 </div>

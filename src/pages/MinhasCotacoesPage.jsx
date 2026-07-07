@@ -4,6 +4,7 @@ import kitCompositions from '../data/kitCompositions.json'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
 import {
   FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
@@ -863,7 +864,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
   const { tableInfo, catalogProducts, condicoes } = useProducts()
-  const { profile, isAdmin } = useAuth()
+  const { session, profile, isAdmin } = useAuth()
 
   // ── Stock check for the saved panel ──────────────────────────────────────────
   const panelInQuote   = kitData.panel
@@ -924,7 +925,20 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
         desconto_motivo: discountMotivo.trim(),
       }).eq('id', quote.id)
       setDiscountSent(true)
-      onRefresh?.()
+      onStatusChange?.(quote.id, 'aguardando_desconto')
+      onRefresh?.(true)
+
+      // Notifica admin sobre a solicitação e confirma o envio ao cliente (silencioso)
+      notifyDescontoSolicitado({
+        clienteNome:      kitData.clienteNome || 'Cliente',
+        revendedorNome:   profile?.nome || '',
+        revendedorEmail:  session?.user?.email || '',
+        revendedorPhone:  profile?.telefone || '',
+        revendedorWaKey:  session?.user?.user_metadata?.whatsapp_apikey || '',
+        kitNome:          quote.nome_projeto || `Kit ${quote.kwp} kWp`,
+        totalFinal:       quote.total_final,
+        motivo:           discountMotivo.trim(),
+      })
     } catch (e) { console.error(e) }
     setDiscountSending(false)
   }
@@ -1728,7 +1742,8 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </button>
             )}
 
-            {!isClosed && (
+            {/* Enquanto aguarda resposta do desconto, cliente não pode alterar/rejeitar/fechar o kit */}
+            {!isClosed && (isAdmin || quote.status !== 'aguardando_desconto') && (
               <>
                 {/* Revisar */}
                 <button
@@ -1760,55 +1775,71 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           {/* ── Modal: Solicitar Desconto ── */}
           {showDiscountModal && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <BadgePercent size={20} className="text-amber-500" /> Solicitar Desconto
-                  </h3>
-                  <button onClick={() => setShowDiscountModal(false)} className="p-1.5 rounded-full hover:bg-gray-100">
-                    <X size={18} />
-                  </button>
-                </div>
-
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                 {discountSent ? (
-                  <div className="text-center py-6">
-                    <CheckCircle2 size={48} className="text-green-500 mx-auto mb-3" />
-                    <h4 className="font-bold text-gray-900 mb-2">Solicitação enviada!</h4>
-                    <p className="text-gray-500 text-sm mb-4">O administrador irá analisar e responder em breve.</p>
-                    <button onClick={() => setShowDiscountModal(false)} className="btn-primary px-6 py-2.5">Fechar</button>
-                  </div>
-                ) : (
                   <>
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm text-amber-800">
-                      <p><strong>Valor total:</strong> {fmt(quote.total_final)}</p>
+                    <div className="bg-green-600 text-white px-5 py-4 flex items-center gap-3">
+                      <CheckCircle2 size={20} className="shrink-0" />
+                      <div>
+                        <p className="font-bold text-base">Solicitação enviada!</p>
+                        <p className="text-xs text-green-100 mt-0.5">{quote.nome_projeto || `Kit ${quote.kwp} kWp`}</p>
+                      </div>
                     </div>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Motivo / justificativa *
-                      </label>
-                      <textarea
-                        rows={4}
-                        value={discountMotivo}
-                        onChange={e => setDiscountMotivo(e.target.value)}
-                        placeholder="Descreva o motivo (ex: volume de compra, projeto específico, concorrência)..."
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
-                      />
-                    </div>
-                    <div className="flex gap-3">
+                    <div className="p-5 space-y-4">
+                      <p className="text-sm text-gray-700">
+                        O administrador irá analisar e responder em breve.
+                      </p>
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                        Este kit fica bloqueado (sem alterar, rejeitar ou fechar) até a resposta do administrador.
+                        Uma nova solicitação de desconto só poderá ser feita depois disso.
+                      </div>
                       <button
                         onClick={() => setShowDiscountModal(false)}
-                        className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                        className="w-full py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-colors"
                       >
-                        Cancelar
+                        Entendi
                       </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="bg-amber-500 text-white px-5 py-4 flex items-center gap-3">
+                      <BadgePercent size={20} className="shrink-0" />
+                      <div>
+                        <p className="font-bold text-base">Solicitar Desconto</p>
+                        <p className="text-xs text-amber-100 mt-0.5">{quote.nome_projeto || `Kit ${quote.kwp} kWp`}</p>
+                      </div>
+                    </div>
+                    <div className="p-5 space-y-4">
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
+                        <p><strong>Valor total:</strong> {fmt(quote.total_final)}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Motivo / justificativa *
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={discountMotivo}
+                          onChange={e => setDiscountMotivo(e.target.value)}
+                          placeholder="Descreva o motivo (ex: volume de compra, projeto específico, concorrência)..."
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                        />
+                      </div>
                       <button
                         onClick={handleRequestDiscount}
                         disabled={!discountMotivo.trim() || discountSending}
-                        className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors"
                       >
                         {discountSending
                           ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Enviando…</>
                           : <><BadgePercent size={15} /> Enviar solicitação</>}
+                      </button>
+                      <button
+                        onClick={() => setShowDiscountModal(false)}
+                        className="w-full py-1.5 rounded-xl text-sm text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        Cancelar
                       </button>
                     </div>
                   </>

@@ -4599,49 +4599,29 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     setShowPrintedScreen(true)
   }
 
-  // ── Request discount ──
+  // ── Request discount (só disponível após a cotação já estar salva) ──
   const requestDiscount = async () => {
-    if (!session || !discountMotivo.trim()) return
+    if (!session || !discountMotivo.trim() || !savedId) return
     setDiscountStatus('sending')
 
-    let quoteId = savedId
     try {
-      if (!quoteId) {
-        const payload = {
-          user_id:     session.user.id,
-          nome_projeto: data.clienteNome
-            ? `Kit ${realKwp.toFixed(2)} kWp — ${data.clienteNome}`
-            : `Kit ${realKwp.toFixed(2)} kWp`,
-          kit_type:    data.kitType,
-          kwp:         realKwp,
-          subtotal,
-          desconto_pct: 0,
-          frete_nome:  freteOpcao.nome,
-          frete_pct:   freteOpcao.acrescimo,
-          total_final: totalFinal,
-          status:      'aguardando_desconto',
-          desconto_motivo: discountMotivo,
-          data,
-        }
-        const { data: q, error } = await supabaseAdmin.from('quotes').insert(payload).select('id').single()
-        if (error) throw error
-        quoteId = q.id
-        setSavedId(quoteId)
-      } else {
-        await supabaseAdmin.from('quotes').update({
-          status: 'aguardando_desconto',
-          desconto_motivo: discountMotivo,
-        }).eq('id', quoteId)
-      }
+      await supabaseAdmin.from('quotes').update({
+        status: 'aguardando_desconto',
+        desconto_motivo: discountMotivo,
+      }).eq('id', savedId)
     } catch (err) {
       console.error('[requestDiscount]', err)
       setDiscountStatus('error')
       return
     }
 
-    // Notifica admin sobre solicitação de desconto (silencioso)
+    // Notifica admin sobre solicitação de desconto e confirma envio ao cliente (silencioso)
     notifyDescontoSolicitado({
       clienteNome: data.clienteNome || 'Cliente',
+      revendedorNome:  profile?.nome || '',
+      revendedorEmail: session.user.email || '',
+      revendedorPhone: profile?.telefone || '',
+      revendedorWaKey: session.user.user_metadata?.whatsapp_apikey || '',
       kitNome: `Kit ${realKwp.toFixed(2)} kWp`,
       totalFinal,
       motivo: discountMotivo,
@@ -5331,7 +5311,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           </button>
         )}
 
-        {session && !isAdmin && (
+        {session && !isAdmin && savedId && (
           <button
             onClick={() => setShowDiscountModal(true)}
             disabled={quoteInfo?.status === 'aguardando_desconto'}
