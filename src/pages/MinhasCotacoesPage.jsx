@@ -7,11 +7,33 @@ import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
 import { getProductImage } from '../data/productImages'
+import {
+  FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
+  Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
+  Trash2, Check, Minus, Plus, Shield, Link2, Home,
+  Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
+  BadgePercent, Tag,
+} from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
-function ItemThumb({ nome }) {
+// item da tabela `quote_items` é um snapshot achatado (sem `categoria`), então
+// a categoria é inferida por palavra-chave no rótulo/nome pra achar a foto real
+// certa (módulo, cabo/conector, proteção, estrutura) em vez de cair no ícone.
+// Baseado só no rótulo (curto e direto) — evita falso-positivo tipo "kit p/ 4
+// módulos" na descrição de uma ESTRUTURA sendo lido como se fosse um módulo.
+function guessCategoria(label) {
+  const t = (label || '').toLowerCase()
+  if (/estrutura|fixação|fixacao/.test(t)) return undefined // getProductImage já resolve via palavra-chave (fixação/trilho/etc.)
+  if (/protetor de surto|disjuntor|\bdps\b/.test(t)) return 'Proteção e Acessórios'
+  if (/\bcabo\b|conector/.test(t)) return 'Cabos e Conectores'
+  if (/módulo|modulo|painel/.test(t)) return 'Módulos Fotovoltaicos'
+  return undefined
+}
+
+function ItemThumb({ label, produto }) {
   const [err, setErr] = useState(false)
-  const src = getProductImage({ nome: nome || '' })
+  const nome = `${label || ''} ${produto || ''}`.trim()
+  const src = getProductImage({ nome, categoria: guessCategoria(label) })
   if (!src || err) {
     return (
       <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-lg shrink-0">
@@ -25,13 +47,6 @@ function ItemThumb({ nome }) {
     </div>
   )
 }
-import {
-  FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
-  Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
-  Trash2, Check, Minus, Plus, Shield, Link2, Home,
-  Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
-  BadgePercent, Tag,
-} from 'lucide-react'
 
 // ─── Utilitário de impressão (mobile-safe) ────────────────────────────────────
 // Move #kit-print para filho direto do body, sobrescreve estilos inline que
@@ -1401,7 +1416,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                   <tr key={i} className="border-b border-gray-100">
                     <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
                     <td className="py-2.5">
-                      <ItemThumb nome={item.produto || item.label} />
+                      <ItemThumb label={item.label} produto={item.produto} />
                     </td>
                     <td className="py-2.5">
                       <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
