@@ -42,6 +42,19 @@ const EST = {
   perfil:  '/img/estruturas/acessorio_perfil.png',
 }
 
+// ── Cabos e conectores (fotos reais, fundo transparente) ──────────────────────
+const CABO = {
+  vermelho: '/img/cabos/cabo_vermelho.png',
+  preto:    '/img/cabos/cabo_preto.png',
+  conector: '/img/cabos/conector_mc4.jpeg',
+}
+
+// ── Proteção elétrica (fotos reais WEG) ────────────────────────────────────────
+const PROT = {
+  disjuntor: '/img/protecao/disjuntor.webp',
+  dps:       '/img/protecao/dps.webp',
+}
+
 // ── Generic photo fallbacks (Unsplash) ───────────────────────────────────────
 const UNS = 'https://images.unsplash.com'
 const IMG = {
@@ -58,8 +71,8 @@ export const CATEGORY_IMG = {
   'Inversores Trifásicos':              WEG.siw500h,
   'Microinversores':                    WEG.siw100g_m024,
   'Inversores de Bombeamento':          WEG.cfw500,
-  'Cabos e Conectores':                 IMG.cable,
-  'Proteção e Acessórios':              IMG.protection,
+  'Cabos e Conectores':                 CABO.preto,
+  'Proteção e Acessórios':              PROT.dps,
   'Estruturas Metálicas':               EST.solo,
   'Estruturas – Componentes Avulsos':   EST.suporte,
   'Monitoramento':                      IMG.monitor,
@@ -150,6 +163,19 @@ export function getProductImage(product) {
   // Fallback para categoria — estruturas sem keyword usam telhado (mais comum)
   if (product.categoria === 'Estruturas Metálicas')                      return EST.telhado
   if (product.categoria === 'Estruturas – Componentes Avulsos')          return EST.suporte
+
+  // ── Cabos, conectores e proteção elétrica ──────────────────────────────────
+  if (nome.includes('conector') || nome.includes('mc4'))                 return CABO.conector
+  if (nome.includes('cabo')) {
+    if (nome.includes('vermelho') || nome.includes('positivo') || nome.includes('(+)'))
+      return CABO.vermelho
+    if (nome.includes('preto') || nome.includes('negativo') || nome.includes('(-)') || nome.includes('(–)'))
+      return CABO.preto
+    return CABO.preto
+  }
+  if (nome.includes('disjuntor'))                                        return PROT.disjuntor
+  if (nome.includes('protetor de surto') || nome.includes('dps') || nome.includes('surto'))
+    return PROT.dps
 
   return CATEGORY_IMG[product.categoria] || null
 }
