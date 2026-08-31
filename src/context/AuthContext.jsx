@@ -6,7 +6,14 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined)
   const [profile, setProfile] = useState(null)
-  const [passwordRecovery, setPasswordRecovery] = useState(false)
+  // Checagem síncrona da URL logo de cara — o evento PASSWORD_RECOVERY do
+  // onAuthStateChange pode disparar antes do listener estar inscrito (corrida
+  // com o processamento automático do link pelo próprio supabase-js), então
+  // isso pega o caso pela URL diretamente, sem depender do timing do evento.
+  const [passwordRecovery, setPasswordRecovery] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return /type=recovery/.test(window.location.hash) || /type=recovery/.test(window.location.search)
+  })
   const channelRef = useRef(null)
 
   useEffect(() => {
