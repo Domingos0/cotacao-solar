@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { supabase } from '../lib/supabase'
 import { notifyClienteRegistered } from '../lib/notify'
 import { User, Building2, Hash, Phone, Mail, Lock, MessageCircle, CheckCircle2, AlertTriangle, ArrowLeft, ChevronDown, Users } from 'lucide-react'
 
@@ -46,11 +46,8 @@ export default function CadastroPage({ onGoToLogin }) {
     if (cnpjRaw.length !== 14 || !validateCNPJ(form.cnpj)) { setTeamInfo(null); return }
     let cancelled = false
     setTeamLoading(true)
-    supabaseAdmin
-      .from('profiles')
-      .select('nome, empresa, status')
-      .eq('cnpj', form.cnpj)
-      .eq('status', 'ativo')
+    supabase
+      .rpc('lookup_company_by_cnpj', { p_cnpj: form.cnpj })
       .then(({ data }) => {
         if (cancelled) return
         setTeamLoading(false)
@@ -73,10 +70,10 @@ export default function CadastroPage({ onGoToLogin }) {
     if (form.password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return }
     setLoading(true)
     setError('')
-    const { error } = await signUp({ ...form, whatsapp_apikey: form.whatsapp_apikey })
+    const { data, error } = await signUp({ ...form, whatsapp_apikey: form.whatsapp_apikey })
     setLoading(false)
     if (error) { setError(error.message); return }
-    notifyClienteRegistered({ nome: form.nome, userEmail: form.email, empresa: form.empresa, telefone: form.telefone })
+    if (data?.user?.id) notifyClienteRegistered({ userId: data.user.id })
     setDone(true)
   }
 

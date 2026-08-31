@@ -3,7 +3,6 @@ import { flushSync } from 'react-dom'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -4140,7 +4139,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const [quoteInfo, setQuoteInfo] = useState(null)
   useEffect(() => {
     if (!savedId) return
-    supabaseAdmin.from('quotes').select('status, desconto_pct, desconto_resposta')
+    supabase.from('quotes').select('status, desconto_pct, desconto_resposta')
       .eq('id', savedId).single()
       .then(({ data: q }) => { if (q) setQuoteInfo(q) })
   }, [savedId])
@@ -4445,7 +4444,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     total:      moneyMul(item.product.preco, item.qty),
   }))
 
-  // ── Save quote to Supabase (usa supabaseAdmin para bypassar RLS recursivo) ──
+  // ── Save quote to Supabase ──
   const saveQuote = async ({ silent = false, statusOverride } = {}) => {
     if (!session) return null
     if (!silent) setSaveStatus('saving')
@@ -4456,26 +4455,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     try {
       if (!quoteId) {
         // ── Gera número único de referência EFF-YYYY-NNN (global, sem repetição) ──
-        const year = new Date().getFullYear()
-        const prefix = `EFF-${year}-`
-        const { data: allRows } = await supabaseAdmin
-          .from('quotes')
-          .select('data')
-        let maxSeq = 0
-        for (const row of allRows || []) {
-          const num = (row.data?.numero_orcamento) || ''
-          if (num.startsWith(prefix)) {
-            const n = parseInt(num.slice(prefix.length), 10)
-            if (!isNaN(n) && n > maxSeq) maxSeq = n
-          }
-        }
-        const numeroOrcamento = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`
+        // RPC porque RLS só deixa o cliente ver as próprias cotações — a numeração
+        // global precisa rodar no banco (SECURITY DEFINER) pra enxergar todas.
+        const { data: numeroOrcamento } = await supabase.rpc('next_orcamento_number')
 
         const kitDataWithRef = { ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [] }
         const payload = { ...buildQuotePayload(statusOverride || 'enviada') }
         payload.data = kitDataWithRef
         delete payload.kit_data
-        const { data: q, error } = await supabaseAdmin.from('quotes').insert(payload).select('id').single()
+        const { data: q, error } = await supabase.from('quotes').insert(payload).select('id').single()
         if (error) throw error
         quoteId = q.id
         setSavedId(quoteId)
@@ -4498,7 +4486,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
         const shouldResetDiscount =
           ['aguardando_desconto', 'aprovada', 'recusada'].includes(quoteInfo?.status) && scopeChanged
-        const { error } = await supabaseAdmin.from('quotes').update({
+        const { error } = await supabase.from('quotes').update({
           subtotal,
           desconto_pct: shouldResetDiscount ? 0 : desconto,
           frete_nome:   freteOpcao.nome,
@@ -4517,8 +4505,8 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       }
 
       if (items.length > 0) {
-        await supabaseAdmin.from('quote_items').delete().eq('quote_id', quoteId)
-        await supabaseAdmin.from('quote_items').insert(items.map(i => ({ ...i, quote_id: quoteId })))
+        await supabase.from('quote_items').delete().eq('quote_id', quoteId)
+        await supabase.from('quote_items').insert(items.map(i => ({ ...i, quote_id: quoteId })))
       }
 
       if (!silent) {
@@ -4605,7 +4593,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     setDiscountStatus('sending')
 
     try {
-      await supabaseAdmin.from('quotes').update({
+      await supabase.from('quotes').update({
         status: 'aguardando_desconto',
         desconto_motivo: discountMotivo,
       }).eq('id', savedId)
@@ -4616,16 +4604,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     }
 
     // Notifica admin sobre solicitação de desconto e confirma envio ao cliente (silencioso)
-    notifyDescontoSolicitado({
-      clienteNome: data.clienteNome || 'Cliente',
-      revendedorNome:  profile?.nome || '',
-      revendedorEmail: session.user.email || '',
-      revendedorPhone: profile?.telefone || '',
-      revendedorWaKey: session.user.user_metadata?.whatsapp_apikey || '',
-      kitNome: `Kit ${realKwp.toFixed(2)} kWp`,
-      totalFinal,
-      motivo: discountMotivo,
-    })
+    notifyDescontoSolicitado({ quoteId: savedId })
     setDiscountStatus('sent')
   }
 

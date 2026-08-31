@@ -4,7 +4,6 @@ import * as XLSX from 'xlsx'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
 import kitCompositions from '../data/kitCompositions.json'
 import {
@@ -22,14 +21,6 @@ import {
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
-
-// Busca dados de auth (email, whatsapp_apikey) de um cliente para envio de notificações
-async function getClientAuth(userId) {
-  try {
-    const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId)
-    return user
-  } catch { return null }
-}
 
 const EMPTY_PRODUCT = {
   nome: '', codigo: '', modelo: '', categoria: CATEGORIES.MODULOS,
@@ -1510,14 +1501,11 @@ function UserManagement() {
   const fetchUsers = async (silent = false) => {
     if (!silent) setLoading(true)
     setError(null)
-    const [profilesRes, authRes] = await Promise.all([
-      supabaseAdmin.from('profiles').select('*').order('created_at', { ascending: false }),
-      supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }),
-    ])
+    const profilesRes = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
     if (profilesRes.error) { setError(profilesRes.error.message); if (!silent) setLoading(false); return }
     setUsers(profilesRes.data || [])
     const map = {}
-    ;(authRes.data?.users || []).forEach(u => { map[u.id] = u.email })
+    ;(profilesRes.data || []).forEach(p => { if (p.email) map[p.id] = p.email })
     setEmails(map)
     if (!silent) setLoading(false)
   }
@@ -1532,31 +1520,22 @@ function UserManagement() {
 
   const setStatus = async (id, status) => {
     setActing(a => ({ ...a, [id]: status }))
-    await supabaseAdmin.from('profiles').update({ status }).eq('id', id)
+    await supabase.from('profiles').update({ status }).eq('id', id)
     setUsers(u => u.map(p => p.id === id ? { ...p, status } : p))
     if (status === 'ativo') {
-      try {
-        const profile = users.find(p => p.id === id) || {}
-        const authUser = await getClientAuth(id)
-        notifyClienteApproved({
-          clienteNome:  profile.nome || emails[id] || '',
-          clienteEmail: emails[id] || '',
-          clientePhone: profile.telefone || '',
-          clienteWaKey: authUser?.user_metadata?.whatsapp_apikey || '',
-        })
-      } catch (_) {}
+      try { notifyClienteApproved({ userId: id }) } catch (_) {}
     }
     setActing(a => ({ ...a, [id]: null }))
   }
 
   const setRole = async (id, role) => {
-    await supabaseAdmin.from('profiles').update({ role }).eq('id', id)
+    await supabase.from('profiles').update({ role }).eq('id', id)
     setUsers(u => u.map(p => p.id === id ? { ...p, role } : p))
   }
 
   const setUserDesconto = async (id, value) => {
     const val = value === '' ? null : Math.max(0, Math.min(100, parseFloat(value)))
-    await supabaseAdmin.from('profiles').update({ desconto_comercial: val }).eq('id', id)
+    await supabase.from('profiles').update({ desconto_comercial: val }).eq('id', id)
     setUsers(u => u.map(p => p.id === id ? { ...p, desconto_comercial: val } : p))
     const nome = users.find(p => p.id === id)?.nome || emails[id] || 'cliente'
     setDiscMsg(`Desconto para ${nome} alterado.`)
@@ -1944,9 +1923,9 @@ function DashboardPanel({ onGoToTab }) {
   useEffect(() => {
     const load = async () => {
       const [quotesRes, activeRes, pendingRes] = await Promise.all([
-        supabaseAdmin.from('quotes').select('status, total_final, kwp, created_at, nome_projeto, data, profiles:user_id(nome, empresa)').order('created_at', { ascending: false }),
-        supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'ativo').neq('role', 'admin'),
-        supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
+        supabase.from('quotes').select('status, total_final, kwp, created_at, nome_projeto, data, profiles:user_id(nome, empresa)').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'ativo').neq('role', 'admin'),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
       ])
 
       const quotes = quotesRes.data || []
@@ -2238,7 +2217,7 @@ function QuoteManagement() {
 
   const fetchQuotes = async (silent = false) => {
     if (!silent) setLoading(true)
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from('quotes')
       .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
       .order('created_at', { ascending: false })
@@ -2253,7 +2232,7 @@ function QuoteManagement() {
   }, [])
 
   const updateQuote = async (id, patch) => {
-    const { error } = await supabaseAdmin.from('quotes').update(patch).eq('id', id)
+    const { error } = await supabase.from('quotes').update(patch).eq('id', id)
     if (!error) setQuotes(qs => qs.map(q => q.id === id ? { ...q, ...patch } : q))
     return error
   }
@@ -2293,20 +2272,7 @@ function QuoteManagement() {
     setApproveMsg('')
 
     // Notifica cliente
-    try {
-      const authUser = await getClientAuth(quote.user_id)
-      notifyDescontoAprovado({
-        clienteNome: quote.profiles?.nome || authUser?.email || 'Cliente',
-        clienteEmail: authUser?.email || '',
-        clientePhone: quote.profiles?.telefone || '',
-        clienteWaKey: authUser?.user_metadata?.whatsapp_apikey || '',
-        kitNome: quote.nome_projeto || `Kit ${quote.kwp} kWp`,
-        descontoPct: pct,
-        totalOriginal,
-        totalFinal: newTotalFinal,
-        resposta,
-      })
-    } catch (_) {}
+    try { notifyDescontoAprovado({ quoteId: quote.id }) } catch (_) {}
   }
 
   const handleReject = async (quoteId) => {
@@ -2322,17 +2288,7 @@ function QuoteManagement() {
 
     // Notifica cliente
     try {
-      if (quote) {
-        const authUser = await getClientAuth(quote.user_id)
-        notifyDescontoRecusado({
-          clienteNome: quote.profiles?.nome || authUser?.email || 'Cliente',
-          clienteEmail: authUser?.email || '',
-          clientePhone: quote.profiles?.telefone || '',
-          clienteWaKey: authUser?.user_metadata?.whatsapp_apikey || '',
-          kitNome: quote.nome_projeto || `Kit ${quote.kwp} kWp`,
-          resposta,
-        })
-      }
+      if (quote) notifyDescontoRecusado({ quoteId: quote.id })
     } catch (_) {}
   }
 
@@ -3498,7 +3454,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
   const fetchQuotes = async (silent = false) => {
     if (!silent) setLoading(true)
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from('quotes')
       .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
       .in('status', ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'])
@@ -3527,7 +3483,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
     if (Object.keys(dataFields).length > 0) {
       patch.data = { ...(q?.data || {}), ...dataFields }
     }
-    await supabaseAdmin.from('quotes').update(patch).eq('id', id)
+    await supabase.from('quotes').update(patch).eq('id', id)
     setQuotes(qs => {
       const updated = qs.map(q => q.id === id
         ? { ...q, status, data: Object.keys(dataFields).length > 0 ? { ...(q.data || {}), ...dataFields } : q.data }
@@ -3538,20 +3494,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
     // Notifica cliente sobre avanço do status do pedido
     if (q && ['implantado', 'faturado', 'em_transporte'].includes(status)) {
-      try {
-        const mergedData = { ...(q.data || {}), ...dataFields }
-        const authUser = await getClientAuth(q.user_id)
-        notifyKitStatusChanged({
-          clienteNome:  q.profiles?.nome || 'Cliente',
-          clienteEmail: authUser?.email || '',
-          clientePhone: q.profiles?.telefone || '',
-          clienteWaKey: authUser?.user_metadata?.whatsapp_apikey || '',
-          kitNome:      q.nome_projeto || `Kit ${q.kwp} kWp`,
-          status,
-          ovNumero: mergedData.ov_numero,
-          nfNumero: mergedData.nf_numero,
-        })
-      } catch (_) {}
+      try { notifyKitStatusChanged({ quoteId: id, status }) } catch (_) {}
     }
 
     setActing(a => ({ ...a, [id]: null }))
@@ -4062,13 +4005,13 @@ function AdminDashboard() {
 
   // Carrega e atualiza badges de notificação
   const refreshBadges = () => {
-    supabaseAdmin.from('quotes').select('id', { count: 'exact', head: true })
+    supabase.from('quotes').select('id', { count: 'exact', head: true })
       .eq('status', 'aguardando_desconto')
       .then(({ count }) => setPendingDiscounts(count || 0))
-    supabaseAdmin.from('quotes').select('id', { count: 'exact', head: true })
+    supabase.from('quotes').select('id', { count: 'exact', head: true })
       .in('status', ['fechado', 'faturado', 'em_transporte'])
       .then(({ count }) => setPendingImplants(count || 0))
-    supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true })
+    supabase.from('profiles').select('id', { count: 'exact', head: true })
       .eq('status', 'pendente')
       .then(({ count }) => setPendingUsers(count || 0))
   }

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { products as defaultProducts, assignKitRole } from '../data/products'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { supabase } from '../lib/supabase'
 
 const ProductsContext = createContext()
 
@@ -34,7 +34,7 @@ const IS_DEV = import.meta.env.DEV
 async function sbSave(key, value) {
   if (IS_DEV) return
   try {
-    await supabaseAdmin
+    await supabase
       .from('app_settings')
       .upsert({ key, value, updated_at: new Date().toISOString() })
   } catch (e) { console.warn('[settings] save error:', e?.message) }
@@ -43,7 +43,7 @@ async function sbSave(key, value) {
 async function sbLoad(key) {
   if (IS_DEV) return null
   try {
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from('app_settings')
       .select('value')
       .eq('key', key)

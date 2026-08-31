@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import kitCompositions from '../data/kitCompositions.json'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
 import {
@@ -920,7 +920,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     if (!discountMotivo.trim() || discountSending) return
     setDiscountSending(true)
     try {
-      await supabaseAdmin.from('quotes').update({
+      await supabase.from('quotes').update({
         status: 'aguardando_desconto',
         desconto_motivo: discountMotivo.trim(),
       }).eq('id', quote.id)
@@ -929,16 +929,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
       onRefresh?.(true)
 
       // Notifica admin sobre a solicitação e confirma o envio ao cliente (silencioso)
-      notifyDescontoSolicitado({
-        clienteNome:      kitData.clienteNome || 'Cliente',
-        revendedorNome:   profile?.nome || '',
-        revendedorEmail:  session?.user?.email || '',
-        revendedorPhone:  profile?.telefone || '',
-        revendedorWaKey:  session?.user?.user_metadata?.whatsapp_apikey || '',
-        kitNome:          quote.nome_projeto || `Kit ${quote.kwp} kWp`,
-        totalFinal:       quote.total_final,
-        motivo:           discountMotivo.trim(),
-      })
+      notifyDescontoSolicitado({ quoteId: quote.id })
     } catch (e) { console.error(e) }
     setDiscountSending(false)
   }
@@ -987,7 +978,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
         historicoRevisao,
       ],
     }
-    await supabaseAdmin.from('quotes').update({
+    await supabase.from('quotes').update({
       data:        newData,
       frete_nome:  freteNome,
       frete_pct:   fretePct,
@@ -996,8 +987,8 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
 
     // Atualiza itens do kit no banco
     if (dbItems && dbItems.length > 0) {
-      await supabaseAdmin.from('quote_items').delete().eq('quote_id', quote.id)
-      await supabaseAdmin.from('quote_items').insert(dbItems.map(i => ({ ...i, quote_id: quote.id })))
+      await supabase.from('quote_items').delete().eq('quote_id', quote.id)
+      await supabase.from('quote_items').insert(dbItems.map(i => ({ ...i, quote_id: quote.id })))
     }
 
     setEditMode(false)
@@ -1014,7 +1005,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const handleAction = async (type) => {
     setProcessing(true)
     const newStatus = type === 'fechar' ? 'fechado' : 'perdida'
-    const { error } = await supabaseAdmin
+    const { error } = await supabase
       .from('quotes')
       .update({ status: newStatus })
       .eq('id', quote.id)
@@ -2100,7 +2091,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const fetchQuotes = async (silent = false) => {
     if (!session?.user?.id) return
     if (!silent) setLoading(true)
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from('quotes')
       .select('*, quote_items(*)')
       .eq('user_id', session.user.id)
@@ -2112,7 +2103,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const fetchAllQuotes = async (silent = false) => {
     if (!isAdmin) return
     if (!silent) setAllQuotesLoading(true)
-    const { data } = await supabaseAdmin
+    const { data } = await supabase
       .from('quotes')
       .select('*, quote_items(*), profiles(nome, empresa, cnpj, telefone)')
       .order('created_at', { ascending: false })
@@ -2131,11 +2122,8 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     const cnpj = profile?.cnpj
     if (!cnpj || !session?.user?.id) { setTeamMembers([]); return }
     setTeamLoading(true)
-    supabaseAdmin
-      .from('profiles')
-      .select('id, nome, empresa, telefone, status, created_at')
-      .eq('cnpj', cnpj)
-      .neq('id', session.user.id)
+    supabase
+      .rpc('list_team_members')
       .order('created_at', { ascending: true })
       .then(({ data }) => { setTeamLoading(false); setTeamMembers(data || []) })
       .catch(() => { setTeamLoading(false); setTeamMembers([]) })
@@ -2149,8 +2137,8 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
 
   const handleDelete = async (id) => {
     setDeletingId(id)
-    await supabaseAdmin.from('quote_items').delete().eq('quote_id', id)
-    await supabaseAdmin.from('quotes').delete().eq('id', id)
+    await supabase.from('quote_items').delete().eq('quote_id', id)
+    await supabase.from('quotes').delete().eq('id', id)
     setQuotes(qs => qs.filter(q => q.id !== id))
     setDeletingId(null)
     setConfirmDelete(null)

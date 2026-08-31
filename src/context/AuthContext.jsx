@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
 
 const AuthContext = createContext(null)
 
@@ -62,7 +61,7 @@ export function AuthProvider({ children }) {
 
   const fetchProfile = async (userId, userMeta) => {
     try {
-      const { data } = await supabaseAdmin
+      const { data } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -77,15 +76,6 @@ export function AuthProvider({ children }) {
         }
         return
       }
-    } catch (_) {}
-
-    try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
-      if (data) { setProfile(data); return }
     } catch (_) {}
 
     const meta = userMeta || {}
@@ -118,7 +108,7 @@ export function AuthProvider({ children }) {
 
   const updateProfile = async (updates) => {
     if (!session?.user?.id) return { error: new Error('Sem sessão') }
-    const { error } = await supabaseAdmin.from('profiles').update(updates).eq('id', session.user.id)
+    const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id)
     if (!error) setProfile(p => ({ ...p, ...updates }))
     return { error }
   }
