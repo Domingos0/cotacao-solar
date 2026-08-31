@@ -12,6 +12,7 @@ import KitBuilder from './pages/KitBuilder'
 import MinhasCotacoesPage from './pages/MinhasCotacoesPage'
 import LoginPage from './pages/LoginPage'
 import CadastroPage from './pages/CadastroPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import { CATEGORIES } from './data/products'
 import { Search, Clock } from 'lucide-react'
 
@@ -207,10 +208,14 @@ function PendingScreen({ onLogout, onRefresh }) {
 }
 
 function AppContent() {
-  const { session, loading, isAdmin, isAtivo, signOut, refreshProfile } = useAuth()
+  const { session, loading, isAdmin, isAtivo, signOut, refreshProfile, passwordRecovery } = useAuth()
   const [authPage, setAuthPage] = useState('login')
 
   if (loading) return <LoadingScreen />
+
+  // Veio do link de "esqueci a senha" — pede a nova senha antes de qualquer coisa,
+  // mesmo já existindo uma sessão temporária de recovery
+  if (passwordRecovery) return <ResetPasswordPage />
 
   if (!session) {
     if (authPage === 'register') return <CadastroPage onGoToLogin={() => setAuthPage('login')} />

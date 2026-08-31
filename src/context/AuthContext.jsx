@@ -6,6 +6,7 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined)
   const [profile, setProfile] = useState(null)
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
   const channelRef = useRef(null)
 
   useEffect(() => {
@@ -19,8 +20,12 @@ export function AuthProvider({ children }) {
         // Limpeza total — garante zero dados do usuário anterior nesta aba
         setSession(null)
         setProfile(null)
+        setPasswordRecovery(false)
         return
       }
+      // Clique no link de "esqueci a senha" — mostra tela de nova senha em
+      // vez de entrar direto no sistema com a sessão temporária de recovery
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       setSession(session ?? null)
       if (session?.user) fetchProfile(session.user.id, session.user.user_metadata)
       else setProfile(null)
@@ -99,7 +104,21 @@ export function AuthProvider({ children }) {
   // scope: 'local' — limpa apenas ESTA aba, não invalida sessões em outros dispositivos/abas
   const signOut = async () => {
     setProfile(null)
+    setPasswordRecovery(false)
     await supabase.auth.signOut({ scope: 'local' })
+  }
+
+  const resetPassword = async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    })
+    return { error }
+  }
+
+  const updatePassword = async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (!error) setPasswordRecovery(false)
+    return { error }
   }
 
   const refreshProfile = () => {
@@ -123,8 +142,9 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       session, profile, loading,
-      isAdmin, isAtivo,
+      isAdmin, isAtivo, passwordRecovery,
       signIn, signUp, signOut, refreshProfile, updateProfile,
+      resetPassword, updatePassword,
     }}>
       {children}
     </AuthContext.Provider>
