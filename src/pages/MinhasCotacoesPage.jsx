@@ -6,6 +6,25 @@ import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
+import { getProductImage } from '../data/productImages'
+
+// ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
+function ItemThumb({ nome }) {
+  const [err, setErr] = useState(false)
+  const src = getProductImage({ nome: nome || '' })
+  if (!src || err) {
+    return (
+      <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-lg shrink-0">
+        📦
+      </div>
+    )
+  }
+  return (
+    <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+      <img src={src} alt={nome} className="w-full h-full object-contain p-1" onError={() => setErr(true)} />
+    </div>
+  )
+}
 import {
   FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
@@ -999,6 +1018,10 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     ? (quote.total_final / quote.frete_pct)
     : quote.total_final
   const freteAmt = (quote.total_final || 0) - (totalBase || 0)
+  const ajusteAmt = (quote.subtotal || 0) - (totalBase || 0)
+  // Fator único (ajustes + desconto + frete) pra distribuir o preço final por item,
+  // já que o preço de tabela por item não reflete o desconto sozinho.
+  const priceRatio = quote.subtotal ? (quote.total_final || 0) / quote.subtotal : 1
 
   const isClosed = ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'].includes(quote.status)
 
@@ -1366,6 +1389,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               <thead>
                 <tr className="border-b-2 border-gray-200">
                   <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
+                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-14"></th>
                   <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
                   <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
                   <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
@@ -1377,13 +1401,16 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                   <tr key={i} className="border-b border-gray-100">
                     <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
                     <td className="py-2.5">
+                      <ItemThumb nome={item.produto || item.label} />
+                    </td>
+                    <td className="py-2.5">
                       <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
                       <p className="text-xs text-gray-500">{item.produto}</p>
                       <p className="text-xs text-gray-400 font-mono">SAP:&nbsp;&nbsp;{item.codigo_sap}</p>
                     </td>
                     <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                    <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt(item.preco_unit)}</td>
-                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
+                    <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt((item.preco_unit || 0) * priceRatio)}</td>
+                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt((item.total || 0) * priceRatio)}</td>
                   </tr>
                 ))}
               </tbody>
