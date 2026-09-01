@@ -5,6 +5,7 @@ import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
+import { getProductImage } from '../data/productImages'
 import kitCompositions from '../data/kitCompositions.json'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
@@ -2507,6 +2508,8 @@ function QuoteManagement() {
       const totalBase = q.frete_pct > 1 ? r2(q.total_final / q.frete_pct) : q.total_final
       const freteAmt  = r2(q.total_final - totalBase)
       const ajusteAmt = r2((q.subtotal || 0) - totalBase)
+      // Fator único (ajustes + desconto + frete) pra refletir o preço final também por linha
+      const priceRatio = q.subtotal ? (q.total_final || 0) / q.subtotal : 1
 
       // Composição da estrutura de fixação
       const structComp = (() => {
@@ -2577,6 +2580,7 @@ function QuoteManagement() {
                 <table style={{width:'100%', borderCollapse:'collapse', fontSize:11, tableLayout:'fixed'}}>
                   <colgroup>
                     <col style={{width:24}} />
+                    <col style={{width:34}} />
                     <col />
                     <col style={{width:64}} />
                     <col style={{width:90}} />
@@ -2585,6 +2589,7 @@ function QuoteManagement() {
                   <thead>
                     <tr style={{borderBottom:'2px solid #e5e7eb'}}>
                       <th style={{padding:'7px 4px 7px 0', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}>#</th>
+                      <th style={{padding:'7px 4px', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}></th>
                       <th style={{padding:'7px 4px', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}>Produto / SAP</th>
                       <th style={{padding:'7px 4px', textAlign:'center', color:'#9ca3af', fontSize:9, fontWeight:600}}>Qtd</th>
                       <th style={{padding:'7px 4px', textAlign:'right', color:'#9ca3af', fontSize:9, fontWeight:600}}>Unitário</th>
@@ -2592,18 +2597,28 @@ function QuoteManagement() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((it, i) => (
+                    {items.map((it, i) => {
+                      const thumbSrc = getProductImage({ nome: it.produto || it.label || '' })
+                      return (
                       <tr key={i} style={{borderBottom:'1px solid #f3f4f6'}}>
                         <td style={{padding:'5px 4px 5px 0', color:'#9ca3af', fontSize:10, verticalAlign:'middle'}}>{i+1}</td>
+                        <td style={{padding:'5px 4px', verticalAlign:'middle'}}>
+                          <div style={{width:28, height:28, borderRadius:6, background:'#f9fafb', border:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden'}}>
+                            {thumbSrc
+                              ? <img src={thumbSrc} alt={it.label} style={{width:'100%', height:'100%', objectFit:'contain', padding:2}} onError={e => { e.target.style.display='none' }} />
+                              : <span style={{fontSize:12}}>📦</span>}
+                          </div>
+                        </td>
                         <td style={{padding:'5px 4px', verticalAlign:'middle'}}>
                           <p style={{margin:0, fontWeight:600, color:'#111827', fontSize:11, lineHeight:1.3}}>{it.label}</p>
                           <p style={{margin:0, color:'#9ca3af', fontSize:9, lineHeight:1.3}}>{it.produto}{it.codigo_sap ? ` — SAP ${it.codigo_sap}` : ''}</p>
                         </td>
                         <td style={{padding:'5px 4px', textAlign:'center', fontWeight:700, color:'#374151', fontSize:11, verticalAlign:'middle'}}>{it.qty} {it.unit}</td>
-                        <td style={{padding:'5px 4px', textAlign:'right', color:'#6b7280', fontSize:10, verticalAlign:'middle'}}>{fmt(it.preco_unit)}</td>
-                        <td style={{padding:'5px 4px 5px 0', textAlign:'right', fontWeight:700, color:'#111827', fontSize:11, verticalAlign:'middle'}}>{fmt(it.total)}</td>
+                        <td style={{padding:'5px 4px', textAlign:'right', color:'#6b7280', fontSize:10, verticalAlign:'middle'}}>{fmt((it.preco_unit || 0) * priceRatio)}</td>
+                        <td style={{padding:'5px 4px 5px 0', textAlign:'right', fontWeight:700, color:'#111827', fontSize:11, verticalAlign:'middle'}}>{fmt((it.total || 0) * priceRatio)}</td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

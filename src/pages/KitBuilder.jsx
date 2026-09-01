@@ -29,6 +29,24 @@ function ProductImg({ src, alt, fallback, className }) {
   )
 }
 
+// ─── Mini-thumbnail de item na tabela de proposta / impressão ────────────
+function ItemThumb({ product, alt }) {
+  const [err, setErr] = useState(false)
+  const src = product ? getProductImage(product) : null
+  if (!src || err) {
+    return (
+      <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center text-lg shrink-0">
+        📦
+      </div>
+    )
+  }
+  return (
+    <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+      <img src={src} alt={alt} className="w-full h-full object-contain p-1" onError={() => setErr(true)} />
+    </div>
+  )
+}
+
 const STEPS_BASE = [
   { id: 1, label: 'Tipo de Kit',     icon: Home },
   { id: 2, label: 'Dimensionamento', icon: Calculator },
@@ -4415,6 +4433,8 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const ajusteAmt   = round2(subtotal - totalAjust)
   const freteAmt    = round2(totalAjust * (freteOpcao.acrescimo - 1))
   const totalFinal  = round2(totalAjust * freteOpcao.acrescimo)
+  // Fator único (ajustes + desconto + frete) pra refletir o preço final também por linha
+  const priceRatio  = subtotal ? totalFinal / subtotal : 1
 
   // ── Monta payload base da cotação ──
   const buildQuotePayload = (extraStatus = 'rascunho', extraFields = {}) => ({
@@ -4845,6 +4865,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Item</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase w-14"></th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Produto / Código SAP</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Qtd</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Unit.</th>
@@ -4864,6 +4885,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                   item.avulso ? 'bg-amber-50/40' : itemIsEsg ? 'bg-red-50/30' : itemIsPrev ? 'bg-yellow-50/20' : ''
                 }`}>
                   <td className="px-4 py-3 text-sm text-gray-500">{idx + 1}</td>
+                  <td className="px-4 py-3">
+                    <ItemThumb product={item.product} alt={item.label} />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-semibold text-gray-900">{item.label}</p>
@@ -4886,10 +4910,10 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-gray-600 whitespace-nowrap">
-                    {item.product.preco ? fmt(item.product.preco) : <span className="text-gray-300">—</span>}
+                    {item.product.preco ? fmt(item.product.preco * priceRatio) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">
-                    {item.product.preco ? fmt(moneyMul(item.product.preco, item.qty)) : '—'}
+                    {item.product.preco ? fmt(moneyMul(item.product.preco, item.qty) * priceRatio) : '—'}
                   </td>
                   <td className="px-4 py-3 print:hidden">
                     {item.avulso && (
@@ -4909,7 +4933,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               {/* Subtotal e Ajuste — visível só para admin */}
               {isAdmin && (
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
-                  <td colSpan="4" className="px-4 py-2.5 text-right text-sm font-semibold text-gray-500">
+                  <td colSpan="5" className="px-4 py-2.5 text-right text-sm font-semibold text-gray-500">
                     Subtotal (preço de tabela)
                   </td>
                   <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-700">
@@ -4919,7 +4943,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               )}
               {isAdmin && (
                 <tr className="bg-green-50">
-                  <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-green-700">
+                  <td colSpan="5" className="px-4 py-2 text-right text-sm font-semibold text-green-700">
                     Ajuste
                     <span className="font-normal text-green-600 ml-1">
                       (×{F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × ${fatorDesc.toFixed(4)}` : ''})
@@ -4933,7 +4957,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               {/* Freight row — valor só admin */}
               {isAdmin && freteOpcao.acrescimo !== 1 && (
                 <tr className="bg-gray-50 border-t border-gray-100">
-                  <td colSpan="4" className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
+                  <td colSpan="5" className="px-4 py-2 text-right text-sm font-semibold text-gray-600">
                     🚛 {freteOpcao.nome}
                   </td>
                   <td className="px-4 py-2 text-right text-sm font-bold text-gray-700">
@@ -4943,7 +4967,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               )}
               {/* Grand total */}
               <tr className="bg-weg-blue text-white">
-                <td colSpan="4" className="px-4 py-4 text-right font-bold uppercase tracking-wide">
+                <td colSpan="5" className="px-4 py-4 text-right font-bold uppercase tracking-wide">
                   Total do Kit
                 </td>
                 <td className="px-4 py-4 text-right text-xl font-extrabold whitespace-nowrap">
