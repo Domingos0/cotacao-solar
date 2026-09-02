@@ -2198,6 +2198,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     {printRevisionData && (() => {
       const { quote: pq, r } = printRevisionData
       const pkd = pq.data || {}
+      // Itens da revisão guardam preço de tabela bruto (preco_unit/total) — sem
+      // subtotal salvo por revisão, deriva o fator de desconto pela soma bruta
+      // dos itens vs. o total_final já ajustado dessa revisão.
+      const revSubtotal = (r.items || []).reduce((s, it) => s + (it.total || 0), 0)
+      const revPriceRatio = revSubtotal ? (r.total_final || 0) / revSubtotal : 1
       return (
         <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
           <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
@@ -2257,6 +2262,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                 <thead>
                   <tr className="border-b-2 border-gray-200">
                     <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
+                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-14"></th>
                     <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
                     <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
                     <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
@@ -2268,25 +2274,28 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                     <tr key={i} className="border-b border-gray-100">
                       <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
                       <td className="py-2.5">
+                        <ItemThumb label={item.label} produto={item.produto} />
+                      </td>
+                      <td className="py-2.5">
                         <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
                         <p className="text-xs text-gray-500">{item.produto}</p>
                         <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
                       </td>
                       <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                      <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt(item.preco_unit)}</td>
-                      <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
+                      <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt((item.preco_unit || 0) * revPriceRatio)}</td>
+                      <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt((item.total || 0) * revPriceRatio)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   {isAdmin && r.frete && (
                     <tr className="border-t border-gray-200 bg-gray-50">
-                      <td colSpan="4" className="py-2.5 text-right text-sm text-gray-500 pr-4">{r.frete}</td>
+                      <td colSpan="5" className="py-2.5 text-right text-sm text-gray-500 pr-4">{r.frete}</td>
                       <td className="py-2.5 text-right text-sm text-gray-600 whitespace-nowrap">Incluso</td>
                     </tr>
                   )}
                   <tr style={{background:'#003087', color:'white'}}>
-                    <td colSpan="4" style={{padding:'14px 8px', textAlign:'right', fontWeight:800, fontSize:13, textTransform:'uppercase', letterSpacing:'0.08em'}}>Total do Kit</td>
+                    <td colSpan="5" style={{padding:'14px 8px', textAlign:'right', fontWeight:800, fontSize:13, textTransform:'uppercase', letterSpacing:'0.08em'}}>Total do Kit</td>
                     <td style={{padding:'14px 8px', textAlign:'right', fontSize:18, fontWeight:900, whiteSpace:'nowrap'}}>{fmt(r.total_final)}</td>
                   </tr>
                 </tfoot>
