@@ -5,7 +5,7 @@ import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
-import { getProductImage } from '../data/productImages'
+import { getProductImage, guessCategoria } from '../data/productImages'
 import kitCompositions from '../data/kitCompositions.json'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
@@ -2598,7 +2598,10 @@ function QuoteManagement() {
                   </thead>
                   <tbody>
                     {items.map((it, i) => {
-                      const thumbSrc = getProductImage({ nome: it.produto || it.label || '' })
+                      const thumbSrc = getProductImage({
+                        nome: `${it.label || ''} ${it.produto || ''}`.trim(),
+                        categoria: guessCategoria(it.label),
+                      })
                       return (
                       <tr key={i} style={{borderBottom:'1px solid #f3f4f6'}}>
                         <td style={{padding:'5px 4px 5px 0', color:'#9ca3af', fontSize:10, verticalAlign:'middle'}}>{i+1}</td>

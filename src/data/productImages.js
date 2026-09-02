@@ -90,6 +90,20 @@ export const KIT_TYPE_IMG = {
   bombeamento:  WEG.cfw500,
 }
 
+// Item de cotação salva é um snapshot achatado (sem `categoria`), então a
+// categoria é inferida por palavra-chave no rótulo curto pra achar a foto real
+// certa (módulo, cabo/conector, proteção) em vez de cair no ícone genérico.
+// Baseado só no rótulo — evita falso-positivo tipo "kit p/ 4 módulos" na
+// descrição de uma ESTRUTURA sendo lido como se fosse um módulo.
+export function guessCategoria(label) {
+  const t = (label || '').toLowerCase()
+  if (/estrutura|fixação|fixacao/.test(t)) return undefined // getProductImage já resolve via palavra-chave (fixação/trilho/etc.)
+  if (/protetor de surto|disjuntor|\bdps\b/.test(t)) return 'Proteção e Acessórios'
+  if (/\bcabo\b|conector/.test(t)) return 'Cabos e Conectores'
+  if (/módulo|modulo|painel/.test(t)) return 'Módulos Fotovoltaicos'
+  return undefined
+}
+
 export function getProductImage(product) {
   const nome = (product.nome || '').toLowerCase()
   const fab  = (product.fabricante || '').toLowerCase()
