@@ -5,6 +5,7 @@ import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
+import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage, guessCategoria } from '../data/productImages'
 import kitCompositions from '../data/kitCompositions.json'
 import {
@@ -14,11 +15,11 @@ import {
 import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
   Printer, Search, ChevronDown, ChevronUp, AlertTriangle, Save,
-  FileText, Shield, Download, ArrowUpFromLine, Info, Truck,
+  FileText, Download, ArrowUpFromLine, Info, Truck,
   Users, Package, LayoutList, LayoutGrid, List, LayoutDashboard, Clock, CheckCircle2, XCircle,
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
-  Lock, UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
+  UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
@@ -27,65 +28,6 @@ const EMPTY_PRODUCT = {
   nome: '', codigo: '', modelo: '', categoria: CATEGORIES.MODULOS,
   tipo: '', fabricante: 'WEG', potencia: '', unidadePotencia: 'kW',
   tensao: '', fase: '', preco: '', estoque: 'Disponível', estoque_previsao: '', descricao: '',
-}
-
-// ─── Login Screen ─────────────────────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
-  const [pw, setPw] = useState('')
-  const [error, setError] = useState(false)
-  const [shake, setShake] = useState(false)
-
-  const submit = (e) => {
-    e.preventDefault()
-    if (onLogin(pw)) {
-      setError(false)
-    } else {
-      setError(true)
-      setShake(true)
-      setTimeout(() => setShake(false), 500)
-      setPw('')
-    }
-  }
-
-  return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4">
-      <div className={`bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-sm p-8 ${shake ? 'animate-bounce' : ''}`}>
-        <div className="flex flex-col items-center mb-6">
-          <div className="bg-weg-blue rounded-full w-16 h-16 flex items-center justify-center mb-3">
-            <Shield size={28} className="text-white" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-900">Área Administrativa</h2>
-          <p className="text-gray-400 text-sm mt-1">WEG Solar — Gestão de Catálogo</p>
-        </div>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Senha de acesso</label>
-            <input
-              type="password"
-              value={pw}
-              onChange={e => { setPw(e.target.value); setError(false) }}
-              placeholder="••••••••"
-              autoFocus
-              className={`w-full border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 ${
-                error ? 'border-red-400 focus:ring-red-300' : 'border-gray-200 focus:ring-weg-blue'
-              }`}
-            />
-            {error && (
-              <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                <AlertTriangle size={12} /> Senha incorreta
-              </p>
-            )}
-          </div>
-          <button type="submit" className="w-full btn-primary py-3 flex items-center justify-center gap-2">
-            <Lock size={16} /> Entrar
-          </button>
-        </form>
-
-        <p className="text-center text-xs text-gray-300 mt-4">Senha padrão: WEG@2025</p>
-      </div>
-    </div>
-  )
 }
 
 // ─── Excel Parser ─────────────────────────────────────────────────────────────
@@ -2248,26 +2190,27 @@ function QuoteManagement() {
     setDragInputValue('')
   }
 
+  // Recalcula total_final no servidor a partir dos quote_items já persistidos
+  // (preço vindo do catálogo publicado) — não mais uma matemática reversa
+  // sobre o total_final que o cliente enviou, que herdava qualquer erro.
   const handleApprove = async (quote) => {
     const pct = parseFloat(approveDiscount.replace(',', '.'))
     if (isNaN(pct) || pct < 0 || pct > 100) return
     const resposta = approveMsg.trim() || `Desconto especial aprovado para este kit.`
 
-    // Recalcula total substituindo o desconto comercial pelo desconto aprovado
-    const oldDesconto = quote.desconto_pct || 0
-    const fretePct    = quote.frete_pct    || 1
-    // base = subtotal * fatores técnicos (sem desconto comercial e sem frete)
-    const base           = (quote.total_final || 0) / ((1 - oldDesconto / 100) * fretePct)
-    const newTotalFinal  = Math.round(base * (1 - pct / 100) * fretePct * 100) / 100
-    const totalOriginal  = quote.total_final || 0
-
-    await updateQuote(quote.id, {
-      status: 'aprovada',
-      desconto_pct: pct,
-      total_final: newTotalFinal,
-      desconto_resposta: resposta,
-      data: { ...(quote.data || {}), total_antes_desconto: totalOriginal },
+    const { data: result, error } = await supabase.rpc('approve_quote_discount', {
+      p_quote_id: quote.id,
+      p_pct: pct,
+      p_resposta: resposta,
     })
+    if (error) { console.error('[handleApprove]', error); return }
+
+    const row = Array.isArray(result) ? result[0] : result
+    setQuotes(qs => qs.map(q => q.id === quote.id
+      ? { ...q, status: 'aprovada', desconto_pct: pct, desconto_resposta: resposta, total_final: row?.total_final ?? q.total_final }
+      : q
+    ))
+
     setApprovingId(null)
     setApproveDiscount('')
     setApproveMsg('')
@@ -2279,11 +2222,12 @@ function QuoteManagement() {
   const handleReject = async (quoteId) => {
     const quote = quotes.find(q => q.id === quoteId)
     const resposta = rejectMsg.trim() || 'Solicitação de desconto não aprovada.'
-    await updateQuote(quoteId, {
-      status: 'rascunho',
-      desconto_pct: 0,
-      desconto_resposta: resposta,
-    })
+    const { error } = await supabase.rpc('reject_quote_discount', { p_quote_id: quoteId, p_resposta: resposta })
+    if (error) { console.error('[handleReject]', error); return }
+    setQuotes(qs => qs.map(q => q.id === quoteId
+      ? { ...q, status: 'recusada', desconto_pct: 0, desconto_resposta: resposta }
+      : q
+    ))
     setRejectingId(null)
     setRejectMsg('')
 
@@ -2291,6 +2235,14 @@ function QuoteManagement() {
     try {
       if (quote) notifyDescontoRecusado({ quoteId: quote.id })
     } catch (_) {}
+  }
+
+  // Trava/destrava o preço de uma cotação vencida: travada, o próximo save do
+  // cliente mantém os valores da lista anterior em vez de reprecificar pela atual.
+  const handleTogglePriceLock = async (quoteId, locked) => {
+    const { error } = await supabase.rpc('override_price_lock', { p_quote_id: quoteId, p_locked: locked })
+    if (error) { console.error('[handleTogglePriceLock]', error); return }
+    setQuotes(qs => qs.map(q => q.id === quoteId ? { ...q, price_locked: locked } : q))
   }
 
   const STATUS_COLOR = {
@@ -2352,6 +2304,7 @@ function QuoteManagement() {
   const ImplantCard = ({ q }) => {
     const [confirming, setConfirming] = useState(false)
     const [confirmingPerdida, setConfirmingPerdida] = useState(false)
+    const [motivoPerda, setMotivoPerda] = useState('')
     const [busy, setBusy] = useState(false)
     const kd = q.data || {}
 
@@ -2363,8 +2316,9 @@ function QuoteManagement() {
     }
 
     const doPerdida = async () => {
+      if (!motivoPerda) return
       setBusy(true)
-      await updateQuote(q.id, { status: 'perdida' })
+      await updateQuote(q.id, { status: 'perdida', motivo_perda: motivoPerda })
       setBusy(false)
       setConfirmingPerdida(false)
     }
@@ -2447,14 +2401,24 @@ function QuoteManagement() {
             </div>
           </div>
         ) : confirmingPerdida ? (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm">
-            <p className="font-semibold text-red-700 mb-2">Marcar como proposta perdida?</p>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm space-y-2">
+            <p className="font-semibold text-red-700">Marcar como proposta perdida?</p>
+            <select
+              value={motivoPerda}
+              onChange={e => setMotivoPerda(e.target.value)}
+              className="w-full border border-red-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-300"
+            >
+              <option value="">Motivo da perda…</option>
+              {MOTIVOS_PERDA.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
             <div className="flex gap-2">
-              <button onClick={doPerdida} disabled={busy}
+              <button onClick={doPerdida} disabled={busy || !motivoPerda}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
                 {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><XCircle size={14} /> Sim, marcar perdida</>}
               </button>
-              <button onClick={() => setConfirmingPerdida(false)} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+              <button onClick={() => { setConfirmingPerdida(false); setMotivoPerda('') }} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
             </div>
           </div>
         ) : (
@@ -3106,6 +3070,31 @@ function QuoteManagement() {
                       {q.frete_nome        && <span>🚛 {q.frete_nome}</span>}
                       {kd.ov_numero        && <span>📦 OV: <strong>{kd.ov_numero}</strong></span>}
                     </div>
+
+                    {/* Validade da cotação */}
+                    {q.valid_until && (
+                      <div className={`px-5 py-2 flex items-center justify-between gap-3 text-xs border-t border-gray-100 ${
+                        new Date(q.valid_until) < new Date() ? 'bg-amber-50 text-amber-800' : 'bg-gray-50/40 text-gray-500'
+                      }`}>
+                        <span>
+                          📅 Válida até <strong>{new Date(q.valid_until).toLocaleDateString('pt-BR')}</strong>
+                          {new Date(q.valid_until) < new Date() && ' — vencida'}
+                          {q.price_locked && ' · preço travado'}
+                        </span>
+                        {new Date(q.valid_until) < new Date() && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleTogglePriceLock(q.id, !q.price_locked) }}
+                            className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg ${
+                              q.price_locked
+                                ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                                : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
+                            }`}
+                          >
+                            {q.price_locked ? 'Destravar preço' : 'Honrar preço antigo'}
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* Desconto pendente */}
                     {q.status === 'aguardando_desconto' && (

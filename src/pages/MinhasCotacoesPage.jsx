@@ -6,6 +6,7 @@ import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
+import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import {
   FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
@@ -976,11 +977,13 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     return () => clearTimeout(id)
   }, [successData, countdown]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Salva a edição via RPC server-side (save_quote_with_items): o servidor
+  // recalcula subtotal/total_final/preco_unit a partir do catálogo de preços
+  // publicado, em vez de confiar no total calculado no navegador.
   const handleApplyEdit = async (updatedData, selFrete, newTotal, dbItems) => {
     const novaRevisao = (kitData.revisao || 0) + 1
     const freteNome   = selFrete?.nome || quote.frete_nome || '—'
     const fretePct    = selFrete?.acrescimo || quote.frete_pct || 1
-    const totalFinal  = newTotal ?? quote.total_final ?? 0
 
     // Na primeira revisão, preserva o estado original (rev 0) nos itens atuais do banco
     const prevRevisoes = kitData.revisoes || []
@@ -999,7 +1002,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     const historicoRevisao = {
       revisao:     novaRevisao,
       data:        new Date().toISOString(),
-      total_final: totalFinal,
+      total_final: newTotal ?? quote.total_final ?? 0,
       frete:       freteNome,
       items:       dbItems || [],
     }
@@ -1012,18 +1015,20 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
         historicoRevisao,
       ],
     }
-    await supabase.from('quotes').update({
-      data:        newData,
-      frete_nome:  freteNome,
-      frete_pct:   fretePct,
-      total_final: totalFinal,
-    }).eq('id', quote.id)
 
-    // Atualiza itens do kit no banco
-    if (dbItems && dbItems.length > 0) {
-      await supabase.from('quote_items').delete().eq('quote_id', quote.id)
-      await supabase.from('quote_items').insert(dbItems.map(i => ({ ...i, quote_id: quote.id })))
-    }
+    const { error } = await supabase.rpc('save_quote_with_items', {
+      p_quote_id:     quote.id,
+      p_nome_projeto: null,
+      p_kit_type:     null,
+      p_kwp:          null,
+      p_desconto_pct: null,
+      p_frete_nome:   freteNome,
+      p_frete_pct:    fretePct,
+      p_status:       null,
+      p_kit_data:     newData,
+      p_items:        dbItems || [],
+    })
+    if (error) { console.error('[handleApplyEdit]', error); return }
 
     setEditMode(false)
     setSuccessData(newData)
@@ -1039,13 +1044,17 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const priceRatio = quote.subtotal ? (quote.total_final || 0) / quote.subtotal : 1
 
   const isClosed = ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'].includes(quote.status)
+  const [motivoPerda, setMotivoPerda] = useState('')
 
   const handleAction = async (type) => {
     setProcessing(true)
     const newStatus = type === 'fechar' ? 'fechado' : 'perdida'
     const { error } = await supabase
       .from('quotes')
-      .update({ status: newStatus })
+      .update(newStatus === 'perdida'
+        ? { status: newStatus, motivo_perda: motivoPerda || 'outro' }
+        : { status: newStatus }
+      )
       .eq('id', quote.id)
     setProcessing(false)
     if (error) {
@@ -1090,10 +1099,25 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </p>
             </div>
           </div>
+          {!isFechar && (
+            <div className="mb-5">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Motivo da perda</label>
+              <select
+                value={motivoPerda}
+                onChange={e => setMotivoPerda(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
+              >
+                <option value="">Selecione…</option>
+                {MOTIVOS_PERDA.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex gap-3">
             <button
               onClick={() => handleAction(confirmAction)}
-              disabled={processing}
+              disabled={processing || (!isFechar && !motivoPerda)}
               className={`flex-1 font-semibold py-2.5 rounded-xl text-white text-sm flex items-center justify-center gap-2 disabled:opacity-50 ${isFechar ? 'bg-orange-500 hover:bg-orange-600' : 'bg-red-500 hover:bg-red-600'}`}
             >
               {processing
@@ -1101,7 +1125,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                 : isFechar ? <><Check size={15} /> Sim, fechar kit</> : <><XCircle size={15} /> Sim, rejeitar</>}
             </button>
             <button
-              onClick={() => setConfirmAction(null)}
+              onClick={() => { setConfirmAction(null); setMotivoPerda('') }}
               className="flex-1 border-2 border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl text-sm hover:border-gray-300"
             >
               Cancelar
@@ -1544,6 +1568,23 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               initialPanel={suggestedPanel}
             />
           ) : (<>
+
+          {/* Aviso de cotação vencida — preços serão atualizados pela lista vigente ao salvar */}
+          {!isClosed && quote.valid_until && new Date(quote.valid_until) < new Date() && (
+            <div className={`border rounded-xl p-4 flex items-start gap-2 ${quote.price_locked ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
+              <AlertTriangle size={16} className={`shrink-0 mt-0.5 ${quote.price_locked ? 'text-blue-500' : 'text-amber-500'}`} />
+              <div>
+                <p className={`font-bold text-sm ${quote.price_locked ? 'text-blue-800' : 'text-amber-800'}`}>
+                  Cotação vencida ({new Date(quote.valid_until).toLocaleDateString('pt-BR')})
+                </p>
+                <p className={`text-xs mt-0.5 ${quote.price_locked ? 'text-blue-700' : 'text-amber-700'}`}>
+                  {quote.price_locked
+                    ? 'O administrador travou o preço desta cotação — ela mantém os valores da lista anterior.'
+                    : 'Os preços podem ter mudado. Ao salvar qualquer alteração, os itens serão recalculados pela lista de preços vigente.'}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Aviso de módulo esgotado */}
           {panelEsgotado && panelInQuote && (

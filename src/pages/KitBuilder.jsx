@@ -4465,30 +4465,31 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   }))
 
   // ── Save quote to Supabase ──
+  // Salva cotação + itens via RPC server-side (save_quote_with_items): o
+  // servidor recalcula subtotal/total_final/preco_unit a partir do catálogo
+  // de preços publicado (price_catalog_products), ignorando qualquer preço
+  // enviado pelo navegador para produtos reconhecidos — fecha o buraco de
+  // confiar 100% no cliente para esses valores.
   const saveQuote = async ({ silent = false, statusOverride } = {}) => {
     if (!session) return null
     if (!silent) setSaveStatus('saving')
 
     const items = buildItems()
     let quoteId = savedId
+    let shouldResetDiscount = false
 
     try {
+      let kitDataToSave
+      let statusToSend
+      let descontoToSend = desconto
+
       if (!quoteId) {
         // ── Gera número único de referência EFF-YYYY-NNN (global, sem repetição) ──
         // RPC porque RLS só deixa o cliente ver as próprias cotações — a numeração
         // global precisa rodar no banco (SECURITY DEFINER) pra enxergar todas.
         const { data: numeroOrcamento } = await supabase.rpc('next_orcamento_number')
-
-        const kitDataWithRef = { ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [] }
-        const payload = { ...buildQuotePayload(statusOverride || 'enviada') }
-        payload.data = kitDataWithRef
-        delete payload.kit_data
-        const { data: q, error } = await supabase.from('quotes').insert(payload).select('id').single()
-        if (error) throw error
-        quoteId = q.id
-        setSavedId(quoteId)
-        // Propaga referência e revisão para o estado local
-        onChange(kitDataWithRef)
+        kitDataToSave = { ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [] }
+        statusToSend = statusOverride || 'enviada'
       } else {
         // ── Incrementa revisão a cada atualização ──
         const novaRevisao = (data.revisao || 0) + 1
@@ -4498,36 +4499,45 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           total_final: totalFinal,
           frete: freteOpcao.nome,
         }
-        const kitDataAtualizado = {
+        kitDataToSave = {
           ...data,
           revisao: novaRevisao,
           revisoes: [...(data.revisoes || []), historicoRevisao],
         }
 
-        const shouldResetDiscount =
+        shouldResetDiscount =
           ['aguardando_desconto', 'aprovada', 'recusada'].includes(quoteInfo?.status) && scopeChanged
-        const { error } = await supabase.from('quotes').update({
-          subtotal,
-          desconto_pct: shouldResetDiscount ? 0 : desconto,
-          frete_nome:   freteOpcao.nome,
-          frete_pct:    freteOpcao.acrescimo,
-          total_final:  totalFinal,
-          data: kitDataAtualizado,
-          ...(statusOverride ? { status: statusOverride } : {}),
-          ...(shouldResetDiscount ? { status: 'enviada', desconto_pct: 0, desconto_resposta: null } : {}),
-        }).eq('id', quoteId)
-        if (error) throw error
         if (shouldResetDiscount) {
-          setQuoteInfo(prev => ({ ...prev, status: 'enviada', desconto_pct: 0, desconto_resposta: null }))
+          descontoToSend = 0
+          statusToSend = 'enviada'
+        } else {
+          statusToSend = statusOverride || null
         }
-        // Propaga revisão para o estado local
-        onChange(kitDataAtualizado)
       }
 
-      if (items.length > 0) {
-        await supabase.from('quote_items').delete().eq('quote_id', quoteId)
-        await supabase.from('quote_items').insert(items.map(i => ({ ...i, quote_id: quoteId })))
+      const basePayload = buildQuotePayload()
+      const { data: result, error } = await supabase.rpc('save_quote_with_items', {
+        p_quote_id:     quoteId,
+        p_nome_projeto: basePayload.nome_projeto,
+        p_kit_type:     basePayload.kit_type,
+        p_kwp:          basePayload.kwp,
+        p_desconto_pct: descontoToSend,
+        p_frete_nome:   freteOpcao.nome,
+        p_frete_pct:    freteOpcao.acrescimo,
+        p_status:       statusToSend,
+        p_kit_data:     kitDataToSave,
+        p_items:        items,
+      })
+      if (error) throw error
+      const row = Array.isArray(result) ? result[0] : result
+      quoteId = row.quote_id
+
+      if (!savedId) setSavedId(quoteId)
+      if (shouldResetDiscount) {
+        setQuoteInfo(prev => ({ ...prev, status: 'enviada', desconto_pct: 0, desconto_resposta: null }))
       }
+      // Propaga referência/revisão para o estado local
+      onChange(kitDataToSave)
 
       if (!silent) {
         setSaveStatus('ok')

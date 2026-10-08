@@ -1,16 +1,16 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { products as defaultProducts, assignKitRole } from '../data/products'
 import { supabase } from '../lib/supabase'
 
 const ProductsContext = createContext()
 
-const STORAGE_KEY      = 'weg_products_v2'
-const TABLE_KEY        = 'weg_table_info'
-const FRETE_KEY        = 'weg_frete_opcoes'
-const DESCONTO_KEY     = 'weg_desconto'
-const AUTH_KEY         = 'weg_admin_auth'
-const ACTIVE_LIST_KEY  = 'weg_active_list_sap'
-const CONDICOES_KEY    = 'weg_condicoes'
+const STORAGE_KEY         = 'weg_products_v2'
+const TABLE_KEY           = 'weg_table_info'
+const FRETE_KEY           = 'weg_frete_opcoes'
+const DESCONTO_KEY        = 'weg_desconto'
+const ACTIVE_LIST_KEY     = 'weg_active_list_sap'
+const CONDICOES_KEY       = 'weg_condicoes'
+const CATALOG_VERSION_KEY = 'weg_catalog_version_id'
 
 export const DEFAULT_CONDICOES =
 `Preços FOB Itajaí-SC. Sujeitos a alteração sem aviso prévio.
@@ -26,30 +26,29 @@ export const DEFAULT_FRETE = [
   { id: 6, nome: 'CIF – Sem descarga – Região Norte',                 acrescimo: 1.110 },
 ]
 
-// ─── Supabase persistence helpers ─────────────────────────────────────────────
+// ─── Supabase persistence (catálogo versionado) ───────────────────────────────
 // Em desenvolvimento (localhost), todo acesso ao Supabase é bloqueado.
 // O catálogo usa apenas localStorage + dados padrão, sem conflito com produção.
 const IS_DEV = import.meta.env.DEV
 
-async function sbSave(key, value) {
-  if (IS_DEV) return
-  try {
-    await supabase
-      .from('app_settings')
-      .upsert({ key, value, updated_at: new Date().toISOString() })
-  } catch (e) { console.warn('[settings] save error:', e?.message) }
-}
-
-async function sbLoad(key) {
-  if (IS_DEV) return null
-  try {
-    const { data } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', key)
-      .maybeSingle()
-    return data?.value ?? null
-  } catch { return null }
+// Busca a versão publicada do catálogo (produtos, lista ativa, frete, desconto,
+// condições). Retorna null em qualquer erro (ex: migração ainda não aplicada),
+// degradando graciosamente para o comportamento local/offline existente.
+async function fetchPublishedCatalog(versionId) {
+  const [verRes, prodRes, codesRes, freteRes, descRes] = await Promise.all([
+    supabase.from('price_catalog_versions').select('*').eq('id', versionId).maybeSingle(),
+    supabase.from('price_catalog_products').select('data').eq('version_id', versionId),
+    supabase.from('price_catalog_active_codes').select('codigo').eq('version_id', versionId),
+    supabase.from('freight_options').select('nome, acrescimo').eq('version_id', versionId).order('acrescimo', { ascending: true }),
+    supabase.from('discount_defaults').select('desconto').eq('version_id', versionId).maybeSingle(),
+  ])
+  return {
+    version:   verRes.data || null,
+    products:  (prodRes.data || []).map(r => r.data),
+    codes:     (codesRes.data || []).map(r => r.codigo),
+    frete:     freteRes.data || [],
+    desconto:  descRes.data ? descRes.data.desconto : null,
+  }
 }
 
 // ─── localStorage loaders ─────────────────────────────────────────────────────
@@ -130,52 +129,82 @@ export function ProductsProvider({ children }) {
   const [tableInfo, setTableInfo] = useState(loadTableInfo)
   const [freteOpcoes, setFreteOpcoes] = useState(loadFrete)
   const [desconto, setDesconto]       = useState(loadDesconto)
-  const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem(AUTH_KEY) === '1')
   const [activeListCodes, setActiveListCodesState] = useState(loadActiveListCodes)
   const [condicoes, setCondicoes] = useState(loadCondicoes)
 
-  // Na inicialização: se o localStorage não tem dados importados (cache foi limpo),
-  // restaura do Supabase automaticamente
-  useEffect(() => {
-    const hasLocal = localStorage.getItem(ACTIVE_LIST_KEY) !== null
-    if (hasLocal) return // localStorage OK, não precisa buscar do Supabase
+  // id da versão de rascunho em edição (admin), resolvido sob demanda e
+  // reaproveitado enquanto durar esta sessão
+  const draftVersionIdRef = useRef(null)
 
-    Promise.all([
-      sbLoad('catalog_products'),
-      sbLoad('catalog_active_codes'),
-      sbLoad('catalog_table_info'),
-      sbLoad('catalog_frete'),
-      sbLoad('catalog_desconto'),
-      sbLoad('catalog_condicoes'),
-    ]).then(([prods, codes, tinfo, frete, desc, cond]) => {
-      if (prods) {
+  const ensureDraftVersion = useCallback(async () => {
+    if (draftVersionIdRef.current) return draftVersionIdRef.current
+    try {
+      const { data, error } = await supabase.rpc('get_or_create_draft_catalog_version')
+      if (error) throw error
+      draftVersionIdRef.current = data
+      return data
+    } catch (e) {
+      console.warn('[catalog] draft version error:', e?.message)
+      return null
+    }
+  }, [])
+
+  // Na inicialização (e sempre, não só quando o cache local está vazio):
+  // compara a versão publicada com a que está em cache e só refaz o fetch
+  // quando elas divergem — corrige o bug de cache desatualizado.
+  useEffect(() => {
+    if (IS_DEV) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const { data: versionId, error } = await supabase.rpc('current_catalog_version')
+        if (error) throw error
+        if (cancelled || !versionId) return
+        if (localStorage.getItem(CATALOG_VERSION_KEY) === versionId) return
+
+        const { version, products: prods, codes, frete, desconto: desc } = await fetchPublishedCatalog(versionId)
+        if (cancelled) return
+        if (!prods.length) return // versão publicada sem produtos: mantém fallback local
+
         const restored = prods.map(p => normalizeProduct({ ...p, kitRole: p.kitRole ?? assignKitRole(p) }))
         setProducts(restored)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(restored))
+
+        if (codes.length) {
+          setActiveListCodesState(new Set(codes))
+          localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(codes))
+        }
+
+        if (version) {
+          const tinfo = { nome: version.label, mes: version.vigencia_mes, versao: version.versao, observacao: version.observacao }
+          setTableInfo(tinfo)
+          localStorage.setItem(TABLE_KEY, JSON.stringify(tinfo))
+
+          if (typeof version.condicoes === 'string' && version.condicoes) {
+            setCondicoes(version.condicoes)
+            localStorage.setItem(CONDICOES_KEY, version.condicoes)
+          }
+        }
+
+        if (frete.length) {
+          const freteWithIds = frete.map((f, i) => ({ id: i + 1, nome: f.nome, acrescimo: f.acrescimo }))
+          setFreteOpcoes(freteWithIds)
+          localStorage.setItem(FRETE_KEY, JSON.stringify(freteWithIds))
+        }
+
+        if (desc !== null && desc !== undefined) {
+          setDesconto(Number(desc))
+          localStorage.setItem(DESCONTO_KEY, String(desc))
+        }
+
+        localStorage.setItem(CATALOG_VERSION_KEY, versionId)
+      } catch (e) {
+        console.warn('[catalog] version check error:', e?.message)
       }
-      if (codes) {
-        const s = new Set(codes)
-        setActiveListCodesState(s)
-        localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(codes))
-      }
-      if (tinfo) {
-        setTableInfo(tinfo)
-        localStorage.setItem(TABLE_KEY, JSON.stringify(tinfo))
-      }
-      if (frete) {
-        setFreteOpcoes(frete)
-        localStorage.setItem(FRETE_KEY, JSON.stringify(frete))
-      }
-      if (desc !== null) {
-        const d = Number(desc)
-        setDesconto(d)
-        localStorage.setItem(DESCONTO_KEY, String(d))
-      }
-      if (cond !== null && typeof cond === 'string') {
-        setCondicoes(cond)
-        localStorage.setItem(CONDICOES_KEY, cond)
-      }
-    }).catch(e => console.warn('[catalog] restore error:', e?.message))
+    })()
+
+    return () => { cancelled = true }
   }, [])
 
   const catalogProducts = React.useMemo(() => {
@@ -186,14 +215,24 @@ export function ProductsProvider({ children }) {
   const saveProducts = useCallback((newProducts) => {
     setProducts(newProducts)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newProducts))
-    sbSave('catalog_products', newProducts)
-  }, [])
+    if (IS_DEV) return
+    ensureDraftVersion().then(draftId => {
+      if (!draftId) return
+      return supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts })
+    }).catch(e => console.warn('[catalog] save products error:', e?.message))
+  }, [ensureDraftVersion])
 
   const saveTableInfo = useCallback((info) => {
     setTableInfo(info)
     localStorage.setItem(TABLE_KEY, JSON.stringify(info))
-    sbSave('catalog_table_info', info)
-  }, [])
+    if (IS_DEV) return
+    ensureDraftVersion().then(draftId => {
+      if (!draftId) return
+      return supabase.from('price_catalog_versions').update({
+        label: info.nome, vigencia_mes: info.mes, versao: info.versao, observacao: info.observacao,
+      }).eq('id', draftId)
+    }).catch(e => console.warn('[catalog] save table info error:', e?.message))
+  }, [ensureDraftVersion])
 
   const setActiveListCodes = useCallback((codes) => {
     const s = codes && codes.length > 0 ? new Set(codes) : null
@@ -201,18 +240,31 @@ export function ProductsProvider({ children }) {
     if (s) {
       const arr = [...s]
       localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(arr))
-      sbSave('catalog_active_codes', arr)
+      if (IS_DEV) return
+      ensureDraftVersion().then(async (draftId) => {
+        if (!draftId) return
+        await supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
+        await supabase.from('price_catalog_active_codes').insert(arr.map(codigo => ({ version_id: draftId, codigo })))
+      }).catch(e => console.warn('[catalog] save active codes error:', e?.message))
     } else {
       localStorage.removeItem(ACTIVE_LIST_KEY)
-      sbSave('catalog_active_codes', null)
+      if (IS_DEV) return
+      ensureDraftVersion().then(draftId => {
+        if (!draftId) return
+        return supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
+      }).catch(e => console.warn('[catalog] clear active codes error:', e?.message))
     }
-  }, [])
+  }, [ensureDraftVersion])
 
   const clearActiveList = useCallback(() => {
     setActiveListCodesState(null)
     localStorage.removeItem(ACTIVE_LIST_KEY)
-    sbSave('catalog_active_codes', null)
-  }, [])
+    if (IS_DEV) return
+    ensureDraftVersion().then(draftId => {
+      if (!draftId) return
+      return supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
+    }).catch(e => console.warn('[catalog] clear active codes error:', e?.message))
+  }, [ensureDraftVersion])
 
   const addProduct = useCallback((product) => {
     const newId = Math.max(...products.map(p => p.id), 0) + 1
@@ -256,21 +308,36 @@ export function ProductsProvider({ children }) {
     const v = Math.min(100, Math.max(0, Number(val) || 0))
     setDesconto(v)
     localStorage.setItem(DESCONTO_KEY, String(v))
-    sbSave('catalog_desconto', v)
-  }, [])
+    if (IS_DEV) return
+    ensureDraftVersion().then(draftId => {
+      if (!draftId) return
+      return supabase.from('discount_defaults').upsert({ version_id: draftId, desconto: v })
+    }).catch(e => console.warn('[catalog] save desconto error:', e?.message))
+  }, [ensureDraftVersion])
 
   const saveCondicoes = useCallback((texto) => {
     const v = typeof texto === 'string' ? texto : DEFAULT_CONDICOES
     setCondicoes(v)
     localStorage.setItem(CONDICOES_KEY, v)
-    sbSave('catalog_condicoes', v)
-  }, [])
+    if (IS_DEV) return
+    ensureDraftVersion().then(draftId => {
+      if (!draftId) return
+      return supabase.from('price_catalog_versions').update({ condicoes: v }).eq('id', draftId)
+    }).catch(e => console.warn('[catalog] save condicoes error:', e?.message))
+  }, [ensureDraftVersion])
 
   const saveFrete = useCallback((opcoes) => {
     setFreteOpcoes(opcoes)
     localStorage.setItem(FRETE_KEY, JSON.stringify(opcoes))
-    sbSave('catalog_frete', opcoes)
-  }, [])
+    if (IS_DEV) return
+    ensureDraftVersion().then(async (draftId) => {
+      if (!draftId) return
+      await supabase.from('freight_options').delete().eq('version_id', draftId)
+      if (opcoes.length) {
+        await supabase.from('freight_options').insert(opcoes.map(o => ({ version_id: draftId, nome: o.nome, acrescimo: o.acrescimo })))
+      }
+    }).catch(e => console.warn('[catalog] save frete error:', e?.message))
+  }, [ensureDraftVersion])
 
   const addFreteOpcao = useCallback((opcao) => {
     const nextId = Math.max(...freteOpcoes.map(f => f.id), 0) + 1
@@ -289,19 +356,22 @@ export function ProductsProvider({ children }) {
     saveFrete(DEFAULT_FRETE)
   }, [saveFrete])
 
-  const login = useCallback((password) => {
-    if (password === 'WEG@2025') {
-      sessionStorage.setItem(AUTH_KEY, '1')
-      setIsAdmin(true)
-      return true
+  // Publica a versão de rascunho em edição, tornando-a a versão oficial
+  // vista por todos os clientes (via current_catalog_version()).
+  const publishCatalog = useCallback(async () => {
+    if (IS_DEV) return { ok: false, error: 'Publicação indisponível em desenvolvimento.' }
+    const draftId = draftVersionIdRef.current || await ensureDraftVersion()
+    if (!draftId) return { ok: false, error: 'Não foi possível preparar a versão para publicação.' }
+    try {
+      const { error } = await supabase.rpc('publish_price_catalog', { p_version_id: draftId })
+      if (error) throw error
+      draftVersionIdRef.current = null
+      localStorage.setItem(CATALOG_VERSION_KEY, draftId)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Erro ao publicar.' }
     }
-    return false
-  }, [])
-
-  const logout = useCallback(() => {
-    sessionStorage.removeItem(AUTH_KEY)
-    setIsAdmin(false)
-  }, [])
+  }, [ensureDraftVersion])
 
   return (
     <ProductsContext.Provider value={{
@@ -311,7 +381,6 @@ export function ProductsProvider({ children }) {
       tableInfo,
       freteOpcoes,
       desconto,
-      isAdmin,
       saveProducts,
       saveTableInfo,
       setActiveListCodes,
@@ -329,8 +398,7 @@ export function ProductsProvider({ children }) {
       updateFreteOpcao,
       deleteFreteOpcao,
       resetFrete,
-      login,
-      logout,
+      publishCatalog,
     }}>
       {children}
     </ProductsContext.Provider>
