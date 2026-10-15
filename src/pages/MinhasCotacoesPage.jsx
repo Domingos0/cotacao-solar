@@ -503,6 +503,18 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
         { label: 'Estrutura de Fixação', product: updatedData.estruturaKit, qty: updatedData.estruturaQty, unit: 'kit' },
       updatedData.wantsEstrutura && updatedData.estruturaKit3 && (updatedData.estruturaQty3 || 0) > 0 &&
         { label: 'Estrutura de Fixação', product: updatedData.estruturaKit3, qty: updatedData.estruturaQty3, unit: 'kit' },
+      // Híbrido — bateria/SmartGuard/LUNA2000/JBW: esta tela não edita esses
+      // campos, mas eles continuam em updatedData (herdados de kitData) — só
+      // precisam entrar na lista de itens pra não sumir da cotação ao salvar
+      // qualquer outra alteração aqui.
+      updatedData.wantsBattery && updatedData.batEco === 'CB' && updatedData.batProduct &&
+        { label: `Bateria ${updatedData.batType}`, product: updatedData.batProduct, qty: updatedData.batQty || 1, unit: 'un' },
+      updatedData.wantsBattery && updatedData.batEco === 'SBW300' && updatedData.sgCtrlProduct &&
+        { label: `SmartGuard-63A-${updatedData.sgCtrlProduct.nome?.includes('T0') ? 'T0' : 'S0'} (controlador)`, product: updatedData.sgCtrlProduct, qty: 1, unit: 'un' },
+      updatedData.wantsBattery && updatedData.batEco === 'SBW300' && updatedData.luna2000Product &&
+        { label: 'LUNA2000-7-E1 (6,9 kWh)', product: updatedData.luna2000Product, qty: updatedData.sbwGroups || 1, unit: 'un' },
+      updatedData.wantsBattery && updatedData.inclJBW41DC && updatedData.jbwProduct &&
+        { label: 'JBW 41DC 50A (paralelo baterias)', product: updatedData.jbwProduct, qty: updatedData.jbwQty || 1, unit: 'un' },
       ...(kitData.avulsos || []).map(a => ({
         label: a.nome,
         product: { nome: a.nome, codigo: a.codigo || '—', preco: a.preco },
