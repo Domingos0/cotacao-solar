@@ -1745,6 +1745,17 @@ function isHybridInv(inv) {
   return /SIW\d*H/i.test(inv.modelo || inv.nome || '')
 }
 
+// Linha "CB" de bateria de alta tensão (SIW200H/SIW400H) — inclui a geração
+// CB050/CB100 e a geração mais nova SBW200 CB057/CB115 (mesma compatibilidade
+// e mesma regra de quantidade/JBW da linha original, por decisão comercial).
+const BAT_CB_MODELS = [
+  { type: 'CB050',        desc: '5,02 kWh / 192V DC',  kwh: 5.02,  volt: 192 },
+  { type: 'CB100',        desc: '10,07 kWh / 384V DC', kwh: 10.07, volt: 384 },
+  { type: 'SBW200 CB057', desc: '5,76 kWh / 192V DC',  kwh: 5.76,  volt: 192 },
+  { type: 'SBW200 CB115', desc: '11,52 kWh / 384V DC', kwh: 11.52, volt: 384 },
+]
+const batKwhByType = (type) => BAT_CB_MODELS.find(m => m.type === type)?.kwh || 0
+
 // ─── Battery Step ─────────────────────────────────────────────────────────────
 function BatteryStep({ data, onChange, products }) {
   // Bateria/acessórios do sistema híbrido são itens estruturais do kit, não
@@ -1768,9 +1779,15 @@ function BatteryStep({ data, onChange, products }) {
   const jbwThreshold = isSIW200H ? 2 : (isSIW400H ? 3 : null)
   const maxBat       = isSIW400H ? 8 : 4
   const maxGroups    = isSIW300H ? 6 : 12
-  // CB ecosystem products
-  const batCB050  = fullProducts.find(p => /\bCB.?050\b/i.test(p.modelo || p.nome || ''))
-  const batCB100  = fullProducts.find(p => /\bCB.?100\b/i.test(p.modelo || p.nome || ''))
+  // CB ecosystem products (CB050/CB100 = geração original; SBW200 CB057/CB115 = geração nova)
+  const batCB050      = fullProducts.find(p => /\bCB.?050\b/i.test(p.modelo || p.nome || ''))
+  const batCB100      = fullProducts.find(p => /\bCB.?100\b/i.test(p.modelo || p.nome || ''))
+  const batSBW200_057 = fullProducts.find(p => /SBW200/i.test(p.modelo || p.nome || '') && /057/.test(p.modelo || p.nome || ''))
+  const batSBW200_115 = fullProducts.find(p => /SBW200/i.test(p.modelo || p.nome || '') && /115/.test(p.modelo || p.nome || ''))
+  const batProductByType = {
+    'CB050': batCB050, 'CB100': batCB100,
+    'SBW200 CB057': batSBW200_057, 'SBW200 CB115': batSBW200_115,
+  }
   const jbwProd   = fullProducts.find(p => /JBW.*41DC|41DC.*JBW/i.test(p.modelo || p.nome || ''))
   // SBW300 ecosystem products (SmartGuard = mandatory controller; LUNA2000-7-E1 = battery module)
   const sgSProd      = fullProducts.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bS0\b/i.test(p.nome || p.modelo || ''))
@@ -1787,7 +1804,7 @@ function BatteryStep({ data, onChange, products }) {
   const jbwQty    = !jbwNeeded ? 0 : (isSIW400H && batQty >= 6 ? 2 : 1)
 
   const confirmBattery = () => {
-    const selBatProd = batType === 'CB100' ? batCB100 : batCB050
+    const selBatProd = batProductByType[batType]
     onChange({
       ...data,
       wantsBattery: true, batteryDone: true,
@@ -1829,7 +1846,7 @@ function BatteryStep({ data, onChange, products }) {
   }
 
   const invName = inv?.nome || inv?.modelo || 'Inversor híbrido'
-  const cbKwh   = (batType === 'CB100' ? 10.07 : 5.02) * batQty
+  const cbKwh   = batKwhByType(batType) * batQty
   const sbwKwh  = 6.9 * sbwGroups
 
   return (
@@ -1872,10 +1889,7 @@ function BatteryStep({ data, onChange, products }) {
         <div className="max-w-2xl mx-auto space-y-5">
           <p className="text-center text-gray-700 font-semibold">Selecione o modelo de bateria</p>
           <div className="grid grid-cols-2 gap-4">
-            {[
-              { type: 'CB050', desc: '5,02 kWh / 192V DC', prod: batCB050 },
-              { type: 'CB100', desc: '10,07 kWh / 384V DC', prod: batCB100 },
-            ].map(opt => (
+            {BAT_CB_MODELS.map(opt => ({ ...opt, prod: batProductByType[opt.type] })).filter(opt => opt.prod).map(opt => (
               <button key={opt.type} onClick={() => setBatType(opt.type)}
                 className={`rounded-2xl border-2 p-5 text-left transition-all ${
                   batType === opt.type ? 'border-violet-500 bg-violet-50 ring-4 ring-violet-100' : 'border-gray-200 bg-white hover:border-gray-300'
@@ -1995,7 +2009,7 @@ function BatteryStep({ data, onChange, products }) {
                 </p>
                 {data.batEco === 'CB' ? (
                   <ul className="text-sm text-violet-800 space-y-1">
-                    <li>• <strong>{data.batQty}× {data.batType}</strong> — {((data.batType === 'CB100' ? 10.07 : 5.02) * data.batQty).toFixed(2)} kWh</li>
+                    <li>• <strong>{data.batQty}× {data.batType}</strong> — {(batKwhByType(data.batType) * data.batQty).toFixed(2)} kWh</li>
                     {data.inclJBW41DC && (
                       <li>
                         • {data.jbwQty || 1}× JBW 41DC 50A
@@ -3400,7 +3414,7 @@ function Step4({ data, onChange, products }) {
                   </div>
                 </div>
                 <p className="text-xs text-violet-600 mt-2 ml-11">
-                  {((data.batType === 'CB100' ? 10.07 : 5.02) * data.batQty).toFixed(2)} kWh total
+                  {(batKwhByType(data.batType) * data.batQty).toFixed(2)} kWh total
                   {(isSIW400HKit || isSIW200HKit) && data.batQty >= (isSIW200HKit ? 2 : 3) && (
                     <span className="ml-2 text-amber-600">
                       • JBW: {data.batQty >= 6 && isSIW400HKit ? `Ent.1: ${Math.ceil(data.batQty/2)} bat. · Ent.2: ${Math.floor(data.batQty/2)} bat.` : `Ent.1: ${data.batQty-1} bat. · Ent.2: 1 bat.`}
