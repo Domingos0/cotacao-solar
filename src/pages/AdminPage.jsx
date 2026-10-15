@@ -2357,7 +2357,11 @@ function QuoteManagement() {
   const pendingDiscount = quotes.filter(q => q.status === 'aguardando_desconto')
   const pendingImplant  = quotes.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status))
 
-  const byStatus = filter === 'all' ? quotes : quotes.filter(q => q.status === filter)
+  const byStatus = filter === 'all'
+    ? quotes
+    : filter === 'feitas_pelo_adm'
+      ? quotes.filter(q => q.data?.criadoPorAdmin)
+      : quotes.filter(q => q.status === filter)
   const matchSearch = (q, s) =>
     (q.profiles?.cnpj || '').replace(/\D/g, '').includes(s.replace(/\D/g, '')) ||
     (q.profiles?.nome || '').toLowerCase().includes(s) ||
@@ -2527,6 +2531,7 @@ function QuoteManagement() {
 
   const STATUS_PILLS = [
     { value: 'all',                 label: 'Todas',           count: quotes.length },
+    { value: 'feitas_pelo_adm',     label: '🛠️ Feitas pelo ADM', count: quotes.filter(q => q.data?.criadoPorAdmin).length },
     { value: 'rascunho',            label: 'Rascunho',        count: quotes.filter(q => q.status === 'rascunho').length },
     { value: 'em_analise',          label: 'Em análise',      count: quotes.filter(q => ['em_analise','enviada'].includes(q.status)).length },
     { value: 'aguardando_desconto', label: 'Desc. pendente',  count: pendingDiscount.length },
