@@ -998,6 +998,9 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const revisoes = kitData.revisoes || []
   const { tableInfo, catalogProducts, condicoes } = useProducts()
   const { session, profile, isAdmin } = useAuth()
+  // Impressão deve mostrar os dados do DONO da cotação, não de quem
+  // está olhando (ex: admin imprimindo a proposta de um cliente).
+  const ownerProfile = quote.profiles || profile
 
   // ── Stock check for the saved panel ──────────────────────────────────────────
   const panelInQuote   = kitData.panel
@@ -1369,14 +1372,14 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </p>
             )}
             {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
-            {(profile?.numero_usuario || profile?.nome) && (
+            {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
               <p className="text-xs text-gray-500 mt-1">
-                Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
-                  {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
+                  {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
                 </strong>
               </p>
             )}
-            {profile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {profile.cnpj}</p>}
+            {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
             <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
           </div>
         </div>
@@ -1491,14 +1494,14 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               )}
               {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
               {quote.frete_pct > 1 && <p className="text-xs text-gray-500 mt-0.5">{quote.frete_nome}</p>}
-              {(profile?.numero_usuario || profile?.nome) && (
+              {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
-                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
+                    {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
                   </strong>
                 </p>
               )}
-              {profile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {profile.cnpj}</p>}
+              {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
               <p className="text-xs text-gray-400 mt-1">Validade: 7 dias</p>
             </div>
             {kwp && (
@@ -2055,6 +2058,7 @@ function RevisionDetailModal({ quote, revision, onClose }) {
   const { profile, isAdmin } = useAuth()
   const { tableInfo } = useProducts()
   const kitData = quote.data || {}
+  const ownerProfile = quote.profiles || profile
   const [isPrinting, setIsPrinting] = useState(false)
 
   const handlePrint = () => {
@@ -2088,14 +2092,14 @@ function RevisionDetailModal({ quote, revision, onClose }) {
               )}
               {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
               {revision.frete && <p className="text-xs text-gray-500 mt-0.5">{revision.frete}</p>}
-              {(profile?.numero_usuario || profile?.nome) && (
+              {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
-                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
+                    {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
                   </strong>
                 </p>
               )}
-              {profile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {profile.cnpj}</p>}
+              {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
             </div>
           </div>
 
@@ -2316,7 +2320,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     if (!silent) setAllQuotesLoading(true)
     const { data } = await supabase
       .from('quotes')
-      .select('*, quote_items(*), profiles(nome, empresa, cnpj, telefone)')
+      .select('*, quote_items(*), profiles(nome, empresa, cnpj, telefone, numero_usuario)')
       .order('created_at', { ascending: false })
       .order('ordem', { foreignTable: 'quote_items' })
     setAllQuotes(data || [])
@@ -2399,6 +2403,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     {printRevisionData && (() => {
       const { quote: pq, r } = printRevisionData
       const pkd = pq.data || {}
+      const ownerProfile = pq.profiles || profile
       // Itens da revisão guardam preço de tabela bruto (preco_unit/total) — sem
       // subtotal salvo por revisão, deriva o fator de desconto pela soma bruta
       // dos itens vs. o total_final já ajustado dessa revisão.
@@ -2423,14 +2428,14 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                 </p>
               )}
               {pkd.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{pkd.clienteNome}</strong></p>}
-              {(profile?.numero_usuario || profile?.nome) && (
+              {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Usuário: <strong className={profile?.numero_usuario ? 'font-mono' : ''}>
-                    {profile?.numero_usuario ? `#${profile.numero_usuario}` : profile.nome}
+                  Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
+                    {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
                   </strong>
                 </p>
               )}
-              {profile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {profile.cnpj}</p>}
+              {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
               <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
             </div>
           </div>
