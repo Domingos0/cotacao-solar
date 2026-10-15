@@ -150,66 +150,81 @@ export function ProductsProvider({ children }) {
     }
   }, [])
 
-  // Na inicialização (e sempre, não só quando o cache local está vazio):
-  // compara a versão publicada com a que está em cache e só refaz o fetch
-  // quando elas divergem — corrige o bug de cache desatualizado.
+  // Compara a versão publicada com a que está em cache e só refaz o fetch
+  // quando elas divergem — corrige o bug de cache desatualizado. Roda ao
+  // abrir o site E periodicamente depois (ver useEffect abaixo), pra quem
+  // deixa a aba aberta por muito tempo não ficar preso numa lista antiga
+  // sem precisar dar F5.
+  const checkCatalogVersion = useCallback(async ({ signal } = {}) => {
+    if (IS_DEV) return
+    try {
+      const { data: versionId, error } = await supabase.rpc('current_catalog_version')
+      if (error) throw error
+      if (signal?.cancelled || !versionId) return
+      if (localStorage.getItem(CATALOG_VERSION_KEY) === versionId) return
+
+      const { version, products: prods, codes, frete, desconto: desc } = await fetchPublishedCatalog(versionId)
+      if (signal?.cancelled) return
+      if (!prods.length) return // versão publicada sem produtos: mantém fallback local
+
+      const restored = prods.map(p => normalizeProduct({ ...p, kitRole: p.kitRole ?? assignKitRole(p) }))
+      setProducts(restored)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(restored))
+
+      if (codes.length) {
+        setActiveListCodesState(new Set(codes))
+        localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(codes))
+      }
+
+      if (version) {
+        const tinfo = {
+          nome: version.label, mes: version.vigencia_mes, versao: version.versao, observacao: version.observacao,
+          validityDays: version.validity_days ?? 7,
+        }
+        setTableInfo(tinfo)
+        localStorage.setItem(TABLE_KEY, JSON.stringify(tinfo))
+
+        if (typeof version.condicoes === 'string' && version.condicoes) {
+          setCondicoes(version.condicoes)
+          localStorage.setItem(CONDICOES_KEY, version.condicoes)
+        }
+      }
+
+      if (frete.length) {
+        const freteWithIds = frete.map((f, i) => ({ id: i + 1, nome: f.nome, acrescimo: f.acrescimo }))
+        setFreteOpcoes(freteWithIds)
+        localStorage.setItem(FRETE_KEY, JSON.stringify(freteWithIds))
+      }
+
+      if (desc !== null && desc !== undefined) {
+        setDesconto(Number(desc))
+        localStorage.setItem(DESCONTO_KEY, String(desc))
+      }
+
+      localStorage.setItem(CATALOG_VERSION_KEY, versionId)
+    } catch (e) {
+      console.warn('[catalog] version check error:', e?.message)
+    }
+  }, [])
+
   useEffect(() => {
     if (IS_DEV) return
-    let cancelled = false
+    const signal = { cancelled: false }
+    checkCatalogVersion({ signal })
 
-    ;(async () => {
-      try {
-        const { data: versionId, error } = await supabase.rpc('current_catalog_version')
-        if (error) throw error
-        if (cancelled || !versionId) return
-        if (localStorage.getItem(CATALOG_VERSION_KEY) === versionId) return
+    // Reconfirma periodicamente (sem precisar recarregar a página) e também
+    // quando a aba volta a ficar visível — cobre quem deixa o navegador
+    // aberto enquanto o admin publica uma lista nova.
+    const intervalId = setInterval(() => checkCatalogVersion(), 5 * 60 * 1000)
+    const onVisible = () => { if (document.visibilityState === 'visible') checkCatalogVersion() }
+    document.addEventListener('visibilitychange', onVisible)
 
-        const { version, products: prods, codes, frete, desconto: desc } = await fetchPublishedCatalog(versionId)
-        if (cancelled) return
-        if (!prods.length) return // versão publicada sem produtos: mantém fallback local
-
-        const restored = prods.map(p => normalizeProduct({ ...p, kitRole: p.kitRole ?? assignKitRole(p) }))
-        setProducts(restored)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(restored))
-
-        if (codes.length) {
-          setActiveListCodesState(new Set(codes))
-          localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(codes))
-        }
-
-        if (version) {
-          const tinfo = {
-            nome: version.label, mes: version.vigencia_mes, versao: version.versao, observacao: version.observacao,
-            validityDays: version.validity_days ?? 7,
-          }
-          setTableInfo(tinfo)
-          localStorage.setItem(TABLE_KEY, JSON.stringify(tinfo))
-
-          if (typeof version.condicoes === 'string' && version.condicoes) {
-            setCondicoes(version.condicoes)
-            localStorage.setItem(CONDICOES_KEY, version.condicoes)
-          }
-        }
-
-        if (frete.length) {
-          const freteWithIds = frete.map((f, i) => ({ id: i + 1, nome: f.nome, acrescimo: f.acrescimo }))
-          setFreteOpcoes(freteWithIds)
-          localStorage.setItem(FRETE_KEY, JSON.stringify(freteWithIds))
-        }
-
-        if (desc !== null && desc !== undefined) {
-          setDesconto(Number(desc))
-          localStorage.setItem(DESCONTO_KEY, String(desc))
-        }
-
-        localStorage.setItem(CATALOG_VERSION_KEY, versionId)
-      } catch (e) {
-        console.warn('[catalog] version check error:', e?.message)
-      }
-    })()
-
-    return () => { cancelled = true }
-  }, [])
+    return () => {
+      signal.cancelled = true
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [checkCatalogVersion])
 
   const catalogProducts = React.useMemo(() => {
     if (!activeListCodes || activeListCodes.size === 0) return products
