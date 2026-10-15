@@ -2273,6 +2273,25 @@ function QuoteManagement() {
     if (locked) { try { notifyPrecoTravado({ quoteId }) } catch (_) {} }
   }
 
+  // Atalho rápido para cotação vencida: reprecifica pela lista vigente (e
+  // renova a validade) ou só renova a validade mantendo o preço atual.
+  const [requotingId, setRequotingId] = useState(null)
+  const handleRequote = async (quoteId, reprice) => {
+    setRequotingId(quoteId)
+    const { data, error } = await supabase.rpc('requote_quote', { p_quote_id: quoteId, p_reprice: reprice })
+    setRequotingId(null)
+    if (error) { console.error('[handleRequote]', error); return }
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) return
+    setQuotes(qs => qs.map(q => q.id === quoteId ? {
+      ...q,
+      subtotal: row.subtotal,
+      total_final: row.total_final,
+      valid_until: row.valid_until,
+      price_locked: reprice ? false : q.price_locked,
+    } : q))
+  }
+
   // Associa uma cotação feita pelo admin (cliente sem cadastro na época) à
   // conta real do cliente, depois que ele se cadastrou.
   const [associatingId, setAssociatingId] = useState(null)
@@ -3182,16 +3201,34 @@ function QuoteManagement() {
                           {q.price_locked && ' · preço travado'}
                         </span>
                         {new Date(q.valid_until) < new Date() && (
-                          <button
-                            onClick={e => { e.stopPropagation(); handleTogglePriceLock(q.id, !q.price_locked) }}
-                            className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-lg ${
-                              q.price_locked
-                                ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                                : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
-                            }`}
-                          >
-                            {q.price_locked ? 'Destravar preço' : 'Honrar preço antigo'}
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={e => { e.stopPropagation(); handleRequote(q.id, true) }}
+                              disabled={requotingId === q.id}
+                              title="Reprecificar pela lista vigente e renovar validade"
+                              className="text-xs font-semibold px-3 py-1 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 disabled:opacity-50"
+                            >
+                              {requotingId === q.id ? '...' : 'Atualizar p/ preço atual'}
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); handleRequote(q.id, false) }}
+                              disabled={requotingId === q.id}
+                              title="Só renovar a validade, mantendo o preço atual"
+                              className="text-xs font-semibold px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 disabled:opacity-50"
+                            >
+                              Renovar validade
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); handleTogglePriceLock(q.id, !q.price_locked) }}
+                              className={`text-xs font-semibold px-3 py-1 rounded-lg ${
+                                q.price_locked
+                                  ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                                  : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
+                              }`}
+                            >
+                              {q.price_locked ? 'Destravar preço' : 'Honrar preço antigo'}
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}

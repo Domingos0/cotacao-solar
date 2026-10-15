@@ -2343,6 +2343,27 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     if (locked) { try { notifyPrecoTravado({ quoteId: id }) } catch (_) {} }
   }
 
+  // Atalho rápido para cotação vencida: reprecifica pela lista vigente (e
+  // renova a validade) ou só renova a validade mantendo o preço atual.
+  const [requotingId, setRequotingId] = useState(null)
+  const handleRequote = async (id, reprice) => {
+    setRequotingId(id)
+    const { data, error } = await supabase.rpc('requote_quote', { p_quote_id: id, p_reprice: reprice })
+    setRequotingId(null)
+    if (error) { console.error('[handleRequote]', error); return }
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) return
+    const patch = q => q.id === id ? {
+      ...q,
+      subtotal: row.subtotal,
+      total_final: row.total_final,
+      valid_until: row.valid_until,
+      price_locked: reprice ? false : q.price_locked,
+    } : q
+    setQuotes(qs => qs.map(patch))
+    setAllQuotes(qs => qs.map(patch))
+  }
+
   const handleDelete = async (id) => {
     setDeletingId(id)
     await supabase.from('quote_items').delete().eq('quote_id', id)
@@ -2806,6 +2827,16 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                         </td>
                         <td className="px-3 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isAdmin && q.valid_until && new Date(q.valid_until) < new Date() && (
+                              <button
+                                onClick={() => handleRequote(q.id, true)}
+                                disabled={requotingId === q.id}
+                                title="Atualizar para o preço vigente e renovar validade"
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+                              >
+                                <RefreshCw size={14} className={requotingId === q.id ? 'animate-spin' : ''} />
+                              </button>
+                            )}
                             {isAdmin && q.valid_until && new Date(q.valid_until) < new Date() && (
                               <button
                                 onClick={() => handleTogglePriceLock(q.id, !q.price_locked)}
