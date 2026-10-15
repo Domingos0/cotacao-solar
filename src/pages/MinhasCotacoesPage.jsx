@@ -172,6 +172,17 @@ const fmtTime = d => d
   ? new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   : ''
 
+// Aviso de modelo descontinuado — aparece em cotações antigas (até no
+// histórico de revisões) que usaram um item depois substituído no catálogo.
+const DISCONTINUED_NOTE = { 'CB.?100': 'Modelo substituído por SBW200 CB115' }
+function deprecationNote(produto) {
+  if (!produto) return null
+  for (const pattern in DISCONTINUED_NOTE) {
+    if (new RegExp(`\\b${pattern}\\b`, 'i').test(produto)) return DISCONTINUED_NOTE[pattern]
+  }
+  return null
+}
+
 export const STATUS_STYLE = {
   rascunho:            { label: 'Rascunho',               cls: 'bg-gray-100 text-gray-600',       icon: FileText },
   enviada:             { label: 'Em análise cliente',      cls: 'bg-blue-100 text-blue-700',       icon: Clock },
@@ -1391,6 +1402,9 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                     <td className="py-2.5">
                       <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
                       <p className="text-xs text-gray-500">{item.produto}</p>
+                      {deprecationNote(item.produto) && (
+                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
+                      )}
                       <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
                     </td>
                     <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
@@ -1516,6 +1530,9 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                     <td className="py-2.5">
                       <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
                       <p className="text-xs text-gray-500">{item.produto}</p>
+                      {deprecationNote(item.produto) && (
+                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
+                      )}
                       <p className="text-xs text-gray-400 font-mono">SAP:&nbsp;&nbsp;{item.codigo_sap}</p>
                     </td>
                     <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
@@ -2071,6 +2088,12 @@ function RevisionDetailModal({ quote, revision, onClose }) {
                       <td className="py-2.5">
                         <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
                         <p className="text-xs text-gray-500">{item.produto}</p>
+                        {deprecationNote(item.produto) && (
+                          <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
+                        )}
+                      {deprecationNote(item.produto) && (
+                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
+                      )}
                         <p className="text-xs text-gray-400 font-mono">SAP:&nbsp;&nbsp;{item.codigo_sap}</p>
                       </td>
                       <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
@@ -2401,6 +2424,12 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                       <td className="py-2.5">
                         <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
                         <p className="text-xs text-gray-500">{item.produto}</p>
+                        {deprecationNote(item.produto) && (
+                          <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
+                        )}
+                      {deprecationNote(item.produto) && (
+                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
+                      )}
                         <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
                       </td>
                       <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>

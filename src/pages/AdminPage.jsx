@@ -2062,6 +2062,17 @@ function DashboardPanel({ onGoToTab }) {
   )
 }
 
+// Aviso de modelo descontinuado — mesma lista de MinhasCotacoesPage.jsx
+// (mantida separada pra não acoplar os dois arquivos por um detalhe cosmético).
+const DISCONTINUED_NOTE = { 'CB.?100': 'Modelo substituído por SBW200 CB115' }
+function deprecationNote(produto) {
+  if (!produto) return null
+  for (const pattern in DISCONTINUED_NOTE) {
+    if (new RegExp(`\\b${pattern}\\b`, 'i').test(produto)) return DISCONTINUED_NOTE[pattern]
+  }
+  return null
+}
+
 // ─── Kit Items Table (Admin) ──────────────────────────────────────────────────
 function AdminKitItems({ items }) {
   const [open, setOpen] = useState(false)
@@ -2096,7 +2107,12 @@ function AdminKitItems({ items }) {
                 {items.map((item, i) => (
                   <tr key={i} className="border-b border-gray-50 last:border-0">
                     <td className="px-3 py-1.5 text-gray-600 font-medium">{item.label}</td>
-                    <td className="px-3 py-1.5 text-gray-400 hidden md:table-cell max-w-[160px] truncate">{item.produto}</td>
+                    <td className="px-3 py-1.5 text-gray-400 hidden md:table-cell max-w-[160px]">
+                      <div className="truncate">{item.produto}</div>
+                      {deprecationNote(item.produto) && (
+                        <div className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</div>
+                      )}
+                    </td>
                     <td className="px-3 py-1.5 text-center font-bold text-gray-700">{item.qty}</td>
                     <td className="px-3 py-1.5 text-right text-gray-400 hidden sm:table-cell">{fmt(item.unit_price)}</td>
                     <td className="px-3 py-1.5 text-right font-bold text-gray-800">{fmt(item.total)}</td>
