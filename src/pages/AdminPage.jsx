@@ -2191,6 +2191,7 @@ function QuoteManagement() {
       .from('quotes')
       .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
       .order('created_at', { ascending: false })
+      .order('ordem', { foreignTable: 'quote_items' })
     setQuotes(data || [])
     if (!silent) setLoading(false)
   }
@@ -3603,6 +3604,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
       .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
       .in('status', ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'])
       .order('created_at', { ascending: false })
+      .order('ordem', { foreignTable: 'quote_items' })
     const list = data || []
     setQuotes(list)
     const pendCount = list.filter(q => ['fechado', 'faturado', 'em_transporte'].includes(q.status)).length

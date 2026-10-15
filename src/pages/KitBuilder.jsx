@@ -4416,14 +4416,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       : [inv && { label: 'Inversor Solar', product: inv, qty: isMicro ? microCount : (data.inverterQty || 1), unit: 'un' }]
     ).filter(Boolean),
 
-    // Itens comuns (CC cables + MC4) — on-grid e bombeamento
-    !isMicro && (d('mc4Qty', entradas) > 0) && mc4P &&
-      { label: 'Conector MC4 6mm²', product: mc4P, qty: d('mc4Qty', entradas), unit: 'pares' },
-    !isMicro && (d('cablePosMeters', 25*entradas) > 0) && cablePosP &&
-      { label: 'Cabo CC Vermelho (+)', product: cablePosP, qty: d('cablePosMeters', 25*entradas), unit: 'm' },
-    !isMicro && (d('cableNegMeters', 25*entradas) > 0) && cableNegP &&
-      { label: 'Cabo CC Preto (–)', product: cableNegP, qty: d('cableNegMeters', 25*entradas), unit: 'm' },
-
+    // Ordem: módulo, inversor, proteção, conector, cabos, disjuntor
     // On-Grid string
     (!isMicro && !isBomb) && d('inclSurgeCA', true) && surgeCAP && {
       label: 'Protetor de Surto CA',
@@ -4433,6 +4426,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         : (isTri ? 4 : 2) * totalInvCount),
       unit: 'un',
     },
+
+    // Itens comuns (CC cables + MC4) — on-grid e bombeamento
+    !isMicro && (d('mc4Qty', entradas) > 0) && mc4P &&
+      { label: 'Conector MC4 6mm²', product: mc4P, qty: d('mc4Qty', entradas), unit: 'pares' },
+    !isMicro && (d('cablePosMeters', 25*entradas) > 0) && cablePosP &&
+      { label: 'Cabo CC Vermelho (+)', product: cablePosP, qty: d('cablePosMeters', 25*entradas), unit: 'm' },
+    !isMicro && (d('cableNegMeters', 25*entradas) > 0) && cableNegP &&
+      { label: 'Cabo CC Preto (–)', product: cableNegP, qty: d('cableNegMeters', 25*entradas), unit: 'm' },
+
     // Disjuntor: um item por grupo de disjuntor no mix, ou item único no modo normal
     ...(!isMicro && !isBomb && d('inclBreaker', true)
       ? (mixBreakerGroups
@@ -4470,15 +4472,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       return r ? { label: 'Reatância de saída', product: r, qty: 1, unit: 'un' } : null
     })(),
 
-    // Microinversor
+    // Microinversor — ordem: proteção, conector, cabo, disjuntor
+    isMicro && d('inclSurgeCA', true) && surgeCAP &&
+      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', 2), unit: 'un' },
     isMicro && d('inclKitConnMi', true) && bySAP(KIT_SAPS.KIT_CONN_MI) &&
       { label: 'Kit conector CA SIW100G W10', product: bySAP(KIT_SAPS.KIT_CONN_MI), qty: d('kitConnMiQty', microStrings2), unit: 'un' },
     isMicro && (d('cableCAMeters', 10*microStrings2) > 0) && (() => {
       const caP = bySAP(inv?.entradas === 4 ? KIT_SAPS.CABO_CA_M024 : KIT_SAPS.CABO_CA_M010) || bySAP(KIT_SAPS.CABO_CA_M024)
       return caP ? { label: 'Cabo CA 3×6mm²', product: caP, qty: d('cableCAMeters', 10*microStrings2), unit: 'm' } : null
     })(),
-    isMicro && d('inclSurgeCA', true) && surgeCAP &&
-      { label: 'Protetor de Surto CA', product: surgeCAP, qty: d('surgeACQty', 2), unit: 'un' },
     isMicro && d('inclBreaker', true) && (data.selectedBreaker || breakerMicroAutoP || autoBreaker) &&
       { label: 'Minidisjuntor CA', product: data.selectedBreaker || breakerMicroAutoP || autoBreaker, qty: d('breakerQty', 1), unit: 'un' },
 

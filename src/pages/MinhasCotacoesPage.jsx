@@ -401,6 +401,15 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
   const cableNegP = bySAP(KIT_SAPS.CABO_CC_PTO)  || byRole(KIT_ROLE.CABLE_NEG)
   const surgeCAP  = bySAP(KIT_SAPS.SURGE_CA)     || byRole(KIT_ROLE.SURGE_AC)
   const surgeDCP  = byRole(KIT_ROLE.SURGE_DC)
+  // Disjuntor: mesma regra de findBreakerProduct do Monte seu Kit (por código
+  // de disjuntor do inversor), preservando a escolha manual salva se houver.
+  const invForBreaker = (selInv || kitData.inverter)
+  const invDis = invForBreaker?.disjuntor
+  const breakerP = kitData.selectedBreaker || (invDis
+    ? (catalogProducts.find(p => p.kitRole === KIT_ROLE.BREAKER && p.modelo === invDis) ||
+       catalogProducts.find(p => p.kitRole === KIT_ROLE.BREAKER && (p.nome || '').includes(invDis)) ||
+       byRole(KIT_ROLE.BREAKER))
+    : byRole(KIT_ROLE.BREAKER))
 
   // ── Structure kits lookup ──
   const structKits = useMemo(() => {
@@ -524,16 +533,19 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
             qty: mixMode ? 1 : invQty,
             unit: 'un',
           }]),
+      // Ordem: proteção, conector, cabos, disjuntor
+      !isMicro && !isBomb && acc.inclSurgeCA && surgeCAP &&
+        { label: 'Protetor de Surto CA', product: surgeCAP, qty: acc.surgeACQty, unit: 'un' },
+      !isMicro && !isBomb && acc.inclSurgeDC && surgeDCP &&
+        { label: 'Protetor de Surto CC', product: surgeDCP, qty: acc.surgeDCQty, unit: 'un' },
       !isMicro && acc.mc4Qty > 0 && mc4P &&
         { label: 'Conector MC4 6mm²', product: mc4P, qty: acc.mc4Qty, unit: 'pares' },
       !isMicro && acc.cablePosMeters > 0 && cablePosP &&
         { label: 'Cabo CC Vermelho (+)', product: cablePosP, qty: acc.cablePosMeters, unit: 'm' },
       !isMicro && acc.cableNegMeters > 0 && cableNegP &&
         { label: 'Cabo CC Preto (–)', product: cableNegP, qty: acc.cableNegMeters, unit: 'm' },
-      !isMicro && !isBomb && acc.inclSurgeCA && surgeCAP &&
-        { label: 'Protetor de Surto CA', product: surgeCAP, qty: acc.surgeACQty, unit: 'un' },
-      !isMicro && !isBomb && acc.inclSurgeDC && surgeDCP &&
-        { label: 'Protetor de Surto CC', product: surgeDCP, qty: acc.surgeDCQty, unit: 'un' },
+      !isBomb && acc.inclBreaker && breakerP &&
+        { label: 'Minidisjuntor CA', product: breakerP, qty: acc.breakerQty, unit: 'un' },
       // Monitoramento (obrigatório On-Grid/Híbrido) — não editável nesta tela,
       // só preservado pra não sumir da cotação ao salvar qualquer outra alteração.
       !isMicro && !isBomb && kitData.monitorSAP && catalogProducts.find(p => p.codigo === kitData.monitorSAP) &&
@@ -2294,6 +2306,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
       .select('*, quote_items(*)')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false })
+      .order('ordem', { foreignTable: 'quote_items' })
     setQuotes(data || [])
     if (!silent) setLoading(false)
   }
@@ -2305,6 +2318,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
       .from('quotes')
       .select('*, quote_items(*), profiles(nome, empresa, cnpj, telefone)')
       .order('created_at', { ascending: false })
+      .order('ordem', { foreignTable: 'quote_items' })
     setAllQuotes(data || [])
     if (!silent) setAllQuotesLoading(false)
     setAllQuotesLoaded(true)
