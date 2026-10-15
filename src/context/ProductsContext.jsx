@@ -117,9 +117,10 @@ function loadTableInfo() {
       mes: '2025-11',
       versao: 'R0',
       observacao: 'Preços FOB Itajaí-SC. Sujeitos a alteração sem aviso prévio.',
+      validityDays: 7,
     }
   } catch {
-    return { nome: 'Lista Novembro 2025 R0', mes: '2025-11', versao: 'R0', observacao: '' }
+    return { nome: 'Lista Novembro 2025 R0', mes: '2025-11', versao: 'R0', observacao: '', validityDays: 7 }
   }
 }
 
@@ -177,7 +178,10 @@ export function ProductsProvider({ children }) {
         }
 
         if (version) {
-          const tinfo = { nome: version.label, mes: version.vigencia_mes, versao: version.versao, observacao: version.observacao }
+          const tinfo = {
+            nome: version.label, mes: version.vigencia_mes, versao: version.versao, observacao: version.observacao,
+            validityDays: version.validity_days ?? 7,
+          }
           setTableInfo(tinfo)
           localStorage.setItem(TABLE_KEY, JSON.stringify(tinfo))
 
@@ -230,6 +234,7 @@ export function ProductsProvider({ children }) {
       if (!draftId) return
       return supabase.from('price_catalog_versions').update({
         label: info.nome, vigencia_mes: info.mes, versao: info.versao, observacao: info.observacao,
+        validity_days: Math.max(1, Number(info.validityDays) || 7),
       }).eq('id', draftId)
     }).catch(e => console.warn('[catalog] save table info error:', e?.message))
   }, [ensureDraftVersion])

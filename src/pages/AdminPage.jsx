@@ -489,6 +489,16 @@ function TableInfoEditor({ tableInfo, onSave, onImportClick }) {
             placeholder="R0, R1..."
           />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Validade da proposta (dias)</label>
+          <input
+            type="number" min="1"
+            value={form.validityDays ?? 7}
+            onChange={e => setForm(f => ({ ...f, validityDays: Math.max(1, parseInt(e.target.value) || 7) }))}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
+          />
+          <p className="text-[11px] text-gray-400 mt-1">Após vencer, a cotação reprecifica pela lista vigente ao ser reaberta e salva — a não ser que o preço tenha sido travado manualmente.</p>
+        </div>
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-gray-600 mb-1">Observação</label>
           <input

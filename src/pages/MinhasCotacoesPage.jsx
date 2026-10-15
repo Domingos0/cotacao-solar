@@ -13,7 +13,7 @@ import {
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
-  BadgePercent, Tag,
+  BadgePercent, Tag, Lock,
 } from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
@@ -2289,6 +2289,15 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     setSelectedQuote(prev => prev?.id === id ? { ...prev, status: newStatus } : prev)
   }
 
+  // Admin: trava/destrava o preço de uma cotação vencida (honra o preço antigo
+  // em vez de reprecificar automaticamente pela lista atual no próximo save).
+  const handleTogglePriceLock = async (id, locked) => {
+    const { error } = await supabase.rpc('override_price_lock', { p_quote_id: id, p_locked: locked })
+    if (error) { console.error('[handleTogglePriceLock]', error); return }
+    setQuotes(qs => qs.map(q => q.id === id ? { ...q, price_locked: locked } : q))
+    setAllQuotes(qs => qs.map(q => q.id === id ? { ...q, price_locked: locked } : q))
+  }
+
   const handleDelete = async (id) => {
     setDeletingId(id)
     await supabase.from('quote_items').delete().eq('quote_id', id)
@@ -2722,13 +2731,36 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                           {kitData.clienteNome || '—'}
                         </td>
                         <td className="px-4 py-3.5">
-                          <StatusBadge status={q.status} />
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <StatusBadge status={q.status} />
+                            {q.valid_until && new Date(q.valid_until) < new Date() && (
+                              <span
+                                title={`Venceu em ${new Date(q.valid_until).toLocaleDateString('pt-BR')}`}
+                                className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
+                                  q.price_locked ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                                }`}
+                              >
+                                <AlertTriangle size={9} /> {q.price_locked ? 'Vencida · travada' : 'Vencida'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3.5 text-right font-bold text-gray-900 text-sm whitespace-nowrap">
                           {fmt(q.total_final)}
                         </td>
                         <td className="px-3 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isAdmin && q.valid_until && new Date(q.valid_until) < new Date() && (
+                              <button
+                                onClick={() => handleTogglePriceLock(q.id, !q.price_locked)}
+                                title={q.price_locked ? 'Destravar preço (voltar a reprecificar)' : 'Honrar preço antigo (travar)'}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  q.price_locked ? 'text-blue-500 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'
+                                }`}
+                              >
+                                <Lock size={14} />
+                              </button>
+                            )}
                             {hasRevisions && (
                               <button
                                 onClick={() => setExpandedId(isExpanded ? null : q.id)}
