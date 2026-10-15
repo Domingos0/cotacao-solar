@@ -190,7 +190,10 @@ export function getProductImage(product) {
 
   // ── Cabos, conectores e proteção elétrica ──────────────────────────────────
   if (nome.includes('conector') || nome.includes('mc4'))                 return CABO.conector
-  if (nome.includes('cabo')) {
+  // Produtos reais de cabo no catálogo costumam vir nomeados "Unipolar
+  // flexível NH 6mm² Vermelho/Preto" — sem a palavra "cabo" — então também
+  // entra aqui por categoria.
+  if (nome.includes('cabo') || product.categoria === 'Cabos e Conectores') {
     if (nome.includes('vermelho') || nome.includes('positivo') || nome.includes('(+)'))
       return CABO.vermelho
     if (nome.includes('preto') || nome.includes('negativo') || nome.includes('(-)') || nome.includes('(–)'))
