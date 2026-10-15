@@ -341,6 +341,23 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
       cableNegMeters: def.cableNegMeters, surgeACQty: def.surgeACQty, breakerQty: def.breakerQty }))
   }
 
+  // ── Battery (kit híbrido) state — mesma regra do Monte seu Kit: quantidade
+  // editável, mas sem trocar modelo/ecossistema (isso é definido na montagem) ──
+  const batInv       = kitData.inverter || kitData.inverters?.[0]?.inverter
+  const batInvModel  = (batInv?.modelo || batInv?.nome || '').toUpperCase()
+  const isSIW200H    = /SIW200H/.test(batInvModel)
+  const isSIW300H    = /SIW300H/.test(batInvModel)
+  const isSIW400H    = /SIW400H/.test(batInvModel)
+  const batMaxQty    = isSIW400H ? 8 : 4
+  const batMaxGroups = isSIW300H ? 6 : 12
+  const jbwThreshold = isSIW200H ? 2 : (isSIW400H ? 3 : null)
+
+  const [batQty, setBatQty]       = useState(kitData.batQty || 1)
+  const [sbwGroups, setSbwGroups] = useState(kitData.sbwGroups || 1)
+
+  const jbwNeeded = kitData.batEco === 'CB' && jbwThreshold !== null && batQty >= jbwThreshold
+  const jbwQty    = !jbwNeeded ? 0 : (isSIW400H && batQty >= 6 ? 2 : 1)
+
   // ── Structure state ──
   const [struct, setStruct] = useState({
     wants:          kitData.wantsEstrutura ?? null,
@@ -465,6 +482,13 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
       surgeDCQty:     acc.surgeDCQty,
       inclBreaker:    acc.inclBreaker,
       breakerQty:     acc.breakerQty,
+      // Bateria (kit híbrido) — mesma regra do Monte seu Kit
+      ...(kitData.wantsBattery ? {
+        batQty:      kitData.batEco === 'CB' ? batQty : kitData.batQty,
+        sbwGroups:   kitData.batEco === 'SBW300' ? sbwGroups : kitData.sbwGroups,
+        inclJBW41DC: jbwNeeded,
+        jbwQty:      jbwQty,
+      } : {}),
       // Structure
       wantsEstrutura:    struct.wants,
       estruturaRoofType: struct.roofType,
@@ -746,6 +770,41 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
             <AccRow label="Minidisjuntor CA" product={null}
               included={acc.inclBreaker} onToggle={() => setA('inclBreaker', !acc.inclBreaker)}
               qty={acc.breakerQty} onQtyChange={v => setA('breakerQty', v)} />
+          )}
+
+          {/* ── Armazenamento (kit híbrido) — mesma regra do Monte seu Kit ── */}
+          {kitData.wantsBattery && (
+            <>
+              <div className="relative my-1">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-violet-200" /></div>
+                <div className="relative flex justify-center"><span className="bg-white px-2 text-xs font-semibold text-violet-500 uppercase">Armazenamento</span></div>
+              </div>
+
+              {kitData.batEco === 'CB' && kitData.batProduct && (
+                <AccRow label={`Bateria ${kitData.batType}`} product={kitData.batProduct}
+                  included onToggle={() => {}}
+                  qty={batQty} onQtyChange={v => setBatQty(Math.max(1, Math.min(batMaxQty, v)))} />
+              )}
+
+              {kitData.batEco === 'SBW300' && kitData.sgCtrlProduct && (
+                <div className="flex items-center justify-between rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs">
+                  <span className="text-gray-700">{kitData.sgCtrlProduct.nome || kitData.sgCtrlProduct.modelo}</span>
+                  <span className="text-violet-600 font-semibold bg-violet-100 px-2 py-0.5 rounded-full">obrigatório</span>
+                </div>
+              )}
+              {kitData.batEco === 'SBW300' && kitData.luna2000Product && (
+                <AccRow label="LUNA2000-7-E1 (6,9 kWh)" product={kitData.luna2000Product}
+                  included onToggle={() => {}}
+                  qty={sbwGroups} onQtyChange={v => setSbwGroups(Math.max(1, Math.min(batMaxGroups, v)))} />
+              )}
+
+              {jbwNeeded && kitData.jbwProduct && (
+                <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+                  <span className="text-gray-700">JBW 41DC 50A (paralelo de baterias)</span>
+                  <span className="font-semibold text-amber-700">{jbwQty}× = {fmt(round2((kitData.jbwProduct.preco || 0) * jbwQty))}</span>
+                </div>
+              )}
+            </>
           )}
 
           {/* ── Estrutura ── */}
