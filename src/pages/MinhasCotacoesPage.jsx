@@ -2469,9 +2469,6 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                         {deprecationNote(item.produto) && (
                           <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
                         )}
-                      {deprecationNote(item.produto) && (
-                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
-                      )}
                         <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
                       </td>
                       <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
@@ -2500,9 +2497,9 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
           <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
             <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
             <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
-            {kitData.criadoPorAdmin && (
+            {pkd.criadoPorAdmin && (
               <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
-                Proposta elaborada por {kitData.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
+                Proposta elaborada por {pkd.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
               </p>
             )}
           </div>
