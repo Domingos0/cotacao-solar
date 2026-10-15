@@ -4182,6 +4182,35 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     return freteOpcoes[0]?.id ?? 1
   })
 
+  // ── Admin: escolher pra qual cliente é esta cotação ──────────────────────
+  const [clienteMode, setClienteMode] = useState(data.targetClientId ? 'cadastrado' : 'novo')
+  const [clienteSearch, setClienteSearch] = useState('')
+  const [clienteResults, setClienteResults] = useState([])
+  const [clienteSearching, setClienteSearching] = useState(false)
+  const [selectedCliente, setSelectedCliente] = useState(null)
+
+  const searchClientes = async (q) => {
+    setClienteSearch(q)
+    if (!q || q.trim().length < 2) { setClienteResults([]); return }
+    setClienteSearching(true)
+    const term = `%${q.trim()}%`
+    const { data: rows } = await supabase
+      .from('profiles')
+      .select('id, nome, empresa, cnpj, telefone, email')
+      .eq('role', 'cliente')
+      .or(`nome.ilike.${term},empresa.ilike.${term},cnpj.ilike.${term},telefone.ilike.${term}`)
+      .limit(10)
+    setClienteResults(rows || [])
+    setClienteSearching(false)
+  }
+
+  const pickCliente = (c) => {
+    setSelectedCliente(c)
+    setClienteResults([])
+    setClienteSearch('')
+    onChange({ ...data, targetClientId: c.id, clienteNome: c.nome, clienteEmpresa: c.empresa })
+  }
+
   // Sincroniza frete quando painel CD Nordeste é selecionado ou quando região do cliente muda
   useEffect(() => {
     if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) {
@@ -4565,7 +4594,16 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         // RPC porque RLS só deixa o cliente ver as próprias cotações — a numeração
         // global precisa rodar no banco (SECURITY DEFINER) pra enxergar todas.
         const { data: numeroOrcamento } = await supabase.rpc('next_orcamento_number')
-        kitDataToSave = { ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [] }
+        kitDataToSave = {
+          ...data, numero_orcamento: numeroOrcamento, revisao: 0, revisoes: [],
+          // Marca que foi o admin quem montou este kit (não o próprio cliente) —
+          // mostrado como aviso interno e no rodapé da proposta impressa.
+          ...(isAdmin ? {
+            criadoPorAdmin: true,
+            criadoPorAdminNome: profile?.nome || 'Equipe Ernaniff',
+            clienteCadastrado: !!data.targetClientId,
+          } : {}),
+        }
         statusToSend = statusOverride || 'enviada'
       } else {
         // ── Incrementa revisão a cada atualização ──
@@ -4604,6 +4642,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         p_status:       statusToSend,
         p_kit_data:     kitDataToSave,
         p_items:        items,
+        p_target_user_id: isAdmin ? (data.targetClientId || null) : null,
       })
       if (error) throw error
       const row = Array.isArray(result) ? result[0] : result
@@ -5017,9 +5056,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               })}
             </tbody>
             <tfoot>
-              {/* Subtotal e Ajuste — visível só para admin */}
+              {/* Subtotal e Ajuste — só pra revisão interna do admin na tela;
+                  print:hidden garante que nunca saem no PDF/impressão, mesmo
+                  quando é o próprio admin quem gera o documento pro cliente. */}
               {isAdmin && (
-                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                <tr className="print:hidden border-t-2 border-gray-200 bg-gray-50">
                   <td colSpan="5" className="px-4 py-2.5 text-right text-sm font-semibold text-gray-500">
                     Subtotal (preço de tabela)
                   </td>
@@ -5029,7 +5070,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                 </tr>
               )}
               {isAdmin && (
-                <tr className="bg-green-50">
+                <tr className="print:hidden bg-green-50">
                   <td colSpan="5" className="px-4 py-2 text-right text-sm font-semibold text-green-700">
                     Ajuste
                     <span className="font-normal text-green-600 ml-1">
@@ -5226,8 +5267,13 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
           <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
           {isAdmin && (
-            <p className="text-[10px] text-gray-400">
+            <p className="print:hidden text-[10px] text-gray-400">
               Fator de precificação: {F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × (1 − ${desconto}%)` : ''}.
+            </p>
+          )}
+          {data.criadoPorAdmin && (
+            <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
+              Proposta elaborada por {data.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
             </p>
           )}
         </div>
@@ -5253,6 +5299,75 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
         {showPersonal && (
           <div className="mt-2 bg-white rounded-xl border border-weg-blue/30 p-5 space-y-4">
+            {isAdmin && !savedId && (
+              <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4 space-y-3">
+                <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">Esta cotação é para qual cliente?</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setClienteMode('cadastrado')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold border-2 transition-colors ${
+                      clienteMode === 'cadastrado' ? 'border-weg-blue bg-white text-weg-blue' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Cliente já cadastrado
+                  </button>
+                  <button
+                    onClick={() => { setClienteMode('novo'); setSelectedCliente(null); onChange({ ...data, targetClientId: null }) }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold border-2 transition-colors ${
+                      clienteMode === 'novo' ? 'border-weg-blue bg-white text-weg-blue' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Cliente novo (sem cadastro)
+                  </button>
+                </div>
+
+                {clienteMode === 'cadastrado' && (
+                  selectedCliente ? (
+                    <div className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {selectedCliente.nome}{selectedCliente.empresa ? ` — ${selectedCliente.empresa}` : ''}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">{selectedCliente.cnpj || selectedCliente.telefone || selectedCliente.email || '—'}</p>
+                      </div>
+                      <button onClick={() => { setSelectedCliente(null); onChange({ ...data, targetClientId: null }) }} className="shrink-0 text-xs text-red-500 hover:underline ml-2">
+                        Trocar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        value={clienteSearch}
+                        onChange={e => searchClientes(e.target.value)}
+                        placeholder="Buscar por nome, empresa, CNPJ ou telefone…"
+                        className="w-full text-sm border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue bg-white"
+                      />
+                      {clienteSearching && <p className="text-xs text-gray-400">Buscando…</p>}
+                      {clienteResults.length > 0 && (
+                        <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                          {clienteResults.map(c => (
+                            <button key={c.id} onClick={() => pickCliente(c)} className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors">
+                              <p className="text-sm font-medium text-gray-900 truncate">{c.nome}{c.empresa ? ` — ${c.empresa}` : ''}</p>
+                              <p className="text-xs text-gray-400 truncate">{c.cnpj || c.telefone || c.email || '—'}</p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {!clienteSearching && clienteSearch.trim().length >= 2 && clienteResults.length === 0 && (
+                        <p className="text-xs text-gray-400">Nenhum cliente encontrado.</p>
+                      )}
+                    </div>
+                  )
+                )}
+
+                {clienteMode === 'novo' && (
+                  <p className="text-xs text-amber-700">
+                    A cotação fica salva na sua conta (admin), identificada com o nome do cliente abaixo. Se ele se cadastrar depois, dá pra associar a conta real em "Minhas Cotações".
+                  </p>
+                )}
+              </div>
+            )}
+
             <p className="text-xs text-gray-400 uppercase font-semibold tracking-wide">Dados do Cliente</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>

@@ -1437,6 +1437,11 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
         <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
           <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
           <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+          {kitData.criadoPorAdmin && (
+            <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
+              Proposta elaborada por {kitData.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
+            </p>
+          )}
         </div>
         <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
           <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome}</span>
@@ -1548,9 +1553,10 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             </table>
           </div>
 
-          {/* Financial summary — right after items table */}
+          {/* Financial summary — revisão interna do admin na tela; print:hidden
+              garante que nunca sai no PDF/impressão, mesmo sendo o admin quem gera. */}
           {isAdmin && (
-            <div className="px-8 py-3 space-y-1.5 border-t border-gray-200">
+            <div className="print:hidden px-8 py-3 space-y-1.5 border-t border-gray-200">
               <div className="flex justify-between text-sm text-gray-500">
                 <span>Subtotal (preço de tabela)</span>
                 <span className="font-semibold">{fmt(quote.subtotal)}</span>
@@ -1615,6 +1621,11 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
           <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
             <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
             <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+            {kitData.criadoPorAdmin && (
+              <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
+                Proposta elaborada por {kitData.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
+              </p>
+            )}
           </div>
           <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
             <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome}</span>
@@ -1641,6 +1652,12 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             <p className="text-white/80 text-sm">{quote.nome_projeto}</p>
             {kitData.clienteNome && (
               <p className="text-white/60 text-xs">Referência: {kitData.clienteNome}</p>
+            )}
+            {kitData.criadoPorAdmin && (
+              <p className="text-white/60 text-[11px] mt-0.5">
+                Cotação feita por {kitData.criadoPorAdminNome || 'equipe'} — Interno Ernaniff
+                {!kitData.clienteCadastrado && ' (cliente sem cadastro)'}
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -2462,6 +2479,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
           <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
             <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
             <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+            {kitData.criadoPorAdmin && (
+              <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
+                Proposta elaborada por {kitData.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
+              </p>
+            )}
           </div>
           <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
             <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{rootTableInfo?.nome}</span>

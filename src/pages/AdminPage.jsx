@@ -2273,6 +2273,37 @@ function QuoteManagement() {
     if (locked) { try { notifyPrecoTravado({ quoteId }) } catch (_) {} }
   }
 
+  // Associa uma cotação feita pelo admin (cliente sem cadastro na época) à
+  // conta real do cliente, depois que ele se cadastrou.
+  const [associatingId, setAssociatingId] = useState(null)
+  const [assocSearch, setAssocSearch]     = useState('')
+  const [assocResults, setAssocResults]   = useState([])
+  const [assocSearching, setAssocSearching] = useState(false)
+
+  const searchAssocClientes = async (q) => {
+    setAssocSearch(q)
+    if (!q || q.trim().length < 2) { setAssocResults([]); return }
+    setAssocSearching(true)
+    const term = `%${q.trim()}%`
+    const { data: rows } = await supabase
+      .from('profiles')
+      .select('id, nome, empresa, cnpj, telefone, email')
+      .eq('role', 'cliente')
+      .or(`nome.ilike.${term},empresa.ilike.${term},cnpj.ilike.${term},telefone.ilike.${term}`)
+      .limit(10)
+    setAssocResults(rows || [])
+    setAssocSearching(false)
+  }
+
+  const handleAssociarCliente = async (quoteId, clienteId) => {
+    const { error } = await supabase.rpc('associar_cotacao_a_cliente', { p_quote_id: quoteId, p_cliente_id: clienteId })
+    if (error) { console.error('[handleAssociarCliente]', error); return }
+    setQuotes(qs => qs.map(q => q.id === quoteId ? { ...q, data: { ...(q.data || {}), clienteCadastrado: true } } : q))
+    setAssociatingId(null)
+    setAssocSearch('')
+    setAssocResults([])
+  }
+
   const STATUS_COLOR = {
     rascunho:             'bg-gray-100 text-gray-600',
     enviada:              'bg-blue-100 text-blue-700',
@@ -3097,7 +3128,48 @@ function QuoteManagement() {
                       {q.profiles?.telefone && <span>📞 {q.profiles.telefone}</span>}
                       {q.frete_nome        && <span>🚛 {q.frete_nome}</span>}
                       {kd.ov_numero        && <span>📦 OV: <strong>{kd.ov_numero}</strong></span>}
+                      {kd.criadoPorAdmin && (
+                        <span className="text-amber-600">
+                          🛠️ Feita por {kd.criadoPorAdminNome || 'equipe'} — Interno
+                          {!kd.clienteCadastrado && ' (cliente sem cadastro)'}
+                        </span>
+                      )}
+                      {kd.criadoPorAdmin && !kd.clienteCadastrado && associatingId !== q.id && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setAssociatingId(q.id) }}
+                          className="text-weg-blue hover:underline font-semibold"
+                        >
+                          Associar a cliente cadastrado
+                        </button>
+                      )}
                     </div>
+
+                    {associatingId === q.id && (
+                      <div className="px-5 py-3 bg-blue-50/50 border-t border-blue-100 space-y-2" onClick={e => e.stopPropagation()}>
+                        <p className="text-xs font-semibold text-gray-700">Associar esta cotação a um cliente já cadastrado</p>
+                        <input
+                          value={assocSearch}
+                          onChange={e => searchAssocClientes(e.target.value)}
+                          placeholder="Buscar por nome, empresa, CNPJ ou telefone…"
+                          className="w-full text-sm border border-blue-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue bg-white"
+                        />
+                        {assocSearching && <p className="text-xs text-gray-400">Buscando…</p>}
+                        {assocResults.length > 0 && (
+                          <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                            {assocResults.map(c => (
+                              <button key={c.id} onClick={() => handleAssociarCliente(q.id, c.id)}
+                                className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors text-sm">
+                                <p className="font-medium text-gray-900 truncate">{c.nome}{c.empresa ? ` — ${c.empresa}` : ''}</p>
+                                <p className="text-xs text-gray-400 truncate">{c.cnpj || c.telefone || c.email || '—'}</p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <button onClick={() => { setAssociatingId(null); setAssocSearch(''); setAssocResults([]) }} className="text-xs text-gray-400 hover:underline">
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
 
                     {/* Validade da cotação */}
                     {q.valid_until && (
