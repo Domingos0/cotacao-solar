@@ -2718,8 +2718,9 @@ function QuoteManagement() {
               </div>
             )}
 
-            {/* ── Resumo financeiro ── */}
-            <div style={{padding:'8px 28px 6px', borderTop:'2px solid #e5e7eb', background:'#f9fafb'}}>
+            {/* ── Resumo financeiro — só na tela do admin; print:hidden garante
+                que a quebra de preço/ajuste nunca sai no PDF/impressão ── */}
+            <div className="print:hidden" style={{padding:'8px 28px 6px', borderTop:'2px solid #e5e7eb', background:'#f9fafb'}}>
               {q.subtotal > 0 && (
                 <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', padding:'3px 0'}}>
                   <span>Subtotal (preço de tabela)</span><span style={{fontWeight:600}}>{fmt(q.subtotal)}</span>
@@ -2745,6 +2746,9 @@ function QuoteManagement() {
             <div style={{padding:'10px 28px', textAlign:'center', fontSize:9, color:'#9ca3af', lineHeight:1.6}}>
               <p style={{margin:0}}>Preços {q.frete_pct>1 ? q.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.</p>
               <p style={{margin:0}}>Ernaniff Representações · 94 9209-0380 · vendas@ernaniff.com.br · Folha 22, Quadra 17 – Lote 38, Sala 05, 2º Andar, Nova Marabá – PA</p>
+              {kd.criadoPorAdmin && (
+                <p style={{margin:'3px 0 0'}}>Proposta elaborada por {kd.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.</p>
+              )}
             </div>
           </div>{/* /print-paper */}
         </div>
