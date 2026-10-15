@@ -3103,15 +3103,19 @@ function Step4({ data, onChange, products }) {
     ? buildBreakerGroups(data.inverters, products, data.breakerSelections)
     : null
 
-  // ── Monitoramento (On-Grid + Híbrido) — obrigatório, família do inversor
-  // define as opções compatíveis (regra simplificada por família, conforme
-  // datasheet WEG de dataloggers/gateways):
-  // SIW200/300H/400 → ED100, SolarView, PVLogger IED202, SmartDongle WLAN-FE
-  // SIW500H/600/750  → ED100, SmartLogger3000A
-  const isHighPowerFamily = /SIW500H|SIW600|SIW750/i.test(invModel)
-  const LOGGER_SAPS = isHighPowerFamily
+  // ── Monitoramento — obrigatório só para as famílias que aparecem de fato
+  // na ficha técnica WEG de dataloggers/gateways. SIW200G/SIW400G/SIW200H/
+  // SIW400H NÃO aparecem nela, então ficam fora (nenhuma opção obrigatória).
+  // SIW300H/SIW500H/SIW500G/SIW600(SIW610)/SIW750/CFW500-700 SD → aparecem.
+  const invModelUp = invModel.toUpperCase()
+  const EXCLUDED_LOGGER_FAMILY = /SIW200G|SIW400G|SIW200H|SIW400H/.test(invModelUp)
+  const isLowPowerLoggerFamily  = !EXCLUDED_LOGGER_FAMILY && /SIW300H/.test(invModelUp)
+  const isHighPowerLoggerFamily = !EXCLUDED_LOGGER_FAMILY && /SIW500H|SIW500G|SIW600|SIW610|SIW750|CFW500|CFW700/.test(invModelUp)
+  const LOGGER_SAPS = isHighPowerLoggerFamily
     ? ['15557556', '15460491']                             // ED100, SmartLogger3000A
-    : ['15557556', '14312415', '16127033', '15179555']     // ED100, SolarView, IED202, SmartDongle
+    : isLowPowerLoggerFamily
+      ? ['15557556', '14312415', '16127033', '15179555']   // ED100, SolarView, IED202, SmartDongle
+      : []                                                  // família não listada na ficha técnica — sem obrigatoriedade
   const loggerOptions = LOGGER_SAPS.map(sap => bySAP(sap)).filter(Boolean)
 
   // ── Produtos Bombeamento ─────────────────────────────────────────────────
