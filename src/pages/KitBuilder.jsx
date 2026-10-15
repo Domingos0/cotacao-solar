@@ -1890,9 +1890,16 @@ function BatteryStep({ data, onChange, products }) {
                 className={`rounded-2xl border-2 p-5 text-left transition-all ${
                   batType === opt.type ? 'border-violet-500 bg-violet-50 ring-4 ring-violet-100' : 'border-gray-200 bg-white hover:border-gray-300'
                 }`}>
-                <p className="font-bold text-gray-900 text-base">{opt.type}</p>
-                <p className="text-sm text-gray-500 mt-0.5">{opt.desc}</p>
-                {opt.prod?.preco && <p className="text-xs font-semibold text-violet-700 mt-2">{fmt(opt.prod.preco)}/un</p>}
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-12 h-12 rounded-xl bg-white border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+                    <ProductImg src={getProductImage(opt.prod)} alt={opt.type} fallback="🔋" className="max-w-full max-h-full object-contain" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 text-base leading-tight">{opt.type}</p>
+                    <p className="text-sm text-gray-500 leading-tight">{opt.desc}</p>
+                  </div>
+                </div>
+                {opt.prod?.preco && <p className="text-xs font-semibold text-violet-700">{fmt(opt.prod.preco)}/un</p>}
               </button>
             ))}
           </div>
@@ -3096,6 +3103,17 @@ function Step4({ data, onChange, products }) {
     ? buildBreakerGroups(data.inverters, products, data.breakerSelections)
     : null
 
+  // ── Monitoramento (On-Grid + Híbrido) — obrigatório, família do inversor
+  // define as opções compatíveis (regra simplificada por família, conforme
+  // datasheet WEG de dataloggers/gateways):
+  // SIW200/300H/400 → ED100, SolarView, PVLogger IED202, SmartDongle WLAN-FE
+  // SIW500H/600/750  → ED100, SmartLogger3000A
+  const isHighPowerFamily = /SIW500H|SIW600|SIW750/i.test(invModel)
+  const LOGGER_SAPS = isHighPowerFamily
+    ? ['15557556', '15460491']                             // ED100, SmartLogger3000A
+    : ['15557556', '14312415', '16127033', '15179555']     // ED100, SolarView, IED202, SmartDongle
+  const loggerOptions = LOGGER_SAPS.map(sap => bySAP(sap)).filter(Boolean)
+
   // ── Produtos Bombeamento ─────────────────────────────────────────────────
   const surgeCCBombP = bySAP(KIT_SAPS.SURGE_CC_12) || byRole(KIT_ROLE.SURGE_DC)
   const fusivelP     = bySAP(KIT_SAPS.FUSIVEL_CC)
@@ -3149,6 +3167,7 @@ function Step4({ data, onChange, products }) {
     inclSurgeCA:   true,
     inclSurgeDC:   true,   surgeDCQty: 1,
     inclBreaker:   true,   breakerQty: totalInvCount,
+    monitorSAP:    loggerOptions[0]?.codigo,
   }
 
   const d = key => data[key] !== undefined ? data[key] : defaults[key]
@@ -3390,7 +3409,9 @@ function Step4({ data, onChange, products }) {
             {data.batEco === 'CB' && data.batProduct && (
               <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0"><Battery size={14} /></div>
+                  <div className="w-10 h-10 rounded-xl bg-white border border-violet-200 flex items-center justify-center shrink-0 overflow-hidden">
+                    <ProductImg src={getProductImage(data.batProduct)} alt={data.batProduct.nome} fallback="🔋" className="max-w-full max-h-full object-contain" />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 text-sm">{data.batProduct.nome || data.batProduct.modelo}</p>
                     <p className="text-xs text-gray-400 font-mono">{data.batProduct.codigo} • {fmt(data.batProduct.preco)}/un</p>
@@ -3483,6 +3504,30 @@ function Step4({ data, onChange, products }) {
               )
             })()}
 
+          </>
+        )}
+
+        {/* ── Monitoramento (obrigatório) — modelo compatível com a família do inversor ── */}
+        {loggerOptions.length > 0 && (
+          <>
+            <div className="relative my-1">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-green-200" /></div>
+              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-green-600 uppercase tracking-widest">Monitoramento (obrigatório)</span></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {loggerOptions.map(opt => {
+                const selected = (d('monitorSAP') ?? loggerOptions[0]?.codigo) === opt.codigo
+                return (
+                  <button key={opt.codigo} onClick={() => set('monitorSAP', opt.codigo)}
+                    className={`rounded-xl border-2 p-3 text-left transition-all ${
+                      selected ? 'border-green-500 bg-green-50 ring-2 ring-green-100' : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}>
+                    <p className="font-semibold text-gray-900 text-sm">{opt.nome || opt.modelo}</p>
+                    <p className="text-xs text-gray-400 font-mono">{opt.codigo} • {fmt(opt.preco)}</p>
+                  </button>
+                )
+              })}
+            </div>
           </>
         )}
 
@@ -4357,6 +4402,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         )
       : []
     ),
+
+    // Monitoramento (On-Grid + Híbrido) — obrigatório, modelo definido em Step4
+    // conforme a família do inversor (ver loggerOptions em BatteryStep/Step4)
+    !isMicro && !isBomb && data.monitorSAP && bySAP(data.monitorSAP) &&
+      { label: 'Monitoramento', product: bySAP(data.monitorSAP), qty: 1, unit: 'un' },
 
     // Bombeamento
     isBomb && d('inclFusivel', true)     && bySAP(KIT_SAPS.FUSIVEL_CC) &&

@@ -534,6 +534,10 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
         { label: 'Protetor de Surto CA', product: surgeCAP, qty: acc.surgeACQty, unit: 'un' },
       !isMicro && !isBomb && acc.inclSurgeDC && surgeDCP &&
         { label: 'Protetor de Surto CC', product: surgeDCP, qty: acc.surgeDCQty, unit: 'un' },
+      // Monitoramento (obrigatório On-Grid/Híbrido) — não editável nesta tela,
+      // só preservado pra não sumir da cotação ao salvar qualquer outra alteração.
+      !isMicro && !isBomb && kitData.monitorSAP && catalogProducts.find(p => p.codigo === kitData.monitorSAP) &&
+        { label: 'Monitoramento', product: catalogProducts.find(p => p.codigo === kitData.monitorSAP), qty: 1, unit: 'un' },
       updatedData.wantsEstrutura && updatedData.estruturaKit && (updatedData.estruturaQty || 0) > 0 &&
         { label: 'Estrutura de Fixação', product: updatedData.estruturaKit, qty: updatedData.estruturaQty, unit: 'kit' },
       updatedData.wantsEstrutura && updatedData.estruturaKit3 && (updatedData.estruturaQty3 || 0) > 0 &&

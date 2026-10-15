@@ -142,6 +142,13 @@ export function getProductImage(product) {
   if (nome.includes('sbw300') || nome.includes('sbw 300'))  return BAT.sbw300
   if (nome.includes('cb050')  || nome.includes('cb 050'))   return BAT.cb050
   if (nome.includes('cb100')  || nome.includes('cb 100'))   return BAT.cb100
+  // SBW200 (geração nova, mesmo porte físico do CB050/CB100 — sem foto própria
+  // ainda, usa a foto do porte equivalente como placeholder)
+  if (nome.includes('sbw200')) {
+    if (nome.includes('057')) return BAT.cb050
+    if (nome.includes('115') || nome.includes('0115')) return BAT.cb100
+    return BAT.cb100
+  }
   // Fallback: qualquer bateria SBW sem modelo específico
   if (nome.includes('sbw') || nome.includes('bateria') || nome.includes('battery'))
     return BAT.cb100
