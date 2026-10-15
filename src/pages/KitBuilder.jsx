@@ -1747,6 +1747,13 @@ function isHybridInv(inv) {
 
 // ─── Battery Step ─────────────────────────────────────────────────────────────
 function BatteryStep({ data, onChange, products }) {
+  // Bateria/acessórios do sistema híbrido são itens estruturais do kit, não
+  // itens de uma tabela de preços importada — por isso buscam sempre no
+  // catálogo completo (`products` do contexto), não na lista ativa filtrada
+  // (`products` prop, que vem de catalogProducts e pode não incluir o SAP
+  // dessas peças se a última lista importada não mencionar elas).
+  const { products: fullProducts } = useProducts()
+
   const inv = data.inverter || data.inverters?.[0]?.inverter
   const m = (inv?.modelo || inv?.nome || '').toUpperCase()
 
@@ -1762,13 +1769,13 @@ function BatteryStep({ data, onChange, products }) {
   const maxBat       = isSIW400H ? 8 : 4
   const maxGroups    = isSIW300H ? 6 : 12
   // CB ecosystem products
-  const batCB050  = products.find(p => /\bCB.?050\b/i.test(p.modelo || p.nome || ''))
-  const batCB100  = products.find(p => /\bCB.?100\b/i.test(p.modelo || p.nome || ''))
-  const jbwProd   = products.find(p => /JBW.*41DC|41DC.*JBW/i.test(p.modelo || p.nome || ''))
+  const batCB050  = fullProducts.find(p => /\bCB.?050\b/i.test(p.modelo || p.nome || ''))
+  const batCB100  = fullProducts.find(p => /\bCB.?100\b/i.test(p.modelo || p.nome || ''))
+  const jbwProd   = fullProducts.find(p => /JBW.*41DC|41DC.*JBW/i.test(p.modelo || p.nome || ''))
   // SBW300 ecosystem products (SmartGuard = mandatory controller; LUNA2000-7-E1 = battery module)
-  const sgSProd      = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bS0\b/i.test(p.nome || p.modelo || ''))
-  const sgTProd      = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bT0\b/i.test(p.nome || p.modelo || ''))
-  const luna2000Prod = products.find(p => /LUNA2000/i.test(p.modelo || p.nome || ''))
+  const sgSProd      = fullProducts.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bS0\b/i.test(p.nome || p.modelo || ''))
+  const sgTProd      = fullProducts.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bT0\b/i.test(p.nome || p.modelo || ''))
+  const luna2000Prod = fullProducts.find(p => /LUNA2000/i.test(p.modelo || p.nome || ''))
   const sgCtrlProd   = isSIW300H ? sgSProd : sgTProd   // mandatory controller for SBW300 ecosystem
 
   const [sub, setSub]             = useState(data.batteryDone ? 'done' : 'ask')
