@@ -102,3 +102,8 @@ export async function notifyDescontoRecusado({ quoteId }) {
 export async function notifyKitStatusChanged({ quoteId, status }) {
   await sendEvent('kitStatusChanged', { quoteId, status })
 }
+
+// 7. Admin travou o preço antigo numa cotação vencida → notifica cliente
+export async function notifyPrecoTravado({ quoteId }) {
+  await sendEvent('precoTravado', { quoteId })
+}

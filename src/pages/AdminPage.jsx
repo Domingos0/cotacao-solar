@@ -11,6 +11,7 @@ import kitCompositions from '../data/kitCompositions.json'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado, notifyKitStatusChanged,
+  notifyPrecoTravado,
 } from '../lib/notify'
 import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
@@ -2253,6 +2254,7 @@ function QuoteManagement() {
     const { error } = await supabase.rpc('override_price_lock', { p_quote_id: quoteId, p_locked: locked })
     if (error) { console.error('[handleTogglePriceLock]', error); return }
     setQuotes(qs => qs.map(q => q.id === quoteId ? { ...q, price_locked: locked } : q))
+    if (locked) { try { notifyPrecoTravado({ quoteId }) } catch (_) {} }
   }
 
   const STATUS_COLOR = {

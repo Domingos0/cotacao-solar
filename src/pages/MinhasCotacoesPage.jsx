@@ -4,7 +4,7 @@ import kitCompositions from '../data/kitCompositions.json'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
-import { notifyDescontoSolicitado } from '../lib/notify'
+import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
@@ -2296,6 +2296,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     if (error) { console.error('[handleTogglePriceLock]', error); return }
     setQuotes(qs => qs.map(q => q.id === id ? { ...q, price_locked: locked } : q))
     setAllQuotes(qs => qs.map(q => q.id === id ? { ...q, price_locked: locked } : q))
+    if (locked) { try { notifyPrecoTravado({ quoteId: id }) } catch (_) {} }
   }
 
   const handleDelete = async (id) => {

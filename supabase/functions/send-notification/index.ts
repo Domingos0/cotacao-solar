@@ -189,7 +189,8 @@ async function handleDescontoAprovado(req: Request, payload: { quoteId?: string 
   const totalOriginal = (q.data as Record<string, unknown> | null)?.total_antes_desconto as number | undefined
 
   const msg = `🎉 *Proposta revisada — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto foi respondida.\n\nKit: ${kitNome}\nDesconto aprovado: ${q.desconto_pct}%\nValor original: ${fmt(totalOriginal)}\nValor com desconto: ${fmt(q.total_final)}\n\nMensagem: ${q.desconto_resposta || ""}\n\nAcesse o sistema para ver a proposta atualizada. 🌞`
-  await dispatch(null, msg, profile?.email, profile?.telefone, waKey)
+  const adminMsg = `✅ *Desconto aprovado — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nDesconto: ${q.desconto_pct}%\nValor final: ${fmt(q.total_final)}`
+  await dispatch(adminMsg, msg, profile?.email, profile?.telefone, waKey)
   return json({ ok: true })
 }
 
@@ -209,6 +210,49 @@ async function handleDescontoRecusado(req: Request, payload: { quoteId?: string 
   const clienteNome = profile?.nome || "Cliente"
 
   const msg = `📋 *Resposta sobre desconto — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto para o kit "${kitNome}" foi analisada.\n\nMensagem: ${q.desconto_resposta || ""}\n\nQualquer dúvida, entre em contato.`
+  const adminMsg = `❌ *Desconto recusado — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nMotivo: ${q.desconto_resposta || "—"}`
+  await dispatch(adminMsg, msg, profile?.email, profile?.telefone, waKey)
+  return json({ ok: true })
+}
+
+async function handlePrecoTravado(req: Request, payload: { quoteId?: string }) {
+  if (!(await requireAdmin(req))) return json({ error: "somente admin" }, 403)
+  if (!payload.quoteId) return json({ error: "quoteId obrigatório" }, 400)
+
+  const { data: q } = await admin.from("quotes")
+    .select("user_id, nome_projeto, kwp, total_final, valid_until")
+    .eq("id", payload.quoteId).maybeSingle()
+  if (!q) return json({ error: "cotação inválida" }, 400)
+
+  const { data: profile } = await admin.from("profiles").select("nome, telefone, email").eq("id", q.user_id).maybeSingle()
+  const { data: authUser } = await admin.auth.admin.getUserById(q.user_id)
+  const waKey = authUser?.user?.user_metadata?.whatsapp_apikey || ""
+  const kitNome = q.nome_projeto || `Kit ${Number(q.kwp || 0).toFixed(2)} kWp`
+  const clienteNome = profile?.nome || "Cliente"
+
+  const msg = `🔒 *Preço antigo mantido — Ernaniff*\n\nOlá, ${clienteNome}!\n\nMesmo com a cotação do kit "${kitNome}" vencida, decidimos manter o valor original: ${fmt(q.total_final)}.\n\nFale com a gente para fechar! 🌞`
+  await dispatch(null, msg, profile?.email, profile?.telefone, waKey)
+  return json({ ok: true })
+}
+
+// Disparado pelo job agendado (pg_cron), sem sessão de usuário — por isso
+// não passa por requireAdmin (não existe um "chamador" aqui, só o próprio banco).
+async function handleCotacaoVencida(payload: { quoteId?: string }) {
+  if (!payload.quoteId) return json({ error: "quoteId obrigatório" }, 400)
+
+  const { data: q } = await admin.from("quotes")
+    .select("user_id, status, nome_projeto, kwp, total_final, valid_until, price_locked")
+    .eq("id", payload.quoteId).maybeSingle()
+  if (!q || q.price_locked) return json({ ok: true }) // já travada, nada a avisar
+
+  const { data: profile } = await admin.from("profiles").select("nome, telefone, email").eq("id", q.user_id).maybeSingle()
+  const { data: authUser } = await admin.auth.admin.getUserById(q.user_id)
+  const waKey = authUser?.user?.user_metadata?.whatsapp_apikey || ""
+  const kitNome = q.nome_projeto || `Kit ${Number(q.kwp || 0).toFixed(2)} kWp`
+  const clienteNome = profile?.nome || "Cliente"
+  const dataVenc = q.valid_until ? new Date(q.valid_until as string).toLocaleDateString("pt-BR") : ""
+
+  const msg = `⏰ *Cotação vencida — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua cotação do kit "${kitNome}" venceu em ${dataVenc}.\n\nOs preços podem ter mudado — reabra a cotação no sistema pra ver o valor atualizado, ou fale com a gente se quiser manter o valor anterior.`
   await dispatch(null, msg, profile?.email, profile?.telefone, waKey)
   return json({ ok: true })
 }
@@ -256,6 +300,8 @@ Deno.serve(async (req) => {
       case "descontoAprovado": return await handleDescontoAprovado(req, payload || {})
       case "descontoRecusado": return await handleDescontoRecusado(req, payload || {})
       case "kitStatusChanged": return await handleKitStatusChanged(req, payload || {})
+      case "precoTravado": return await handlePrecoTravado(req, payload || {})
+      case "cotacaoVencida": return await handleCotacaoVencida(payload || {})
       default: return json({ error: "evento desconhecido" }, 400)
     }
   } catch (e) {
