@@ -2873,8 +2873,10 @@ function AccessoryRow({ icon: Icon, label, product, included, onToggle, qty, onQ
     <div className={`rounded-xl border-2 p-4 transition-all ${included ? c.border : 'border-gray-200 bg-white opacity-60'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 flex-1">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${included ? c.icon + ' text-white' : 'bg-gray-100 text-gray-400'}`}>
-            <Icon size={18} />
+          <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+            <ProductImg src={product ? getProductImage(product) : null} alt={product?.nome || label}
+              fallback={<Icon size={18} className={included ? 'text-gray-500' : 'text-gray-400'} />}
+              className="max-w-full max-h-full object-contain p-1" />
           </div>
           <div className="flex-1">
             <p className="font-semibold text-gray-900 text-sm">{label}</p>
@@ -2912,8 +2914,10 @@ function CableRow({ label, color, product, meters, onChange }) {
   return (
     <div className={`rounded-xl border-2 p-4 transition-all ${meters > 0 ? (isRed ? 'border-red-400 bg-red-50' : 'border-gray-600 bg-gray-50') : 'border-gray-200 opacity-60'}`}>
       <div className="flex items-center gap-2 mb-3">
-        <div className={`w-8 h-8 rounded-xl text-white flex items-center justify-center shrink-0 ${isRed ? 'bg-red-500' : 'bg-gray-800'}`}>
-          <Cable size={15} />
+        <div className="w-9 h-9 rounded-xl bg-white border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+          <ProductImg src={product ? getProductImage(product) : null} alt={label}
+            fallback={<Cable size={15} className={isRed ? 'text-red-500' : 'text-gray-700'} />}
+            className="max-w-full max-h-full object-contain p-1" />
         </div>
         <div>
           <p className="font-semibold text-gray-900 text-sm">{label}</p>
@@ -2959,8 +2963,10 @@ function BreakerRow({ products, selectedBreaker, onSelect, included, onToggle, i
     <div className={`rounded-xl border-2 transition-all ${included ? 'border-weg-blue bg-blue-50' : 'border-gray-200 bg-white opacity-60'}`}>
       {/* Linha principal */}
       <div className="flex items-center gap-3 p-4">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${included ? 'bg-weg-blue text-white' : 'bg-gray-100 text-gray-400'}`}>
-          <ToggleLeft size={18} />
+        <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+          <ProductImg src={current ? getProductImage(current) : null} alt={current?.nome || 'Minidisjuntor'}
+            fallback={<ToggleLeft size={18} className={included ? 'text-weg-blue' : 'text-gray-400'} />}
+            className="max-w-full max-h-full object-contain p-1" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 text-sm">

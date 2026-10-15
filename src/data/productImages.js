@@ -108,6 +108,9 @@ export function getProductImage(product) {
   const nome = (product.nome || '').toLowerCase()
   const fab  = (product.fabricante || '').toLowerCase()
   const pot  = product.potencia || 0
+  // Muitos produtos (ex: disjuntores "MDWP-C10-2") só mencionam o tipo no
+  // campo `tipo`, não no `nome` — usa os dois juntos nas buscas por palavra.
+  const nomeTipo = nome + ' ' + (product.tipo || '').toLowerCase()
 
   // ── Módulos Fotovoltaicos — detecção por marca / tipo ────────────────────
   if (product.categoria === 'Módulos Fotovoltaicos') {
@@ -194,8 +197,8 @@ export function getProductImage(product) {
       return CABO.preto
     return CABO.preto
   }
-  if (nome.includes('disjuntor'))                                        return PROT.disjuntor
-  if (nome.includes('protetor de surto') || nome.includes('dps') || nome.includes('surto'))
+  if (nomeTipo.includes('disjuntor'))                                     return PROT.disjuntor
+  if (nomeTipo.includes('protetor de surto') || nomeTipo.includes('dps') || nomeTipo.includes('surto'))
     return PROT.dps
 
   return CATEGORY_IMG[product.categoria] || null
