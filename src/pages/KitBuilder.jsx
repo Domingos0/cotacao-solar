@@ -3716,6 +3716,18 @@ function StructureSection({ data, onChange, panelCount }) {
     }
   }, [availableKits]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Solo: o SKU do kit depende do Wp do painel (filtro por "<wp> wp" no nome).
+  // Se o cliente trocar de módulo depois de já ter um kit Solo selecionado, o
+  // efeito acima não reavalia (só roda quando ainda não há kit escolhido) —
+  // sem isto, a estrutura ficava presa no Wp antigo mesmo reabrindo Módulos.
+  const prevPanelWp = useRef(data.panel?.potencia)
+  useEffect(() => {
+    if (roofType === 'Solo' && prevPanelWp.current !== data.panel?.potencia && data.estruturaKit) {
+      onChange({ ...data, estruturaKit: null, estruturaQty: null })
+    }
+    prevPanelWp.current = data.panel?.potencia
+  }, [data.panel?.potencia, roofType]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (wants === undefined || wants === null) {
     // Unanswered — show the question
     return (
