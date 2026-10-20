@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil } from 'lucide-react'
+import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil, Calculator } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 
@@ -43,6 +43,7 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
   const NAV_ITEMS = [
     { id: 'catalog',   label: 'Catálogo',         icon: LayoutGrid, show: true },
     { id: 'kit',       label: 'Monte seu Kit',     icon: Zap,        show: true },
+    { id: 'dimensionamento', label: 'Dimensionar Bateria', icon: Calculator, show: isAdmin },
     { id: 'cotacoes',  label: 'Minhas Cotações',   icon: FileText,   show: !!session && !isAdmin },
     { id: 'admin',     label: 'Admin',             icon: Settings,   show: isAdmin },
   ].filter(i => i.show)

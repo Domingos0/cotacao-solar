@@ -4182,6 +4182,157 @@ function RevisionHistory({ revisoes, numeroOrcamento }) {
   )
 }
 
+// ─── PDF do Estudo — relatório técnico do dimensionamento (Área de Estudo) ──
+// Só exibe números já calculados na página de Estudo (resumo pronto), sem
+// recalcular nada aqui — essa é a mesma lógica/dados que o usuário viu lá.
+function EstudoPrintContent({ resumo, tableInfo }) {
+  const dataGerado = resumo.geradoEm ? new Date(resumo.geradoEm) : new Date()
+  return (
+    <div className="max-w-3xl mx-auto px-8 py-6">
+      <div className="bg-[#1B3A8A] text-white px-6 py-5 rounded-t-xl flex items-center justify-between print-header">
+        <div className="flex items-center gap-4">
+          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{ height: 36, objectFit: 'contain' }}
+            onError={e => { e.target.style.display = 'none' }} />
+          <div>
+            <p className="text-lg font-extrabold">Relatório de Dimensionamento</p>
+            <p className="text-white/70 text-xs">Sistema híbrido + bateria — {resumo.famKey}{resumo.famKey === 'SIW200H' ? ` (${resumo.phase === 'split' ? 'Split 127/220V' : 'Mono 220V'})` : ''}</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-white/70 text-xs">{dataGerado.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+          <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
+        </div>
+      </div>
+
+      <div className="border border-gray-200 border-t-0 rounded-b-xl p-6 space-y-5">
+        <section>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Cargas críticas levantadas</p>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-200 text-gray-400">
+                <th className="text-left py-1.5">Equipamento</th>
+                <th className="text-left py-1.5">Tipo</th>
+                <th className="text-right py-1.5">W</th>
+                <th className="text-right py-1.5">Qtd</th>
+                <th className="text-right py-1.5">h/dia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resumo.itens.map((it, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-1.5">{it.nome}</td>
+                  <td className="py-1.5">{it.tipo}</td>
+                  <td className="py-1.5 text-right">{it.watts}</td>
+                  <td className="py-1.5 text-right">{it.qty}</td>
+                  <td className="py-1.5 text-right">{it.horasAtivas}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="grid grid-cols-2 gap-3">
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-[10px] text-gray-400 uppercase font-semibold">Energia crítica</p>
+            <p className="text-lg font-extrabold text-gray-800">{resumo.energiaCriticaDiaria?.toFixed(2)} kWh/dia</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-[10px] text-gray-400 uppercase font-semibold">Consumo mensal total</p>
+            <p className="text-lg font-extrabold text-gray-800">{resumo.consumoMensal} kWh/mês</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-[10px] text-gray-400 uppercase font-semibold">Pico nominal simultâneo</p>
+            <p className="text-lg font-extrabold text-gray-800">{resumo.maxNominal?.toFixed(2)} kW</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-[10px] text-gray-400 uppercase font-semibold">Pico de partida simultâneo</p>
+            <p className="text-lg font-extrabold text-gray-800">{resumo.maxPartida?.toFixed(2)} kW</p>
+          </div>
+        </section>
+
+        <section className="bg-violet-50 border border-violet-200 rounded-xl p-4">
+          <p className="text-[10px] text-violet-400 uppercase font-semibold text-center">kWh de bateria necessário</p>
+          <p className="text-2xl font-extrabold text-violet-700 text-center">{resumo.kwhNecessario?.toFixed(2)} kWh</p>
+          <div className="flex items-center justify-center gap-3 mt-2">
+            <div className="w-12 h-12 rounded-lg bg-white border border-violet-100 flex items-center justify-center shrink-0 overflow-hidden">
+              <img src={getProductImage(resumo.bateria?.prod || { nome: resumo.bateria?.tipo })} alt={resumo.bateria?.tipo}
+                className="max-w-full max-h-full object-contain" onError={e => { e.target.style.display = 'none' }} />
+            </div>
+            <p className="text-xs text-gray-600">
+              Autonomia: {resumo.autonomiaHoras}h — Sugestão: {resumo.bateria?.qty}× {resumo.bateria?.tipo} ({resumo.bateria?.kwhTotal?.toFixed(2)} kWh total)
+            </p>
+          </div>
+        </section>
+
+        {resumo.modulo && (
+          <section className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+              <img src={getProductImage(resumo.modulo.prod || { nome: resumo.modulo.nome })} alt={resumo.modulo.nome}
+                className="max-w-full max-h-full object-contain" onError={e => { e.target.style.display = 'none' }} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Módulos fotovoltaicos</p>
+              <p className="text-sm text-gray-700">
+                {resumo.modulo.qty}× {resumo.modulo.nome} ({resumo.modulo.potencia} Wp) —{' '}
+                {resumo.modulo.kwpInstalado?.toFixed(2)} kWp instalado (necessário: {resumo.modulo.kwpNecessario?.toFixed(2)} kWp)
+              </p>
+            </div>
+          </section>
+        )}
+
+        {resumo.inversor && (
+          <section className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+              <img src={getProductImage(resumo.inversor.prod || { nome: resumo.inversor.modelo })} alt={resumo.inversor.modelo}
+                className="max-w-full max-h-full object-contain" onError={e => { e.target.style.display = 'none' }} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Inversor escolhido</p>
+              <p className="text-sm text-gray-700">
+                {resumo.inversor.qty > 1 ? `${resumo.inversor.qty}× ` : ''}{resumo.inversor.modelo} — EPS {resumo.inversor.epsNom}/{resumo.inversor.epsMax} kVA (nominal/pico 60s){resumo.inversor.qty > 1 ? ` por unidade — ${resumo.inversor.qty} unidades em paralelo` : ''}
+              </p>
+            </div>
+          </section>
+        )}
+
+        {resumo.cenario && (
+          <section>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
+              Simulação de cenário — falta de rede das {resumo.cenario.outageInicio}h por {resumo.cenario.outageDuracao}h
+            </p>
+            {resumo.cenario.esgotouEm !== null ? (
+              <p className="text-xs text-red-600 font-semibold mb-2">⚠ Banco chega na reserva (DoD) por volta das {resumo.cenario.esgotouEm}h — não cobre a janela toda.</p>
+            ) : (
+              <p className="text-xs text-green-600 font-semibold mb-2">✓ Banco cobre toda a janela simulada sem chegar na reserva.</p>
+            )}
+            <div className="flex flex-wrap gap-1">
+              {resumo.cenario.linha.map(l => (
+                <span key={l.h} className={`text-[9px] font-bold px-1.5 py-1 rounded ${
+                  l.estado === 'BATERIA_RESERVA' ? 'bg-red-100 text-red-700' : l.estado === 'FALTA_REDE_DIA' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
+                }`}>
+                  {l.h}h: {l.soc}%
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="pt-3 border-t border-gray-100">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Preço estimado (tabela)</p>
+          <p className="text-xl font-extrabold text-[#1B3A8A]">
+            {Number(resumo.precoEstimadoTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          </p>
+        </section>
+
+        <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">
+          Pré-dimensionamento — estimativa de referência baseada em dados informados e curvas simplificadas
+          (não substitui projeto elétrico executivo nem validação de engenharia responsável).
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ─── Step 6: Resumo / Orçamento ──────────────────────────────────────────────
 function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, onGoToQuotes }) {
   const { freteOpcoes, desconto: globalDesconto, condicoes } = useProducts()
@@ -4685,6 +4836,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   // Tela pós-impressão
   const [showPrintedScreen, setShowPrintedScreen] = useState(false)
   const [pendingPrint, setPendingPrint] = useState(false)
+  const [isPrintingEstudo, setIsPrintingEstudo] = useState(false)
 
   // Imprime após voltar para a tela do kit (quando success screen some)
   // Dois requestAnimationFrame garantem que o browser pintou o #kit-print antes de imprimir
@@ -4734,6 +4886,27 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     }
     window.addEventListener('afterprint', restore, { once: true })
     setTimeout(() => window.print(), 80)
+  }
+
+  // ── PDF do Estudo — reaproveita o mesmo mecanismo de impressão do
+  // #kit-print (doPrint), só troca por um instante qual elemento tem esse
+  // id, já que os dois nunca precisam imprimir ao mesmo tempo ──
+  const handlePrintEstudo = () => {
+    setIsPrintingEstudo(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const mainEl   = document.getElementById('kit-print')
+      const estudoEl = document.getElementById('kit-print-estudo')
+      if (!estudoEl) { setIsPrintingEstudo(false); return }
+      if (mainEl) mainEl.id = 'kit-print-principal-temp'
+      estudoEl.id = 'kit-print'
+      const restoreIds = () => {
+        estudoEl.id = 'kit-print-estudo'
+        if (mainEl) mainEl.id = 'kit-print'
+        setIsPrintingEstudo(false)
+      }
+      window.addEventListener('afterprint', restoreIds, { once: true })
+      doPrint()
+    }))
   }
 
   // ── Imprimir (salva automaticamente antes, muda status p/ enviada) ──
@@ -4881,6 +5054,13 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         </div>
 
       </div>
+
+      {/* ── PDF do Estudo (só pra kits abertos a partir da página de Estudo) ── */}
+      {isPrintingEstudo && data.estudoSnapshot?.resumo && (
+        <div id="kit-print-estudo" className="fixed inset-0 bg-white z-[9999] overflow-auto">
+          <EstudoPrintContent resumo={data.estudoSnapshot.resumo} tableInfo={tableInfo} />
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden max-w-3xl mx-auto print:shadow-none print:overflow-visible print:rounded-none print:border-0 print:max-w-none" id="kit-print">
 
@@ -5530,6 +5710,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           </button>
         )}
 
+        {isAdmin && data.origemEstudo && data.estudoSnapshot?.resumo && (
+          <button
+            onClick={handlePrintEstudo}
+            className="flex items-center gap-2 px-5 py-3 rounded-lg border-2 border-violet-300 text-violet-700 font-semibold hover:bg-violet-50 transition-colors"
+          >
+            <Printer size={16} /> PDF do Estudo
+          </button>
+        )}
+
         {session && !isAdmin && savedId && (
           <button
             onClick={() => setShowDiscountModal(true)}
@@ -5624,11 +5813,19 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 }
 
 // ─── Main KitBuilder ─────────────────────────────────────────────────────────
-export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes } = {}) {
+export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, onBackToEstudo } = {}) {
   const { catalogProducts: products, tableInfo } = useProducts()
-  // Se carregado a partir de uma cotação salva, começa no step resumo
+  const { isAdmin: isAdminTop } = useAuth()
+  // Se carregado a partir de uma cotação salva, começa no step resumo; se
+  // veio da página de Estudo (dimensionamento de bateria — só admin) e quem
+  // está vendo agora também é admin, começa direto em Acessórios (os passos
+  // anteriores já vêm pré-preenchidos). Um cliente reabrindo esse mesmo kit
+  // não tem acesso à página de Estudo, então sempre cai no Resumo normal.
   const initIsHybrid = initialData ? isHybridInv(initialData.inverter || initialData.inverters?.[0]?.inverter) : false
-  const [step, setStep] = useState(initialData ? (initIsHybrid ? 7 : 6) : 1)
+  const initStep = initialData
+    ? (initialData.origemEstudo && isAdminTop ? (initIsHybrid ? 6 : 5) : (initIsHybrid ? 7 : 6))
+    : 1
+  const [step, setStep] = useState(initStep)
   const [data, setData] = useState(initialData || { mode: 'potencia', hsp: SUN_HOURS })
 
   const hsp = data.hsp || SUN_HOURS
@@ -5715,11 +5912,14 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes }
       {/* Navigation */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => setStep(s => s - 1)}
-          disabled={step === 1}
+          onClick={() => {
+            if (step === 1 && data.origemEstudo && isAdminTop) { onBackToEstudo?.(data.estudoSnapshot?.raw); return }
+            setStep(s => s - 1)
+          }}
+          disabled={step === 1 && !(data.origemEstudo && isAdminTop)}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:border-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
         >
-          <ChevronLeft size={18} /> Voltar
+          <ChevronLeft size={18} /> {step === 1 && data.origemEstudo && isAdminTop ? 'Voltar ao Estudo' : 'Voltar'}
         </button>
 
         {/* Progress dots */}

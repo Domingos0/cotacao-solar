@@ -9,6 +9,7 @@ import ProductCard from './components/ProductCard'
 import ProductDetail from './components/ProductDetail'
 import AdminPage from './pages/AdminPage'
 import KitBuilder from './pages/KitBuilder'
+import BatteryDimensioningPage from './pages/BatteryDimensioningPage'
 import MinhasCotacoesPage from './pages/MinhasCotacoesPage'
 import LoginPage from './pages/LoginPage'
 import CadastroPage from './pages/CadastroPage'
@@ -234,6 +235,7 @@ function AuthenticatedApp() {
   const [page, setPage] = useState('catalog')
   const [searchQuery, setSearchQuery] = useState('')
   const [loadedQuote, setLoadedQuote] = useState(null)
+  const [estudoInicial, setEstudoInicial] = useState(null)
 
   const handleLoadQuote = ({ quoteData, savedId }) => {
     setLoadedQuote({ quoteData, savedId })
@@ -244,6 +246,14 @@ function AuthenticatedApp() {
   const handlePageChange = (p) => {
     if (p === 'kit') setLoadedQuote(null) // novo kit sempre começa do zero via nav
     setPage(p)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Voltar do Monte seu Kit pra página de Estudo, restaurando o que foi
+  // calculado lá (cargas, família, consumo etc.) pra continuar editando.
+  const handleBackToEstudo = (estudoRaw) => {
+    setEstudoInicial(estudoRaw || null)
+    setPage('dimensionamento')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -264,9 +274,16 @@ function AuthenticatedApp() {
             initialData={loadedQuote?.quoteData}
             initialSavedId={loadedQuote?.savedId}
             onGoToQuotes={() => handlePageChange('cotacoes')}
+            onBackToEstudo={handleBackToEstudo}
           />
         )}
         {page === 'cotacoes' && <MinhasCotacoesPage onLoadQuote={handleLoadQuote} />}
+        {page === 'dimensionamento' && isAdmin && (
+          <BatteryDimensioningPage
+            initialState={estudoInicial}
+            onUseInKit={(quoteData) => handleLoadQuote({ quoteData, savedId: undefined })}
+          />
+        )}
         {page === 'admin' && <AdminPage />}
       </main>
 
