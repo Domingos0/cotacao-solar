@@ -1669,14 +1669,11 @@ function Step2({ data, onChange, products, targetKwp }) {
 // ─── Overload helpers ────────────────────────────────────────────────────────
 function getOverloadMax(inv) {
   const m = (inv.modelo || inv.nome || '').toUpperCase()
-  if (/SIW420G.*K075/.test(m))   return 0.70
+  if (/SIW420G.*K075/.test(m))   return 0.70  // atípico, catálogo a confirmar
   if (/SIW200H/.test(m))         return 1.00  // toda a linha SIW200H
-  if (/SIW300H/.test(m))         return 1.00
   if (/SIW400H/.test(m))         return 1.00  // toda a linha SIW400H (K e T series)
-  if (/SIW500H.*ST012/.test(m))  return 0.00
-  if (/SIW500H.*ST020/.test(m))  return 0.13
-  if (/SIW500G.*K075/.test(m))   return 0.00
-  return 0.50
+  if (/SIW500G.*K075/.test(m))   return 0.00  // atípico, catálogo a confirmar
+  return 0.50  // demais linhas (SIW200G, SIW300/SIW300H, SIW400G, SIW500H/G, SIW600/610)
 }
 function getMaxDCkW(inv) { return round2(inv.potencia * (1 + getOverloadMax(inv))) }
 function invOverloadPct(totalKwp, invKw) {
@@ -1686,7 +1683,7 @@ function invOverloadPct(totalKwp, invKw) {
 
 // ── SIW400H K-series — potência e overload dependem da tensão da rede ─────────
 // inv.potencia = CA nominal 380V (ex: K008 = 15 kW); para rede 220/127V usar CA abaixo.
-const SIW400K_CA_220 = { '007': 7.5, '008': 8.6, '011': 11.5, '014': 14.4, '017': 17.3 }
+const SIW400K_CA_220 = { '007': 7.5, '008': 8.6, '011': 11.5, '014': 14.4, '017': 17.4 }
 const SIW400K_OL_220 = { '007': 1.00, '008': 1.00, '011': 1.00, '014': 1.00, '017': 1.00 }
 
 function getK400KVariant(inv) {
@@ -3109,19 +3106,21 @@ function Step4({ data, onChange, products }) {
     ? buildBreakerGroups(data.inverters, products, data.breakerSelections)
     : null
 
-  // ── Monitoramento — obrigatório só para as famílias que aparecem de fato
-  // na ficha técnica WEG de dataloggers/gateways. SIW200G/SIW400G/SIW200H/
-  // SIW400H NÃO aparecem nela, então ficam fora (nenhuma opção obrigatória).
-  // SIW300H/SIW500H/SIW500G/SIW600(SIW610)/SIW750/CFW500-700 SD → aparecem.
+  // ── Monitoramento = gateway. Regra conforme ficha técnica WEG de
+  // dataloggers/gateways: linha sem Wi-Fi para internet → gateway
+  // OBRIGATÓRIO; linha com Wi-Fi integrado mas listada em algum gateway →
+  // OPCIONAL; linha com Wi-Fi e sem gateway listado → não aparece.
   const invModelUp = invModel.toUpperCase()
-  const EXCLUDED_LOGGER_FAMILY = /SIW200G|SIW400G|SIW200H|SIW400H/.test(invModelUp)
-  const isLowPowerLoggerFamily  = !EXCLUDED_LOGGER_FAMILY && /SIW300H/.test(invModelUp)
-  const isHighPowerLoggerFamily = !EXCLUDED_LOGGER_FAMILY && /SIW500H|SIW500G|SIW600|SIW610|SIW750|CFW500|CFW700/.test(invModelUp)
+  // Sem Wi-Fi: SIW500H M2/M3/ST060, SIW500G, SIW600/SIW610, SIW750, CFW500/700 SD
+  const isHighPowerLoggerFamily = /SIW500H|SIW500G|SIW600|SIW610|SIW750|CFW500|CFW700/.test(invModelUp)
+  // Com Wi-Fi mas listada em algum gateway (ED100/PVLOGGER/SolarView/SmartDongle/SmartLogger)
+  const isOptionalLoggerFamily  = !isHighPowerLoggerFamily && /SIW300H/.test(invModelUp)
+  const monitorRequired = isHighPowerLoggerFamily
   const LOGGER_SAPS = isHighPowerLoggerFamily
-    ? ['15557556', '15460491']                             // ED100, SmartLogger3000A
-    : isLowPowerLoggerFamily
-      ? ['15557556', '14312415', '16127033', '15179555']   // ED100, SolarView, IED202, SmartDongle
-      : []                                                  // família não listada na ficha técnica — sem obrigatoriedade
+    ? ['15557556', '15460491']                             // ED100, SmartLogger3000A — obrigatório
+    : isOptionalLoggerFamily
+      ? ['15557556', '14312415', '16127033', '15179555']   // ED100, SolarView, IED202, SmartDongle — opcional
+      : []                                                  // SIW200H/SIW400H/SIW400G/SIW420G — Wi-Fi, sem gateway listado
   const loggerOptions = LOGGER_SAPS.map(sap => bySAP(sap)).filter(Boolean)
 
   // ── Produtos Bombeamento ─────────────────────────────────────────────────
@@ -3178,6 +3177,7 @@ function Step4({ data, onChange, products }) {
     inclSurgeDC:   true,   surgeDCQty: 1,
     inclBreaker:   true,   breakerQty: totalInvCount,
     monitorSAP:    loggerOptions[0]?.codigo,
+    inclMonitor:   true,
   }
 
   const d = key => data[key] !== undefined ? data[key] : defaults[key]
@@ -3517,13 +3517,29 @@ function Step4({ data, onChange, products }) {
           </>
         )}
 
-        {/* ── Monitoramento (obrigatório) — modelo compatível com a família do inversor ── */}
+        {/* ── Monitoramento (gateway) — obrigatório se a linha não tem Wi-Fi,
+             opcional se tem Wi-Fi mas aparece listada em algum gateway ── */}
         {loggerOptions.length > 0 && (
           <>
             <div className="relative my-1">
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-green-200" /></div>
-              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-green-600 uppercase tracking-widest">Monitoramento (obrigatório)</span></div>
+              <div className="relative flex justify-center">
+                <span className="bg-white px-3 text-xs text-green-600 uppercase tracking-widest">
+                  Monitoramento ({monitorRequired ? 'obrigatório' : 'opcional'})
+                </span>
+              </div>
             </div>
+            {!monitorRequired && (
+              <div className="flex justify-end -mt-1">
+                <button onClick={() => set('inclMonitor', !(d('inclMonitor')))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    d('inclMonitor') ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  {d('inclMonitor') ? '✓ Incluído no kit' : '+ Incluir gateway'}
+                </button>
+              </div>
+            )}
+            {(monitorRequired || d('inclMonitor')) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {loggerOptions.map(opt => {
                 const selected = (d('monitorSAP') ?? loggerOptions[0]?.codigo) === opt.codigo
@@ -3538,6 +3554,7 @@ function Step4({ data, onChange, products }) {
                 )
               })}
             </div>
+            )}
           </>
         )}
 
@@ -4607,9 +4624,10 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       : []
     ),
 
-    // Monitoramento (On-Grid + Híbrido) — obrigatório, modelo definido em Step4
-    // conforme a família do inversor (ver loggerOptions em BatteryStep/Step4)
-    !isMicro && !isBomb && data.monitorSAP && bySAP(data.monitorSAP) &&
+    // Monitoramento (On-Grid + Híbrido) = gateway — obrigatório ou opcional
+    // conforme a família do inversor (ver loggerOptions/monitorRequired em Step4);
+    // d('inclMonitor', true) é sempre true pra famílias obrigatórias (sem toggle lá)
+    !isMicro && !isBomb && d('inclMonitor', true) && data.monitorSAP && bySAP(data.monitorSAP) &&
       { label: 'Monitoramento', product: bySAP(data.monitorSAP), qty: 1, unit: 'un' },
 
     // Bombeamento
