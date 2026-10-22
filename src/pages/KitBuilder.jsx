@@ -3931,11 +3931,20 @@ function StructureSection({ data, onChange, panelCount }) {
   // Se o cliente trocar de módulo depois de já ter um kit Solo selecionado, o
   // efeito acima não reavalia (só roda quando ainda não há kit escolhido) —
   // sem isto, a estrutura ficava presa no módulo antigo mesmo reabrindo Módulos.
+  // IMPORTANTE: não dá pra só zerar estruturaKit/estruturaQty aqui e confiar
+  // no efeito de auto-seleção acima pra recalcular depois — aquele efeito só
+  // roda quando `availableKits` muda de referência, e quando o painel muda
+  // mas o kit Solo continua sendo o mesmo SAP (único da região), a lista não
+  // muda de referência a tempo, então o campo ficava com a quantidade antiga
+  // mesmo com o card de cima já mostrando o total certo. Por isso já recalcula
+  // e grava o kit + a quantidade corretos num único onChange, sem esperar.
   const panelKey = data.panel?.id ?? data.panel?.potencia
   const prevPanelKey = useRef(panelKey)
   useEffect(() => {
     if (roofType === 'Solo' && prevPanelKey.current !== panelKey && data.estruturaKit) {
-      onChange({ ...data, estruturaKit: null, estruturaQty: null })
+      const freshKit = availableKits.find(k => k.id === data.estruturaKit.id) || availableKits[0] || null
+      const freshQty = freshKit ? Math.ceil(panelCount / (freshKit.potencia || 1)) : null
+      onChange({ ...data, estruturaKit: freshKit, estruturaQty: freshQty })
     }
     prevPanelKey.current = panelKey
   }, [panelKey, roofType]) // eslint-disable-line react-hooks/exhaustive-deps
