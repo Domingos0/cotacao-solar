@@ -3801,6 +3801,15 @@ function StructureSection({ data, onChange, panelCount }) {
       if (data.panel?.potencia && base.length > 0) {
         const wpStr = String(data.panel.potencia) + ' wp'
         const wpFiltered = base.filter(k => (k.nome || '').toLowerCase().includes(wpStr))
+        // Alguns kits Solo são específicos por marca/modelo do painel, não só
+        // pelo Wp (ex.: "610 Wp - BYD Bifacial" vs "610 Wp - WEG Bifacial" —
+        // o filtro de Wp sozinho casa os dois). Refina pela marca do painel
+        // selecionado (campo "fabricante") quando houver mais de um candidato.
+        const panelBrand = (data.panel.fabricante || '').toLowerCase().trim()
+        if (panelBrand && wpFiltered.length > 1) {
+          const brandFiltered = wpFiltered.filter(k => (k.nome || '').toLowerCase().includes(panelBrand))
+          if (brandFiltered.length > 0) return brandFiltered
+        }
         return wpFiltered.length > 0 ? wpFiltered : base
       }
       return base
@@ -3836,7 +3845,7 @@ function StructureSection({ data, onChange, panelCount }) {
       return true
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, roofType, isopleta, metalicoPerfil, soloRegiao, data.panel?.potencia, panelCount])
+  }, [products, roofType, isopleta, metalicoPerfil, soloRegiao, data.panel?.potencia, data.panel?.fabricante, panelCount])
 
   // Roof types that always use only 4-module kits (no 3-mod mix)
   const FORCE_4MOD = ['Cerâmico', 'Fibromadeira', 'Fibrometálico']
@@ -3896,17 +3905,22 @@ function StructureSection({ data, onChange, panelCount }) {
     }
   }, [availableKits]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Solo: o SKU do kit depende do Wp do painel (filtro por "<wp> wp" no nome).
+  // Solo: o SKU do kit depende do módulo escolhido — e alguns kits Solo são
+  // específicos por marca/modelo (ex.: "610 Wp - BYD Bifacial"), não só pelo
+  // Wp. Comparar só a potência deixava o kit preso na marca antiga quando o
+  // cliente trocava pra outro módulo de mesmo Wp mas marca diferente — por
+  // isso compara pelo id do produto (fallback pra potência se não tiver id).
   // Se o cliente trocar de módulo depois de já ter um kit Solo selecionado, o
   // efeito acima não reavalia (só roda quando ainda não há kit escolhido) —
-  // sem isto, a estrutura ficava presa no Wp antigo mesmo reabrindo Módulos.
-  const prevPanelWp = useRef(data.panel?.potencia)
+  // sem isto, a estrutura ficava presa no módulo antigo mesmo reabrindo Módulos.
+  const panelKey = data.panel?.id ?? data.panel?.potencia
+  const prevPanelKey = useRef(panelKey)
   useEffect(() => {
-    if (roofType === 'Solo' && prevPanelWp.current !== data.panel?.potencia && data.estruturaKit) {
+    if (roofType === 'Solo' && prevPanelKey.current !== panelKey && data.estruturaKit) {
       onChange({ ...data, estruturaKit: null, estruturaQty: null })
     }
-    prevPanelWp.current = data.panel?.potencia
-  }, [data.panel?.potencia, roofType]) // eslint-disable-line react-hooks/exhaustive-deps
+    prevPanelKey.current = panelKey
+  }, [panelKey, roofType]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (wants === undefined || wants === null) {
     // Unanswered — show the question
