@@ -35,7 +35,17 @@ const INVERTER_FAMILIES = [
   { key: 'SIW400H', label: 'SIW400H', eco: 'CB',  maxBat: 8,  maxGroups: null },
   { key: 'SIW300H', label: 'SIW300H', eco: 'SBW', maxBat: null, maxGroups: 6 },
   { key: 'SIW500H', label: 'SIW500H', eco: 'SBW', maxBat: null, maxGroups: 12 },
+  { key: 'SIW400H_W30', label: 'SIW400H W30 (alta potência)', eco: 'SBW400', maxBat: null, maxGroups: null },
 ]
+
+// SBW400 (SIW400H W30, T050/T075/T125) — 1 BMS (HV Box) por torre + 4 a 15
+// módulos SBW400 B160 W00 (16,07 kWh cada) por BMS, até 3 torres (720 kWh).
+// Nenhum SKU desta linha está cadastrado no catálogo ainda — a regra fica
+// pronta aqui pra quando os produtos forem incluídos (inversor + B160 + HV Box).
+const SBW400_B160_KWH = 16.07
+const SBW400_MIN_PER_BMS = 4
+const SBW400_MAX_PER_BMS = 15
+const SBW400_MAX_TOWERS = 3
 
 // Saída EPS (backup) nominal/máxima por potência CA do inversor — modelos
 // SIW200H Mono/SIW400H (ficha técnica WEG). Chave = potência (kW) do produto.
@@ -290,6 +300,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
   const fam = INVERTER_FAMILIES.find(f => f.key === famKey)
   const isCBEco  = fam.eco === 'CB'
   const isSBWEco = fam.eco === 'SBW'
+  const isSBW400Eco = fam.eco === 'SBW400'
   const isSplitPhase = famKey === 'SIW200H' && phase === 'split'
 
   const addItem = (preset) => setItems(list => [...list, newItem(preset)])
@@ -433,8 +444,8 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
   // Com N inversores em paralelo, o limite de baterias escala junto — cada
   // unidade aceita o mesmo máximo de baterias (ficha técnica WEG), então N
   // inversores suportam N× mais baterias combinadas.
-  const maxBatEfetivo = fam.maxBat * invChosenQty
-  const maxGroupsEfetivo = fam.maxGroups * invChosenQty
+  const maxBatEfetivo = fam.maxBat != null ? fam.maxBat * invChosenQty : null
+  const maxGroupsEfetivo = fam.maxGroups != null ? fam.maxGroups * invChosenQty : null
 
   const bestCbFit = useMemo(() => {
     if (!isCBEco) return null
@@ -466,6 +477,16 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
   const sgTProd = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bT0\b/i.test(p.nome || p.modelo || ''))
   const sgCtrlProd = famKey === 'SIW300H' ? sgSProd : sgTProd
 
+  // SBW400 (SIW400H W30) — min 4 / máx 15 módulos B160 por BMS, até 3 torres
+  const sbw400ModTotal = isSBW400Eco
+    ? Math.min(SBW400_MAX_PER_BMS * SBW400_MAX_TOWERS, Math.max(SBW400_MIN_PER_BMS, Math.ceil(kwhNecessario / SBW400_B160_KWH)))
+    : null
+  const sbw400Towers = isSBW400Eco ? Math.max(1, Math.ceil(sbw400ModTotal / SBW400_MAX_PER_BMS)) : null
+  const sbw400KwhTotal = isSBW400Eco ? round2(sbw400ModTotal * SBW400_B160_KWH) : null
+  // Nenhum SKU cadastrado ainda — fica null até os produtos entrarem no catálogo
+  const b160Prod = isSBW400Eco ? products.find(p => /B160/i.test(p.modelo || p.nome || '')) : null
+  const hvBoxProd = isSBW400Eco ? products.find(p => /HV.?Box/i.test(p.modelo || p.nome || '')) : null
+
   // ── Dimensionamento dos módulos FV (metodologia WEG, p.59): Pfv (kWp) =
   // consumo mensal ÷ (HSP × 30 dias × eficiência do sistema) ──
   const kwpNecessario = round2(consumoMensal / (hsp * 30 * EFICIENCIA))
@@ -476,6 +497,8 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
 
   const batPrecoTotal = isCBEco
     ? round2((bestCbFit?.qty || 0) * (bestCbFit?.prod?.preco || 0))
+    : isSBW400Eco
+    ? round2((sbw400ModTotal || 0) * (b160Prod?.preco || 0) + (sbw400Towers || 0) * (hvBoxProd?.preco || 0))
     : round2((sbwQty || 0) * (lunaProd?.preco || 0) + (sgCtrlProd?.preco || 0) + (lunaCtrlProd?.preco || 0))
   const invPrecoTotal = isCBEco ? (invChosen?.preco || 0) * invChosenQty : 0
   const precoEstimadoTotal = round2(panelPrecoTotal + batPrecoTotal + invPrecoTotal)
@@ -485,7 +508,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
   // real das cargas críticas, hora a hora, e acompanha o SOC da bateria
   // durante a janela de falta de rede simulada — não é medição real, é uma
   // estimativa de pré-dimensionamento (ver README da metodologia).
-  const bankKwh = isCBEco ? (bestCbFit?.kwhTotal || 0) : (sbwKwhTotal || 0)
+  const bankKwh = isCBEco ? (bestCbFit?.kwhTotal || 0) : isSBW400Eco ? (sbw400KwhTotal || 0) : (sbwKwhTotal || 0)
   const kwpInstalado = panelProduct ? round2(panelQty * panelProduct.potencia / 1000) : 0
   const pvDiarioKwh = round2(kwpInstalado * hsp * EFICIENCIA)
 
@@ -528,7 +551,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
     const invModeloEscolhido = invChosen?.modelo || invChosen?.nome || ''
     const isTri = isCBEco
       ? /^SIW400H/i.test(invModeloEscolhido) || (!invChosen && famKey === 'SIW400H')
-      : famKey === 'SIW500H'
+      : isSBW400Eco || famKey === 'SIW500H'
     const tensaoRede = isTri ? (/\bK\d/i.test(invModeloEscolhido) ? '220' : '380') : undefined
 
     // Mesma regra de JBW 41DC do BatteryStep (Monte seu Kit): SIW200H ≥2
@@ -554,8 +577,8 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
       inverter: (isCBEco && invChosenQty === 1) ? (invChosen || undefined) : undefined,
       inverters: (isCBEco && invChosenQty > 1 && invChosen) ? [{ inverter: invChosen, qty: invChosenQty }] : undefined,
       wantsBattery: true, batteryDone: true,
-      batEco: isCBEco ? 'CB' : 'SBW300',
-      batType: isCBEco ? bestCbFit?.type : 'SBW300',
+      batEco: isCBEco ? 'CB' : isSBW400Eco ? 'SBW400' : 'SBW300',
+      batType: isCBEco ? bestCbFit?.type : isSBW400Eco ? 'SBW400' : 'SBW300',
       batQty: isCBEco ? batQty : null,
       batProduct: isCBEco ? bestCbFit?.prod : null,
       sbwGroups: isSBWEco ? sbwQty : null,
@@ -565,6 +588,12 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
       luna2000Product: isSBWEco ? lunaProd : null,
       batB070Product: null,
       batCModProduct: null,
+      // SBW400 (SIW400H W30) — sem SKU cadastrado ainda; campos ficam prontos
+      // pra quando o inversor e a bateria B160/HV Box entrarem no catálogo.
+      sbw400ModQty: isSBW400Eco ? sbw400ModTotal : null,
+      sbw400Towers: isSBW400Eco ? sbw400Towers : null,
+      b160Product: isSBW400Eco ? b160Prod : null,
+      hvBoxProduct: isSBW400Eco ? hvBoxProd : null,
       inclJBW41DC: jbwNeeded,
       jbwQty,
       jbwProduct: jbwProd || null,
@@ -666,7 +695,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
         {/* Família do inversor */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">Família do inversor híbrido</label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {INVERTER_FAMILIES.map(f => (
               <button
                 key={f.key}
@@ -1024,6 +1053,38 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
               </div>
             )}
 
+            {isSBW400Eco && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img src={getProductImage(b160Prod || { nome: 'SBW400 B160' })} alt="SBW400 B160"
+                      className="max-w-full max-h-full object-contain" onError={e => { e.target.style.display = 'none' }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-gray-900">{sbw400ModTotal}× SBW400 B160 W00</p>
+                    <p className="text-xs text-gray-500">
+                      {sbw400KwhTotal.toFixed(2)} kWh total em {sbw400Towers} torre{sbw400Towers > 1 ? 's' : ''}
+                      {b160Prod?.preco ? ` · ${fmt(b160Prod.preco)}/módulo` : ''}
+                    </p>
+                  </div>
+                  {sbw400KwhTotal < kwhNecessario && (
+                    <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 shrink-0">
+                      máx. 3 torres (45 módulos) — não cobre 100%
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                  <Info size={11} className="shrink-0" />
+                  {sbw400Towers}× HV Box (BMS) obrigatório — 1 por torre, 4 a 15 módulos cada{hvBoxProd?.preco ? ` (${fmt(hvBoxProd.preco)}/un)` : ''}
+                </p>
+                {(!b160Prod || !hvBoxProd) && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                    SIW400H W30, SBW400 B160 W00 e HV Box ainda não estão cadastrados no catálogo — preço estimado indisponível até lançar os produtos.
+                  </p>
+                )}
+              </div>
+            )}
+
             <p className="text-[11px] text-gray-400 pt-1 border-t border-gray-100">
               Essa sugestão é só de referência — ao montar o kit em "Monte seu Kit", o modelo e a quantidade de bateria continuam sendo escolhidos manualmente no passo Bateria.
             </p>
@@ -1031,7 +1092,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
         )}
 
         {/* Sistema além do limite da linha — nem com paralelismo/baterias no máximo permitido cobre */}
-        {(invAlemDoLimite || (bestCbFit && !bestCbFit.atende) || (isSBWEco && sbwQty !== null && sbwKwhTotal < kwhNecessario)) && (
+        {(invAlemDoLimite || (bestCbFit && !bestCbFit.atende) || (isSBWEco && sbwQty !== null && sbwKwhTotal < kwhNecessario) || (isSBW400Eco && sbw400KwhTotal < kwhNecessario)) && (
           <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 flex items-start gap-3">
             <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
             <div>
@@ -1040,6 +1101,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
                 {invAlemDoLimite && `Nem com o máximo de 4 inversores em paralelo o pico calculado (${fmtKw(maxNominal)}/${fmtKw(maxPartida)} kW) cabe na saída EPS desta família. `}
                 {bestCbFit && !bestCbFit.atende && `O kWh necessário (${kwhNecessario.toFixed(2)} kWh) excede a capacidade máxima combinada de baterias desta linha. `}
                 {isSBWEco && sbwQty !== null && sbwKwhTotal < kwhNecessario && `O kWh necessário (${kwhNecessario.toFixed(2)} kWh) excede o máximo de módulos LUNA2000 permitido para esta família. `}
+                {isSBW400Eco && sbw400KwhTotal < kwhNecessario && `O kWh necessário (${kwhNecessario.toFixed(2)} kWh) excede o máximo de 3 torres SBW400 (720 kWh) desta família. `}
                 <strong>Consulte seu representante técnico WEG</strong> para avaliar uma solução sob medida — ex: dividir em
                 quadros EPS independentes, outra linha de inversor (SIW400G/SIW610) ou projeto especial.
               </p>
