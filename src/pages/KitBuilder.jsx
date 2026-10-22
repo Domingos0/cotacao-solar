@@ -1797,8 +1797,11 @@ function BatteryStep({ data, onChange, products }) {
 
   // SBW400 ecosystem (SIW400H W30): 1 HV Box (BMS) por torre + 4 a 15
   // módulos B160 (16,07 kWh cada) por torre, até 3 torres (720 kWh)
-  const b160Prod  = products.find(p => /B160/i.test(p.modelo || p.nome || ''))
-  const hvBoxProd = products.find(p => /HV.?Box/i.test(p.modelo || p.nome || ''))
+  // SBW400 B160 W00 = bateria; SBW400 C2400 W00 = módulo de controle (HV Box/BMS).
+  // Precisa exigir o prefixo "SBW400" senão /controle/i no tipo colide com o
+  // LUNA2000-10KW (também "Módulo de Controle", mas do ecossistema SBW300).
+  const b160Prod  = products.find(p => /^SBW400/i.test(p.modelo || p.nome || '') && /bateria/i.test(p.tipo || ''))
+  const hvBoxProd = products.find(p => /^SBW400/i.test(p.modelo || p.nome || '') && /controle/i.test(p.tipo || ''))
   // DTSU666 — multimedidor obrigatório pro controle de exportação (ficha técnica WEG)
   const dtsuProd  = products.find(p => /DTSU666/i.test(p.modelo || p.nome || ''))
   const SBW400_MIN = 4, SBW400_MAX_PER_TOWER = 15, SBW400_MAX_TOWERS = 3

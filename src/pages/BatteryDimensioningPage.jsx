@@ -484,8 +484,8 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
   const sbw400Towers = isSBW400Eco ? Math.max(1, Math.ceil(sbw400ModTotal / SBW400_MAX_PER_BMS)) : null
   const sbw400KwhTotal = isSBW400Eco ? round2(sbw400ModTotal * SBW400_B160_KWH) : null
   // Nenhum SKU cadastrado ainda — fica null até os produtos entrarem no catálogo
-  const b160Prod = isSBW400Eco ? products.find(p => /B160/i.test(p.modelo || p.nome || '')) : null
-  const hvBoxProd = isSBW400Eco ? products.find(p => /HV.?Box/i.test(p.modelo || p.nome || '')) : null
+  const b160Prod = isSBW400Eco ? products.find(p => /^SBW400/i.test(p.modelo || p.nome || '') && /bateria/i.test(p.tipo || '')) : null
+  const hvBoxProd = isSBW400Eco ? products.find(p => /^SBW400/i.test(p.modelo || p.nome || '') && /controle/i.test(p.tipo || '')) : null
 
   // ── Dimensionamento dos módulos FV (metodologia WEG, p.59): Pfv (kWp) =
   // consumo mensal ÷ (HSP × 30 dias × eficiência do sistema) ──
