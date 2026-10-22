@@ -3764,6 +3764,24 @@ function computeOptimalMix(N) {
   return { n3: best?.n3 ?? 0, n4: best?.n4 ?? Math.ceil(N / 4) }
 }
 
+// Kits de Estrutura Solo costumam ter só 1 SKU por região (preço por Wp vale
+// pra qualquer módulo), mas o nome cadastrado traz o Wp/marca do módulo usado
+// quando o SKU foi criado (ex.: "Região 1 - ESP-30-G20 (610 Wp - BYD
+// Bifacial [FINAME])"). Isso deixava a descrição (e, no caso de haver mais
+// de um SKU compatível, a opção mostrada) presa na referência antiga mesmo
+// depois de trocar de módulo. Reescreve o trecho "(xxx Wp - MARCA...)" do
+// nome pra refletir o módulo realmente selecionado.
+function soloKitDisplayName(kit, panel) {
+  if (!kit?.nome) return kit?.nome
+  if (!panel?.potencia) return kit.nome
+  const brand = (panel.fabricante || '').trim()
+  const wpBrandText = `${panel.potencia} Wp${brand ? ` - ${brand}` : ''}`
+  if (/\(\s*\d+([.,]\d+)?\s*wp\b/i.test(kit.nome)) {
+    return kit.nome.replace(/\(\s*\d+([.,]\d+)?\s*wp\b[^)]*\)/i, `(${wpBrandText})`)
+  }
+  return kit.nome
+}
+
 const ISOPLETA_OPTIONS = [30, 35, 40, 45, 50]
 const SOLO_REGIOES = ['Região 1', 'Região 2 e 3', 'Região 4 e 5']
 
@@ -4249,7 +4267,7 @@ function StructureSection({ data, onChange, panelCount }) {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{kit.nome}</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{roofType === 'Solo' ? soloKitDisplayName(kit, data.panel) : kit.nome}</p>
                       <p className="text-xs font-mono text-gray-400">
                         SAP: {kit.codigo}
                         {roofType === 'Solo' ? ' • preço/Wp' : ` • ${modPerKit} módulo${modPerKit > 1 ? 's' : ''}/kit`}
@@ -4850,7 +4868,12 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       const rawQty = data.estruturaQty || 1
       const qty = isSolo ? (rawQty % 2 === 0 ? rawQty : rawQty + 1) : rawQty
       const prod = isSolo
-        ? { ...data.estruturaKit, preco: round2(data.estruturaKit.preco * panelWp + 3), precoFrete: round2((data.estruturaKit.precoFrete || data.estruturaKit.preco) * panelWp + 3) }
+        ? {
+            ...data.estruturaKit,
+            nome: soloKitDisplayName(data.estruturaKit, data.panel),
+            preco: round2(data.estruturaKit.preco * panelWp + 3),
+            precoFrete: round2((data.estruturaKit.precoFrete || data.estruturaKit.preco) * panelWp + 3),
+          }
         : data.estruturaKit
       return { label: 'Estrutura de Fixação', product: prod, qty, unit: isSolo ? 'un' : 'kit' }
     })(),
