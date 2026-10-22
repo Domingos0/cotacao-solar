@@ -1760,10 +1760,15 @@ function BatteryStep({ data, onChange, products }) {
 
   const isSIW200H  = /SIW200H/.test(m)
   const isSIW300H  = /SIW300H/.test(m)
-  const isSIW400H  = /SIW400H/.test(m)
+  // SIW400H W30 (T050/T075/T125) usa o sistema de bateria SBW400 (B160 + HV
+  // Box), diferente do W10/W20 que usa CB050/CB100/SBW200 — tem que excluir
+  // o W30 do ecossistema CB senão ele oferece a bateria errada.
+  const isSIW400H_W30 = /SIW400H/.test(m) && /\bW30\b/.test(m)
+  const isSIW400H  = /SIW400H/.test(m) && !isSIW400H_W30
   const isSIW500H  = /SIW500H/.test(m)
   const isCBEco    = isSIW200H || isSIW400H
   const isSBWEco   = isSIW300H || isSIW500H
+  const isSBW400Eco = isSIW400H_W30
   // JBW 41DC: SIW200H ≥2 bat → 1 JBW; SIW400H ≥3 bat → 1 JBW, ≥6 bat → 2 JBW
   const k400kVar     = getK400KVariant(inv)
   const jbwThreshold = isSIW200H ? 2 : (isSIW400H ? 3 : null)
@@ -1790,10 +1795,21 @@ function BatteryStep({ data, onChange, products }) {
   const lunaCtrlProd = products.find(p => /LUNA2000/i.test(p.modelo || p.nome || '') && /controle/i.test(p.tipo || ''))
   const sgCtrlProd   = isSIW300H ? sgSProd : sgTProd   // mandatory controller for SBW300 ecosystem
 
+  // SBW400 ecosystem (SIW400H W30): 1 HV Box (BMS) por torre + 4 a 15
+  // módulos B160 (16,07 kWh cada) por torre, até 3 torres (720 kWh)
+  const b160Prod  = products.find(p => /B160/i.test(p.modelo || p.nome || ''))
+  const hvBoxProd = products.find(p => /HV.?Box/i.test(p.modelo || p.nome || ''))
+  // DTSU666 — multimedidor obrigatório pro controle de exportação (ficha técnica WEG)
+  const dtsuProd  = products.find(p => /DTSU666/i.test(p.modelo || p.nome || ''))
+  const SBW400_MIN = 4, SBW400_MAX_PER_TOWER = 15, SBW400_MAX_TOWERS = 3
+
   const [sub, setSub]             = useState(data.batteryDone ? 'done' : 'ask')
   const [batType, setBatType]     = useState(data.batType || 'CB050')
   const [batQty, setBatQty]       = useState(data.batQty || 1)
   const [sbwGroups, setSbwGroups] = useState(data.sbwGroups || 1)
+  const [sbw400Qty, setSbw400Qty] = useState(data.sbw400ModQty || SBW400_MIN)
+  const sbw400Towers = Math.max(1, Math.ceil(sbw400Qty / SBW400_MAX_PER_TOWER))
+  const sbw400Kwh     = 16.07 * sbw400Qty
 
   const jbwNeeded = isCBEco && jbwThreshold !== null && batQty >= jbwThreshold
   const jbwQty    = !jbwNeeded ? 0 : (isSIW400H && batQty >= 6 ? 2 : 1)
@@ -1803,8 +1819,8 @@ function BatteryStep({ data, onChange, products }) {
     onChange({
       ...data,
       wantsBattery: true, batteryDone: true,
-      batEco:          isCBEco ? 'CB' : 'SBW300',
-      batType:         isCBEco ? batType : 'SBW300',
+      batEco:          isCBEco ? 'CB' : isSBW400Eco ? 'SBW400' : 'SBW300',
+      batType:         isCBEco ? batType : isSBW400Eco ? 'SBW400' : 'SBW300',
       batQty:          isCBEco ? batQty : null,
       sbwGroups:       isSBWEco ? sbwGroups : null,
       sbwModType:      null,
@@ -1815,6 +1831,12 @@ function BatteryStep({ data, onChange, products }) {
       luna2000Product: isSBWEco ? luna2000Prod : null,
       batB070Product:  null,
       batCModProduct:  null,
+      // SBW400 ecosystem (SIW400H W30): HV Box (1 por torre) + módulos B160 + DTSU666 (export)
+      sbw400ModQty:    isSBW400Eco ? sbw400Qty : null,
+      sbw400Towers:    isSBW400Eco ? sbw400Towers : null,
+      b160Product:     isSBW400Eco ? b160Prod : null,
+      hvBoxProduct:    isSBW400Eco ? hvBoxProd : null,
+      dtsuProduct:     isSBW400Eco ? dtsuProd : null,
       inclJBW41DC:     jbwNeeded,
       jbwQty:          jbwQty,
       jbwProduct:      jbwNeeded ? jbwProd : null,
@@ -1831,6 +1853,7 @@ function BatteryStep({ data, onChange, products }) {
     onChange({ ...data, wantsBattery: false, batteryDone: true,
       batProduct: null, sgCtrlProduct: null, lunaCtrlProduct: null, luna2000Product: null,
       batB070Product: null, batCModProduct: null,
+      sbw400ModQty: null, sbw400Towers: null, b160Product: null, hvBoxProduct: null, dtsuProduct: null,
       inclJBW41DC: false, jbwQty: 0, jbwProduct: null, inclBatBackup: false,
       sgProduct: null, backupBoxProduct: null })
     setSub('done')
@@ -1863,7 +1886,7 @@ function BatteryStep({ data, onChange, products }) {
           <p className="text-center text-gray-700 font-semibold text-lg">O cliente deseja incluir bateria?</p>
           <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={() => setSub(isCBEco ? 'cbsel' : 'sbwsel')}
+              onClick={() => setSub(isCBEco ? 'cbsel' : isSBW400Eco ? 'sbw400sel' : 'sbwsel')}
               className="rounded-2xl border-2 border-violet-300 bg-violet-50 hover:bg-violet-100 p-8 text-center font-bold text-violet-800 text-xl transition-all hover:scale-105"
             >
               ⚡ Sim
@@ -1997,6 +2020,56 @@ function BatteryStep({ data, onChange, products }) {
         </div>
       )}
 
+      {/* ── Sub-step: SBW400 selection (SIW400H W30) ── */}
+      {sub === 'sbw400sel' && (
+        <div className="max-w-2xl mx-auto space-y-5">
+          <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm">
+            <p className="font-semibold text-violet-900 mb-2">Sistema SBW400 — componentes do pedido:</p>
+            <ul className="text-violet-800 text-xs space-y-1">
+              <li>• {sbw400Towers}× HV Box (BMS) — 1 por torre (obrigatório)</li>
+              <li>• N× Módulo de bateria: <strong>SBW400 B160 W00</strong> — 16,07 kWh cada (4 a 15 por torre, máx. 3 torres)</li>
+              <li>• 1× Multimedidor: <strong>DTSU666</strong> (controle de exportação, obrigatório)</li>
+            </ul>
+            {(hvBoxProd?.preco || b160Prod?.preco) && (
+              <p className="text-xs text-violet-600 mt-2">
+                {hvBoxProd?.preco && <>HV Box: {fmt(hvBoxProd.preco)}/un</>}
+                {hvBoxProd?.preco && b160Prod?.preco && ' · '}
+                {b160Prod?.preco && <>B160: {fmt(b160Prod.preco)}/un</>}
+              </p>
+            )}
+            {(!b160Prod || !hvBoxProd || !dtsuProd) && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">
+                SBW400 B160 W00, HV Box e/ou DTSU666 ainda não estão cadastrados no catálogo — o preço fica indisponível até lançar os produtos.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Módulos B160 (4 a {SBW400_MAX_PER_TOWER * SBW400_MAX_TOWERS})</p>
+            <div className="flex items-center justify-center gap-5">
+              <button onClick={() => setSbw400Qty(q => Math.max(SBW400_MIN, q - 1))}
+                className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-violet-400 transition-colors">
+                <Minus size={16} />
+              </button>
+              <span className="text-3xl font-bold text-gray-900 w-12 text-center">{sbw400Qty}</span>
+              <button onClick={() => setSbw400Qty(q => Math.min(SBW400_MAX_PER_TOWER * SBW400_MAX_TOWERS, q + 1))}
+                className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-violet-400 transition-colors">
+                <Plus size={16} />
+              </button>
+            </div>
+            {b160Prod?.preco && (
+              <p className="text-center text-xs text-gray-400 mt-1">{fmt(b160Prod.preco)}/módulo</p>
+            )}
+            <p className="text-center mt-1 text-sm text-violet-700 font-semibold">{sbw400Kwh.toFixed(2)} kWh total em {sbw400Towers} torre{sbw400Towers > 1 ? 's' : ''}</p>
+          </div>
+
+          <div className="flex justify-between pt-2">
+            <button onClick={() => setSub('ask')} className="btn-outline px-4 py-2 text-sm">← Voltar</button>
+            <button onClick={confirmBattery} className="btn-primary px-6 py-2 text-sm">Confirmar ✓</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Sub-step: done / summary ── */}
       {sub === 'done' && (
         <div className="max-w-2xl mx-auto">
@@ -2030,6 +2103,12 @@ function BatteryStep({ data, onChange, products }) {
                         )}
                       </li>
                     )}
+                  </ul>
+                ) : data.batEco === 'SBW400' ? (
+                  <ul className="text-sm text-violet-800 space-y-1">
+                    <li>• <strong>{data.sbw400Towers}× HV Box</strong> (BMS, obrigatório — 1 por torre)</li>
+                    <li>• <strong>{data.sbw400ModQty}× SBW400 B160 W00</strong> — {(16.07 * (data.sbw400ModQty || 0)).toFixed(2)} kWh</li>
+                    <li>• <strong>1× DTSU666</strong> (multimedidor, obrigatório)</li>
                   </ul>
                 ) : (
                   <ul className="text-sm text-violet-800 space-y-1">
@@ -3095,6 +3174,11 @@ function Step4({ data, onChange, products }) {
     const maxG = inv?.modelo ? (/SIW500H/.test(inv.modelo) ? 3 : 2) : 2
     set('sbwGroups', Math.max(1, Math.min(maxG, newQty)))
   }
+  const updateSbw400Qty = (newQty) => {
+    const qty = Math.max(4, Math.min(45, newQty))
+    set('sbw400ModQty', qty)
+    set('sbw400Towers', Math.max(1, Math.ceil(qty / 15)))
+  }
 
   const bySAP = sap => products.find(p => p.codigo === sap)
   const byRole = role => products.find(p => p.kitRole === role)
@@ -3511,6 +3595,60 @@ function Step4({ data, onChange, products }) {
                     <p className="text-xs text-violet-600 mt-2 ml-11">{(6.9 * data.sbwGroups).toFixed(1)} kWh total</p>
                   </div>
                 )}
+              </>
+            )}
+
+            {data.batEco === 'SBW400' && (
+              <>
+                <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0"><Cpu size={14} /></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm">{data.hvBoxProduct?.nome || data.hvBoxProduct?.modelo || 'HV Box (BMS)'}</p>
+                      <p className="text-xs text-gray-400 font-mono">{data.hvBoxProduct ? `${data.hvBoxProduct.codigo} • ${fmt(data.hvBoxProduct.preco)}/un` : 'produto a cadastrar'}</p>
+                      <p className="text-xs text-violet-500">1 por torre</p>
+                    </div>
+                    <span className="text-sm font-bold text-violet-700 shrink-0">{data.sbw400Towers}×</span>
+                    <span className="text-xs font-semibold text-violet-600 shrink-0 bg-violet-100 px-2 py-0.5 rounded-full">obrigatório</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white border border-violet-200 flex items-center justify-center shrink-0 overflow-hidden">
+                      <ProductImg src={getProductImage(data.b160Product || { nome: 'SBW400 B160' })} alt="SBW400 B160" fallback="🔋" className="max-w-full max-h-full object-contain" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm">{data.b160Product?.nome || data.b160Product?.modelo || 'SBW400 B160 W00'}</p>
+                      <p className="text-xs text-gray-400 font-mono">{data.b160Product ? `${data.b160Product.codigo} • ${fmt(data.b160Product.preco)}/un` : 'produto a cadastrar'}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => updateSbw400Qty(data.sbw400ModQty - 1)}
+                        className="w-6 h-6 rounded-full border border-violet-300 flex items-center justify-center hover:border-violet-500 hover:bg-violet-100 transition-colors text-violet-600">
+                        <Minus size={11} />
+                      </button>
+                      <span className="text-sm font-bold text-violet-700 w-8 text-center">{data.sbw400ModQty}×</span>
+                      <button onClick={() => updateSbw400Qty(data.sbw400ModQty + 1)}
+                        className="w-6 h-6 rounded-full border border-violet-300 flex items-center justify-center hover:border-violet-500 hover:bg-violet-100 transition-colors text-violet-600">
+                        <Plus size={11} />
+                      </button>
+                      {data.b160Product?.preco && (
+                        <span className="text-sm font-bold text-violet-700 ml-1">= {fmt(moneyMul(data.b160Product.preco, data.sbw400ModQty))}</span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-violet-600 mt-2 ml-11">{(16.07 * data.sbw400ModQty).toFixed(2)} kWh total em {data.sbw400Towers} torre{data.sbw400Towers > 1 ? 's' : ''}</p>
+                </div>
+                <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0"><Zap size={14} /></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm">{data.dtsuProduct?.nome || data.dtsuProduct?.modelo || 'DTSU666'}</p>
+                      <p className="text-xs text-gray-400 font-mono">{data.dtsuProduct ? `${data.dtsuProduct.codigo} • ${fmt(data.dtsuProduct.preco)}` : 'produto a cadastrar'}</p>
+                      <p className="text-xs text-violet-500">Multimedidor — controle de exportação</p>
+                    </div>
+                    <span className="text-xs font-semibold text-violet-600 shrink-0 bg-violet-100 px-2 py-0.5 rounded-full">obrigatório</span>
+                  </div>
+                </div>
               </>
             )}
 
@@ -4714,6 +4852,14 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       { label: `SmartGuard-63A-${data.sgCtrlProduct.nome?.includes('T0') ? 'T0' : 'S0'} (backup)`, product: data.sgCtrlProduct, qty: 1, unit: 'un' },
     data.wantsBattery && data.batEco === 'SBW300' && data.luna2000Product &&
       { label: 'LUNA2000-7-E1 (6,9 kWh)', product: data.luna2000Product, qty: data.sbwGroups || 1, unit: 'un' },
+
+    // Híbrido — sistema SBW400 (SIW400H W30): HV Box (1 por torre) + módulos B160
+    data.wantsBattery && data.batEco === 'SBW400' && data.hvBoxProduct &&
+      { label: 'HV Box (BMS)', product: data.hvBoxProduct, qty: data.sbw400Towers || 1, unit: 'un' },
+    data.wantsBattery && data.batEco === 'SBW400' && data.b160Product &&
+      { label: 'SBW400 B160 W00 (16,07 kWh)', product: data.b160Product, qty: data.sbw400ModQty || 4, unit: 'un' },
+    data.wantsBattery && data.batEco === 'SBW400' && data.dtsuProduct &&
+      { label: 'DTSU666 (controle de exportação)', product: data.dtsuProduct, qty: 1, unit: 'un' },
 
     // Híbrido — JBW 41DC (qty 1 ou 2 conforme batQty)
     data.wantsBattery && d('inclJBW41DC', false) && data.jbwProduct &&
