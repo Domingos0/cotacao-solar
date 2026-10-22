@@ -13,7 +13,7 @@ import {
   Sun, Zap, Link2, Shield, Cable, ToggleLeft, ChevronRight, ChevronLeft,
   Printer, Plus, Minus, Check, Info, AlertTriangle, Calculator, RefreshCw,
   Package, User, FileText, Home, ChevronDown, Search, Save, BadgePercent,
-  CheckCircle2, XCircle, Clock, X, Battery
+  CheckCircle2, XCircle, Clock, X, Battery, Cpu
 } from 'lucide-react'
 
 function ProductImg({ src, alt, fallback, className }) {
@@ -1782,10 +1782,12 @@ function BatteryStep({ data, onChange, products }) {
     'SBW200 CB057': batSBW200_057, 'SBW200 CB115': batSBW200_115,
   }
   const jbwProd   = products.find(p => /JBW.*41DC|41DC.*JBW/i.test(p.modelo || p.nome || ''))
-  // SBW300 ecosystem products (SmartGuard = mandatory controller; LUNA2000-7-E1 = battery module)
+  // SBW300 ecosystem: 1 módulo de controle (LUNA2000-10KW) + SmartGuard
+  // (quadro de transferência, backup) + até 3 módulos de bateria (LUNA2000-7-E1)
   const sgSProd      = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bS0\b/i.test(p.nome || p.modelo || ''))
   const sgTProd      = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bT0\b/i.test(p.nome || p.modelo || ''))
-  const luna2000Prod = products.find(p => /LUNA2000/i.test(p.modelo || p.nome || ''))
+  const luna2000Prod = products.find(p => /LUNA2000/i.test(p.modelo || p.nome || '') && /bateria/i.test(p.tipo || ''))
+  const lunaCtrlProd = products.find(p => /LUNA2000/i.test(p.modelo || p.nome || '') && /controle/i.test(p.tipo || ''))
   const sgCtrlProd   = isSIW300H ? sgSProd : sgTProd   // mandatory controller for SBW300 ecosystem
 
   const [sub, setSub]             = useState(data.batteryDone ? 'done' : 'ask')
@@ -1807,8 +1809,9 @@ function BatteryStep({ data, onChange, products }) {
       sbwGroups:       isSBWEco ? sbwGroups : null,
       sbwModType:      null,
       batProduct:      isCBEco ? selBatProd : null,
-      // SBW300 ecosystem: mandatory SmartGuard controller + LUNA2000-7-E1 battery modules
+      // SBW300 ecosystem: SmartGuard (backup) + módulo de controle + baterias LUNA2000-7-E1
       sgCtrlProduct:   isSBWEco ? sgCtrlProd : null,
+      lunaCtrlProduct: isSBWEco ? lunaCtrlProd : null,
       luna2000Product: isSBWEco ? luna2000Prod : null,
       batB070Product:  null,
       batCModProduct:  null,
@@ -1826,7 +1829,7 @@ function BatteryStep({ data, onChange, products }) {
 
   const confirmNoBattery = () => {
     onChange({ ...data, wantsBattery: false, batteryDone: true,
-      batProduct: null, sgCtrlProduct: null, luna2000Product: null,
+      batProduct: null, sgCtrlProduct: null, lunaCtrlProduct: null, luna2000Product: null,
       batB070Product: null, batCModProduct: null,
       inclJBW41DC: false, jbwQty: 0, jbwProduct: null, inclBatBackup: false,
       sgProduct: null, backupBoxProduct: null })
@@ -1955,11 +1958,16 @@ function BatteryStep({ data, onChange, products }) {
           <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-sm">
             <p className="font-semibold text-violet-900 mb-2">Sistema SBW300 — componentes do pedido:</p>
             <ul className="text-violet-800 text-xs space-y-1">
-              <li>• 1× Controlador de carga: <strong>SmartGuard-63A-{isSIW300H ? 'S0' : 'T0'}</strong> (obrigatório)</li>
-              <li>• N× Módulo de bateria: <strong>LUNA2000-7-E1</strong> — 6,9 kWh cada</li>
+              <li>• 1× Módulo de controle: <strong>LUNA2000-10KW</strong> (obrigatório)</li>
+              <li>• 1× SmartGuard (backup de cargas críticas): <strong>SmartGuard-63A-{isSIW300H ? 'S0' : 'T0'}</strong> (obrigatório)</li>
+              <li>• N× Módulo de bateria: <strong>LUNA2000-7-E1</strong> — 6,9 kWh cada (máx. 3)</li>
             </ul>
-            {sgCtrlProd?.preco && (
-              <p className="text-xs text-violet-600 mt-2">SmartGuard: {fmt(sgCtrlProd.preco)}</p>
+            {(lunaCtrlProd?.preco || sgCtrlProd?.preco) && (
+              <p className="text-xs text-violet-600 mt-2">
+                {lunaCtrlProd?.preco && <>Módulo de controle: {fmt(lunaCtrlProd.preco)}</>}
+                {lunaCtrlProd?.preco && sgCtrlProd?.preco && ' · '}
+                {sgCtrlProd?.preco && <>SmartGuard: {fmt(sgCtrlProd.preco)}</>}
+              </p>
             )}
           </div>
 
@@ -2025,7 +2033,8 @@ function BatteryStep({ data, onChange, products }) {
                   </ul>
                 ) : (
                   <ul className="text-sm text-violet-800 space-y-1">
-                    <li>• <strong>1× SmartGuard-63A-{isSIW300H ? 'S0' : 'T0'}</strong> (controlador obrigatório)</li>
+                    <li>• <strong>1× LUNA2000-10KW</strong> (módulo de controle, obrigatório)</li>
+                    <li>• <strong>1× SmartGuard-63A-{isSIW300H ? 'S0' : 'T0'}</strong> (backup, obrigatório)</li>
                     <li>• <strong>{data.sbwGroups}× LUNA2000-7-E1</strong> — {(6.9 * data.sbwGroups).toFixed(1)} kWh</li>
                   </ul>
                 )}
@@ -3453,6 +3462,19 @@ function Step4({ data, onChange, products }) {
 
             {data.batEco === 'SBW300' && (
               <>
+                {data.lunaCtrlProduct && (
+                  <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0"><Cpu size={14} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm">{data.lunaCtrlProduct.nome || data.lunaCtrlProduct.modelo}</p>
+                        <p className="text-xs text-gray-400 font-mono">{data.lunaCtrlProduct.codigo} • {fmt(data.lunaCtrlProduct.preco)}</p>
+                        <p className="text-xs text-violet-500">Módulo de controle (BMS)</p>
+                      </div>
+                      <span className="text-xs font-semibold text-violet-600 shrink-0 bg-violet-100 px-2 py-0.5 rounded-full">obrigatório</span>
+                    </div>
+                  </div>
+                )}
                 {data.sgCtrlProduct && (
                   <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-4">
                     <div className="flex items-center gap-3">
@@ -4685,9 +4707,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     data.wantsBattery && data.batEco === 'CB' && data.batProduct &&
       { label: `Bateria ${data.batType}`, product: data.batProduct, qty: data.batQty || 1, unit: 'un' },
 
-    // Híbrido — sistema SBW300 (SmartGuard controlador obrigatório + módulos LUNA2000-7-E1)
+    // Híbrido — sistema SBW300 (módulo de controle + SmartGuard backup + baterias LUNA2000-7-E1)
+    data.wantsBattery && data.batEco === 'SBW300' && data.lunaCtrlProduct &&
+      { label: 'LUNA2000-10KW (módulo de controle)', product: data.lunaCtrlProduct, qty: 1, unit: 'un' },
     data.wantsBattery && data.batEco === 'SBW300' && data.sgCtrlProduct &&
-      { label: `SmartGuard-63A-${data.sgCtrlProduct.nome?.includes('T0') ? 'T0' : 'S0'} (controlador)`, product: data.sgCtrlProduct, qty: 1, unit: 'un' },
+      { label: `SmartGuard-63A-${data.sgCtrlProduct.nome?.includes('T0') ? 'T0' : 'S0'} (backup)`, product: data.sgCtrlProduct, qty: 1, unit: 'un' },
     data.wantsBattery && data.batEco === 'SBW300' && data.luna2000Product &&
       { label: 'LUNA2000-7-E1 (6,9 kWh)', product: data.luna2000Product, qty: data.sbwGroups || 1, unit: 'un' },
 

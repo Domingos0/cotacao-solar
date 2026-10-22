@@ -460,7 +460,8 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
 
   const sbwQty = isSBWEco ? Math.min(maxGroupsEfetivo, Math.max(1, Math.ceil(kwhNecessario / LUNA_KWH))) : null
   const sbwKwhTotal = isSBWEco ? round2(sbwQty * LUNA_KWH) : null
-  const lunaProd = isSBWEco ? products.find(p => /LUNA2000/i.test(p.modelo || p.nome || '')) : null
+  const lunaProd = isSBWEco ? products.find(p => /LUNA2000/i.test(p.modelo || p.nome || '') && /bateria/i.test(p.tipo || '')) : null
+  const lunaCtrlProd = isSBWEco ? products.find(p => /LUNA2000/i.test(p.modelo || p.nome || '') && /controle/i.test(p.tipo || '')) : null
   const sgSProd = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bS0\b/i.test(p.nome || p.modelo || ''))
   const sgTProd = products.find(p => /SmartGuard/i.test(p.nome || p.modelo || '') && /\bT0\b/i.test(p.nome || p.modelo || ''))
   const sgCtrlProd = famKey === 'SIW300H' ? sgSProd : sgTProd
@@ -475,7 +476,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
 
   const batPrecoTotal = isCBEco
     ? round2((bestCbFit?.qty || 0) * (bestCbFit?.prod?.preco || 0))
-    : round2((sbwQty || 0) * (lunaProd?.preco || 0) + (sgCtrlProd?.preco || 0))
+    : round2((sbwQty || 0) * (lunaProd?.preco || 0) + (sgCtrlProd?.preco || 0) + (lunaCtrlProd?.preco || 0))
   const invPrecoTotal = isCBEco ? (invChosen?.preco || 0) * invChosenQty : 0
   const precoEstimadoTotal = round2(panelPrecoTotal + batPrecoTotal + invPrecoTotal)
 
@@ -560,6 +561,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
       sbwGroups: isSBWEco ? sbwQty : null,
       sbwModType: null,
       sgCtrlProduct: isSBWEco ? sgCtrlProd : null,
+      lunaCtrlProduct: isSBWEco ? lunaCtrlProd : null,
       luna2000Product: isSBWEco ? lunaProd : null,
       batB070Product: null,
       batCModProduct: null,
@@ -584,7 +586,7 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
           maxNominal, maxPartida, kwhNecessario,
           bateria: isCBEco
             ? { tipo: bestCbFit?.type, qty: batQty, kwhTotal: bestCbFit?.kwhTotal, preco: batPrecoTotal, prod: bestCbFit?.prod || null }
-            : { tipo: 'LUNA2000-7-E1 + SmartGuard', qty: sbwQty, kwhTotal: sbwKwhTotal, preco: batPrecoTotal, prod: lunaProd || null },
+            : { tipo: 'LUNA2000-7-E1 + Módulo de Controle + SmartGuard', qty: sbwQty, kwhTotal: sbwKwhTotal, preco: batPrecoTotal, prod: lunaProd || null },
           inversor: invChosen ? { modelo: invChosen.modelo || invChosen.nome, epsNom: invChosen.eps?.nom, epsMax: invChosen.eps?.max, preco: invChosen.preco, qty: invChosenQty, prod: invChosen } : null,
           modulo: panelProduct ? { nome: panelProduct.nome, potencia: panelProduct.potencia, qty: panelQty, kwpInstalado, kwpNecessario, preco: panelPrecoTotal, prod: panelProduct } : null,
           cenario: cenario ? {
