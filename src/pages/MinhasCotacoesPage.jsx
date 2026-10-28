@@ -259,7 +259,27 @@ function calcAccDefaults(isTri, entradas, totalInv) {
 }
 
 // Simple qty row for accessories
-function AccRow({ label, included, onToggle, qty, onQtyChange, unit = 'un', product }) {
+// roundTo: cabo solar é vendido em rolo em múltiplos de 5m — qualquer valor
+// digitado fora do múltiplo é arredondado pra cima automaticamente (mesma
+// regra do CableRow em KitBuilder.jsx, pra "Revisar cotação" não divergir).
+function AccRow({ label, included, onToggle, qty, onQtyChange, unit = 'un', product, roundTo }) {
+  const [adjustedMsg, setAdjustedMsg] = useState(false)
+  const step = roundTo || 1
+
+  const applyChange = (v) => {
+    const safe = Math.max(0, v)
+    if (roundTo) {
+      const rounded = safe > 0 ? Math.ceil(safe / roundTo) * roundTo : 0
+      onQtyChange(rounded)
+      if (rounded !== safe) {
+        setAdjustedMsg(true)
+        setTimeout(() => setAdjustedMsg(false), 2500)
+      }
+    } else {
+      onQtyChange(safe)
+    }
+  }
+
   return (
     <div className={`flex items-center gap-3 p-2.5 rounded-lg border text-xs transition-colors ${included ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
       <button
@@ -273,22 +293,29 @@ function AccRow({ label, included, onToggle, qty, onQtyChange, unit = 'un', prod
         <span className="text-gray-400 shrink-0">{fmt(product.preco)}/{unit}</span>
       )}
       {included && (
-        <div className="flex items-center gap-1 shrink-0">
-          <button onClick={() => onQtyChange(Math.max(0, qty - 1))} className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center font-bold">−</button>
-          <input
-            type="number" min="0" value={qty}
-            onChange={e => onQtyChange(Math.max(0, parseInt(e.target.value) || 0))}
-            className="w-12 text-center border border-gray-200 rounded px-1 py-0.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-weg-blue"
-          />
-          <button onClick={() => onQtyChange(qty + 1)} className="w-6 h-6 rounded bg-weg-blue text-white hover:bg-weg-blue/90 flex items-center justify-center font-bold">+</button>
-          <span className="text-gray-400 w-6">{unit}</span>
+        <div className="flex flex-col items-end gap-0.5 shrink-0">
+          <div className="flex items-center gap-1">
+            <button onClick={() => applyChange(qty - step)} className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center font-bold">−</button>
+            <input
+              type="number" min="0" step={step} value={qty}
+              onChange={e => applyChange(parseInt(e.target.value) || 0)}
+              className="w-12 text-center border border-gray-200 rounded px-1 py-0.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-weg-blue"
+            />
+            <button onClick={() => applyChange(qty + step)} className="w-6 h-6 rounded bg-weg-blue text-white hover:bg-weg-blue/90 flex items-center justify-center font-bold">+</button>
+            <span className="text-gray-400 w-6">{unit}</span>
+          </div>
+          {adjustedMsg && (
+            <p className="text-[10px] text-amber-600 flex items-center gap-1 whitespace-nowrap">
+              Arredondado p/ múltiplo de {roundTo}m
+            </p>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
+export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = false, error = '' }) {
   const { catalogProducts, freteOpcoes, desconto } = useProducts()
   const kitData    = quote.data || {}
   const kitType    = kitData.kitType || 'ongrid_mono'
@@ -779,14 +806,14 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
 
           {/* Cabo CC+ */}
           {cablePosP && (
-            <AccRow label="Cabo CC Vermelho (6mm²)" product={cablePosP} unit="m"
+            <AccRow label="Cabo CC Vermelho (6mm²)" product={cablePosP} unit="m" roundTo={5}
               included={acc.cablePosMeters > 0} onToggle={() => setA('cablePosMeters', acc.cablePosMeters > 0 ? 0 : 25 * curEntradas)}
               qty={acc.cablePosMeters} onQtyChange={v => setA('cablePosMeters', v)} />
           )}
 
           {/* Cabo CC- */}
           {cableNegP && (
-            <AccRow label="Cabo CC Preto (6mm²)" product={cableNegP} unit="m"
+            <AccRow label="Cabo CC Preto (6mm²)" product={cableNegP} unit="m" roundTo={5}
               included={acc.cableNegMeters > 0} onToggle={() => setA('cableNegMeters', acc.cableNegMeters > 0 ? 0 : 25 * curEntradas)}
               qty={acc.cableNegMeters} onQtyChange={v => setA('cableNegMeters', v)} />
           )}
@@ -1032,13 +1059,21 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
         )}
       </div>
 
+      {/* Erro ao salvar */}
+      {error && (
+        <div className="flex items-start gap-2 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5 text-xs text-red-800">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-500" />
+          <p><strong>Erro ao salvar:</strong> {error}</p>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex gap-2 pt-2 border-t border-gray-100">
-        <button onClick={onCancel} className="px-4 py-2.5 border-2 border-gray-200 text-gray-600 font-semibold rounded-xl text-sm hover:border-gray-300">
+        <button onClick={onCancel} disabled={saving} className="px-4 py-2.5 border-2 border-gray-200 text-gray-600 font-semibold rounded-xl text-sm hover:border-gray-300 disabled:opacity-50">
           Cancelar
         </button>
-        <button onClick={doApply} className="flex-1 bg-weg-blue text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-weg-blue/90">
-          Aplicar e ver resumo →
+        <button onClick={doApply} disabled={saving} className="flex-1 bg-weg-blue text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-weg-blue/90 disabled:opacity-60 flex items-center justify-center gap-2">
+          {saving ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Salvando…</>) : 'Aplicar e ver resumo →'}
         </button>
       </div>
     </div>
@@ -1105,22 +1140,31 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const [discountMotivo, setDiscountMotivo]       = useState('')
   const [discountSending, setDiscountSending]     = useState(false)
   const [discountSent, setDiscountSent]           = useState(false)
+  const [discountError, setDiscountError]         = useState('')
 
   const handleRequestDiscount = async () => {
     if (!discountMotivo.trim() || discountSending) return
     setDiscountSending(true)
-    try {
-      await supabase.from('quotes').update({
-        status: 'aguardando_desconto',
-        desconto_motivo: discountMotivo.trim(),
-      }).eq('id', quote.id)
-      setDiscountSent(true)
-      onStatusChange?.(quote.id, 'aguardando_desconto')
-      onRefresh?.(true)
+    setDiscountError('')
+    // supabase-js não lança exceção em erro de banco/RLS — resolve a promise
+    // com { error }. Precisa checar explicitamente, senão a tela mostrava
+    // "solicitação enviada" mesmo com o UPDATE falhando no banco.
+    const { error } = await supabase.from('quotes').update({
+      status: 'aguardando_desconto',
+      desconto_motivo: discountMotivo.trim(),
+    }).eq('id', quote.id)
+    if (error) {
+      console.error('[handleRequestDiscount]', error)
+      setDiscountError(error.message || 'Erro ao enviar solicitação. Tente novamente.')
+      setDiscountSending(false)
+      return
+    }
+    setDiscountSent(true)
+    onStatusChange?.(quote.id, 'aguardando_desconto')
+    onRefresh?.(true)
 
-      // Notifica admin sobre a solicitação e confirma o envio ao cliente (silencioso)
-      notifyDescontoSolicitado({ quoteId: quote.id })
-    } catch (e) { console.error(e) }
+    // Notifica admin sobre a solicitação e confirma o envio ao cliente (silencioso)
+    notifyDescontoSolicitado({ quoteId: quote.id })
     setDiscountSending(false)
   }
 
@@ -1132,10 +1176,15 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     return () => clearTimeout(id)
   }, [successData, countdown]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError]   = useState('')
+
   // Salva a edição via RPC server-side (save_quote_with_items): o servidor
   // recalcula subtotal/total_final/preco_unit a partir do catálogo de preços
   // publicado, em vez de confiar no total calculado no navegador.
   const handleApplyEdit = async (updatedData, selFrete, newTotal, dbItems) => {
+    setEditSaving(true)
+    setEditError('')
     const novaRevisao = (kitData.revisao || 0) + 1
     const freteNome   = selFrete?.nome || quote.frete_nome || '—'
     const fretePct    = selFrete?.acrescimo || quote.frete_pct || 1
@@ -1183,7 +1232,12 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
       p_kit_data:     newData,
       p_items:        dbItems || [],
     })
-    if (error) { console.error('[handleApplyEdit]', error); return }
+    setEditSaving(false)
+    if (error) {
+      console.error('[handleApplyEdit]', error)
+      setEditError(error.message || error.hint || error.code || 'Erro desconhecido ao salvar.')
+      return
+    }
 
     setEditMode(false)
     setSuccessData(newData)
@@ -1742,8 +1796,10 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             <InlineEditor
               quote={quote}
               onApply={handleApplyEdit}
-              onCancel={() => { setEditMode(false); setSuggestedPanel(null) }}
+              onCancel={() => { setEditMode(false); setSuggestedPanel(null); setEditError('') }}
               initialPanel={suggestedPanel}
+              saving={editSaving}
+              error={editError}
             />
           ) : (<>
 
@@ -2078,6 +2134,12 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
                         />
                       </div>
+                      {discountError && (
+                        <div className="bg-red-50 border border-red-300 rounded-xl p-3 text-xs text-red-800 flex items-start gap-2">
+                          <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-500" />
+                          <p>{discountError}</p>
+                        </div>
+                      )}
                       <button
                         onClick={handleRequestDiscount}
                         disabled={!discountMotivo.trim() || discountSending}
@@ -2323,6 +2385,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [expandedId, setExpandedId]   = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deletingId, setDeletingId]   = useState(null)
+  const [actionError, setActionError] = useState('')
+  const flashActionError = (msg) => {
+    setActionError(msg)
+    setTimeout(() => setActionError(prev => prev === msg ? '' : prev), 6000)
+  }
   const [activeTab, setActiveTab]     = useState('ativas') // 'ativas' | 'fechados' | 'equipe'
   const [printRevisionData, setPrintRevisionData] = useState(null) // { quote, r }
   const [selectedRevision, setSelectedRevision] = useState(null) // { quote, revision }
@@ -2359,12 +2426,18 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const fetchQuotes = async (silent = false) => {
     if (!session?.user?.id) return
     if (!silent) setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('quotes')
       .select('*, quote_items(*)')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false })
       .order('ordem', { foreignTable: 'quote_items' })
+    if (error) {
+      console.error('[fetchQuotes]', error)
+      if (!silent) flashActionError('Erro ao carregar suas cotações. Tente recarregar a página.')
+      if (!silent) setLoading(false)
+      return
+    }
     setQuotes(data || [])
     if (!silent) setLoading(false)
   }
@@ -2372,11 +2445,17 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const fetchAllQuotes = async (silent = false) => {
     if (!isAdmin) return
     if (!silent) setAllQuotesLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('quotes')
       .select('*, quote_items(*), profiles(nome, empresa, cnpj, telefone, numero_usuario)')
       .order('created_at', { ascending: false })
       .order('ordem', { foreignTable: 'quote_items' })
+    if (error) {
+      console.error('[fetchAllQuotes]', error)
+      if (!silent) flashActionError('Erro ao carregar todas as cotações. Tente recarregar a página.')
+      if (!silent) setAllQuotesLoading(false)
+      return
+    }
     setAllQuotes(data || [])
     if (!silent) setAllQuotesLoading(false)
     setAllQuotesLoaded(true)
@@ -2409,7 +2488,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   // em vez de reprecificar automaticamente pela lista atual no próximo save).
   const handleTogglePriceLock = async (id, locked) => {
     const { error } = await supabase.rpc('override_price_lock', { p_quote_id: id, p_locked: locked })
-    if (error) { console.error('[handleTogglePriceLock]', error); return }
+    if (error) {
+      console.error('[handleTogglePriceLock]', error)
+      flashActionError('Erro ao travar/destravar o preço. Tente novamente.')
+      return
+    }
     setQuotes(qs => qs.map(q => q.id === id ? { ...q, price_locked: locked } : q))
     setAllQuotes(qs => qs.map(q => q.id === id ? { ...q, price_locked: locked } : q))
     if (locked) { try { notifyPrecoTravado({ quoteId: id }) } catch (_) {} }
@@ -2422,7 +2505,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     setRequotingId(id)
     const { data, error } = await supabase.rpc('requote_quote', { p_quote_id: id, p_reprice: reprice })
     setRequotingId(null)
-    if (error) { console.error('[handleRequote]', error); return }
+    if (error) {
+      console.error('[handleRequote]', error)
+      flashActionError('Erro ao revalidar a cotação. Tente novamente.')
+      return
+    }
     const row = Array.isArray(data) ? data[0] : data
     if (!row) return
     const patch = q => q.id === id ? {
@@ -2438,10 +2525,18 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
 
   const handleDelete = async (id) => {
     setDeletingId(id)
-    await supabase.from('quote_items').delete().eq('quote_id', id)
-    await supabase.from('quotes').delete().eq('id', id)
-    setQuotes(qs => qs.filter(q => q.id !== id))
+    const { error: itemsErr } = await supabase.from('quote_items').delete().eq('quote_id', id)
+    const { error: quoteErr } = await supabase.from('quotes').delete().eq('id', id)
     setDeletingId(null)
+    const error = itemsErr || quoteErr
+    if (error) {
+      console.error('[handleDelete]', error)
+      // Não remove da lista local — senão a cotação "some" e volta no
+      // próximo refresh, parecendo um bug ainda mais confuso que um erro.
+      flashActionError(error.message || 'Erro ao excluir a cotação. Tente novamente.')
+      return
+    }
+    setQuotes(qs => qs.filter(q => q.id !== id))
     setConfirmDelete(null)
   }
 
@@ -2585,6 +2680,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     })()}
 
     <div className="max-w-6xl mx-auto px-4 py-8">
+      {actionError && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5">
+          {actionError}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>

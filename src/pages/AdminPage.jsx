@@ -8,6 +8,7 @@ import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixed
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage, guessCategoria } from '../data/productImages'
 import kitCompositions from '../data/kitCompositions.json'
+import { InlineEditor } from './MinhasCotacoesPage'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado, notifyKitStatusChanged,
@@ -1451,6 +1452,8 @@ function UserManagement() {
   const [error, setError]     = useState(null)
   const [acting, setActing]   = useState({}) // id → 'ativo'|'recusado'|null
   const [discMsg, setDiscMsg] = useState('')
+  const [actionError, setActionError] = useState('')
+  const flashActionError = (msg) => { setActionError(msg); setTimeout(() => setActionError(''), 6000) }
 
   const fetchUsers = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -1472,24 +1475,42 @@ function UserManagement() {
     return () => clearInterval(id)
   }, [])
 
+  // Checa sempre `error` explicitamente (supabase-js não lança exceção em
+  // erro de banco/RLS, só resolve a promise com { error }) — senão a tela
+  // mostra o status/papel novo mesmo quando a gravação falhou de verdade.
   const setStatus = async (id, status) => {
     setActing(a => ({ ...a, [id]: status }))
-    await supabase.from('profiles').update({ status }).eq('id', id)
+    const { error } = await supabase.from('profiles').update({ status }).eq('id', id)
+    setActing(a => ({ ...a, [id]: null }))
+    if (error) {
+      console.error('[setStatus]', error)
+      flashActionError(`Erro ao atualizar status: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setUsers(u => u.map(p => p.id === id ? { ...p, status } : p))
     if (status === 'ativo') {
       try { notifyClienteApproved({ userId: id }) } catch (_) {}
     }
-    setActing(a => ({ ...a, [id]: null }))
   }
 
   const setRole = async (id, role) => {
-    await supabase.from('profiles').update({ role }).eq('id', id)
+    const { error } = await supabase.from('profiles').update({ role }).eq('id', id)
+    if (error) {
+      console.error('[setRole]', error)
+      flashActionError(`Erro ao alterar papel do usuário: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setUsers(u => u.map(p => p.id === id ? { ...p, role } : p))
   }
 
   const setUserDesconto = async (id, value) => {
     const val = value === '' ? null : Math.max(0, Math.min(100, parseFloat(value)))
-    await supabase.from('profiles').update({ desconto_comercial: val }).eq('id', id)
+    const { error } = await supabase.from('profiles').update({ desconto_comercial: val }).eq('id', id)
+    if (error) {
+      console.error('[setUserDesconto]', error)
+      flashActionError(`Erro ao alterar desconto: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setUsers(u => u.map(p => p.id === id ? { ...p, desconto_comercial: val } : p))
     const nome = users.find(p => p.id === id)?.nome || emails[id] || 'cliente'
     setDiscMsg(`Desconto para ${nome} alterado.`)
@@ -1717,6 +1738,11 @@ function UserManagement() {
           <AlertTriangle size={16} /> {error}
         </div>
       )}
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700 text-sm">
+          <AlertTriangle size={16} /> {actionError}
+        </div>
+      )}
 
       {!loading && !error && (
         <>
@@ -1877,7 +1903,7 @@ function DashboardPanel({ onGoToTab }) {
   useEffect(() => {
     const load = async () => {
       const [quotesRes, activeRes, pendingRes] = await Promise.all([
-        supabase.from('quotes').select('status, total_final, kwp, created_at, nome_projeto, data, profiles:user_id(nome, empresa)').order('created_at', { ascending: false }),
+        supabase.from('quotes').select('id, status, total_final, kwp, created_at, nome_projeto, data, profiles:user_id(nome, empresa)').order('created_at', { ascending: false }),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'ativo').neq('role', 'admin'),
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
       ])
@@ -2178,7 +2204,23 @@ function QuoteManagement() {
   const [approveError, setApproveError] = useState('')
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectMsg, setRejectMsg] = useState('')
+  const [rejectError, setRejectError] = useState('')
+  const [rejectSending, setRejectSending] = useState(false)
   const [printingQuote, setPrintingQuote] = useState(null)
+  const [revisingQuote, setRevisingQuote] = useState(null)
+  const [revisingSaving, setRevisingSaving] = useState(false)
+  const [revisingError, setRevisingError]   = useState('')
+  const [actionError, setActionError] = useState('')
+  const flashActionError = (msg) => { setActionError(msg); setTimeout(() => setActionError(''), 6000) }
+  const [revisingSuccessData, setRevisingSuccessData] = useState(null)
+  const [revisingCountdown, setRevisingCountdown] = useState(4)
+
+  useEffect(() => {
+    if (!revisingSuccessData) return
+    if (revisingCountdown <= 0) { setRevisingSuccessData(null); setRevisingQuote(null); return }
+    const id = setTimeout(() => setRevisingCountdown(c => c - 1), 1000)
+    return () => clearTimeout(id)
+  }, [revisingSuccessData, revisingCountdown])
 
   useEffect(() => {
     if (!printingQuote) return
@@ -2188,12 +2230,18 @@ function QuoteManagement() {
 
   const fetchQuotes = async (silent = false) => {
     if (!silent) setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('quotes')
       .select('*, profiles:user_id(nome, empresa, telefone, cnpj), quote_items(*)')
       .order('created_at', { ascending: false })
       .order('ordem', { foreignTable: 'quote_items' })
-    setQuotes(data || [])
+    if (error) {
+      console.error('[fetchQuotes]', error)
+      // Em silent (polling) não interrompe a tela — só na carga inicial.
+      if (!silent) flashActionError(`Erro ao carregar cotações: ${error.message || 'tente recarregar a página.'}`)
+    } else {
+      setQuotes(data || [])
+    }
     if (!silent) setLoading(false)
   }
 
@@ -2214,7 +2262,12 @@ function QuoteManagement() {
     const { quoteId, targetStatus, field } = dragConfirm
     const q = quotes.find(x => x.id === quoteId)
     const patch = { status: targetStatus, data: { ...(q?.data || {}), [field]: dragInputValue.trim() } }
-    await updateQuote(quoteId, patch)
+    const error = await updateQuote(quoteId, patch)
+    if (error) {
+      console.error('[confirmDragDrop]', error)
+      flashActionError(`Erro ao mover cotação: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setDragConfirm(null)
     setDragInputValue('')
   }
@@ -2258,16 +2311,24 @@ function QuoteManagement() {
   }
 
   const handleReject = async (quoteId) => {
+    setRejectSending(true)
+    setRejectError('')
     const quote = quotes.find(q => q.id === quoteId)
     const resposta = rejectMsg.trim() || 'Solicitação de desconto não aprovada.'
     const { error } = await supabase.rpc('reject_quote_discount', { p_quote_id: quoteId, p_resposta: resposta })
-    if (error) { console.error('[handleReject]', error); return }
+    setRejectSending(false)
+    if (error) {
+      console.error('[handleReject]', error)
+      setRejectError(`Erro ao recusar: ${error.message || error.hint || error.code || 'erro desconhecido'}`)
+      return
+    }
     setQuotes(qs => qs.map(q => q.id === quoteId
       ? { ...q, status: 'recusada', desconto_pct: 0, desconto_resposta: resposta }
       : q
     ))
     setRejectingId(null)
     setRejectMsg('')
+    setRejectError('')
 
     // Notifica cliente
     try {
@@ -2279,9 +2340,76 @@ function QuoteManagement() {
   // cliente mantém os valores da lista anterior em vez de reprecificar pela atual.
   const handleTogglePriceLock = async (quoteId, locked) => {
     const { error } = await supabase.rpc('override_price_lock', { p_quote_id: quoteId, p_locked: locked })
-    if (error) { console.error('[handleTogglePriceLock]', error); return }
+    if (error) {
+      console.error('[handleTogglePriceLock]', error)
+      flashActionError(`Erro ao ${locked ? 'travar' : 'destravar'} preço: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setQuotes(qs => qs.map(q => q.id === quoteId ? { ...q, price_locked: locked } : q))
     if (locked) { try { notifyPrecoTravado({ quoteId }) } catch (_) {} }
+  }
+
+  // Revisão de cotações internas (feitas pelo admin pra cliente sem cadastro)
+  // — mesma lógica de handleApplyEdit do InlineEditor em Minhas Cotações.
+  const handleApplyRevisao = async (updatedData, selFrete, newTotal, dbItems) => {
+    const quote = revisingQuote
+    const kitData = quote.data || {}
+    setRevisingSaving(true)
+    setRevisingError('')
+
+    const novaRevisao = (kitData.revisao || 0) + 1
+    const freteNome    = selFrete?.nome || quote.frete_nome || '—'
+    const fretePct     = selFrete?.acrescimo || quote.frete_pct || 1
+
+    const prevRevisoes = kitData.revisoes || []
+    const jaTemRev0     = prevRevisoes.some(r => r.revisao === 0)
+    const snapshotRev0 = (!jaTemRev0 && (kitData.revisao || 0) === 0) ? {
+      revisao:     0,
+      data:        quote.created_at,
+      total_final: quote.total_final || 0,
+      frete:       quote.frete_nome || '—',
+      items:       (quote.quote_items || []).map(
+        ({ label, produto, codigo_sap, qty, unit, preco_unit, total }) =>
+          ({ label, produto, codigo_sap, qty, unit, preco_unit, total })
+      ),
+    } : null
+
+    const historicoRevisao = {
+      revisao:     novaRevisao,
+      data:        new Date().toISOString(),
+      total_final: newTotal ?? quote.total_final ?? 0,
+      frete:       freteNome,
+      items:       dbItems || [],
+    }
+    const newData = {
+      ...updatedData,
+      revisao:  novaRevisao,
+      revisoes: [...(snapshotRev0 ? [snapshotRev0] : []), ...prevRevisoes, historicoRevisao],
+    }
+
+    const { error } = await supabase.rpc('save_quote_with_items', {
+      p_quote_id:     quote.id,
+      p_nome_projeto: null,
+      p_kit_type:     null,
+      p_kwp:          null,
+      p_desconto_pct: null,
+      p_frete_nome:   freteNome,
+      p_frete_pct:    fretePct,
+      p_status:       null,
+      p_kit_data:     newData,
+      p_items:        dbItems || [],
+    })
+
+    setRevisingSaving(false)
+    if (error) {
+      console.error('[handleApplyRevisao]', error)
+      setRevisingError(error.message || error.hint || error.code || 'Erro desconhecido ao salvar.')
+      return
+    }
+
+    await fetchQuotes(true)
+    setRevisingCountdown(4)
+    setRevisingSuccessData(newData)
   }
 
   // Atalho rápido para cotação vencida: reprecifica pela lista vigente (e
@@ -2291,7 +2419,11 @@ function QuoteManagement() {
     setRequotingId(quoteId)
     const { data, error } = await supabase.rpc('requote_quote', { p_quote_id: quoteId, p_reprice: reprice })
     setRequotingId(null)
-    if (error) { console.error('[handleRequote]', error); return }
+    if (error) {
+      console.error('[handleRequote]', error)
+      flashActionError(`Erro ao atualizar preço: ${error.message || 'tente novamente.'}`)
+      return
+    }
     const row = Array.isArray(data) ? data[0] : data
     if (!row) return
     setQuotes(qs => qs.map(q => q.id === quoteId ? {
@@ -2327,7 +2459,11 @@ function QuoteManagement() {
 
   const handleAssociarCliente = async (quoteId, clienteId) => {
     const { error } = await supabase.rpc('associar_cotacao_a_cliente', { p_quote_id: quoteId, p_cliente_id: clienteId })
-    if (error) { console.error('[handleAssociarCliente]', error); return }
+    if (error) {
+      console.error('[handleAssociarCliente]', error)
+      flashActionError(`Erro ao associar cliente: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setQuotes(qs => qs.map(q => q.id === quoteId ? { ...q, data: { ...(q.data || {}), clienteCadastrado: true } } : q))
     setAssociatingId(null)
     setAssocSearch('')
@@ -2357,7 +2493,12 @@ function QuoteManagement() {
 
   const [confirmingImplantId, setConfirmingImplantId] = useState(null)
   const handleConfirmImplantacao = async (quoteId, newStatus = 'implantado') => {
-    await updateQuote(quoteId, { status: newStatus })
+    const error = await updateQuote(quoteId, { status: newStatus })
+    if (error) {
+      console.error('[handleConfirmImplantacao]', error)
+      flashActionError(`Erro ao atualizar status do pedido: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setConfirmingImplantId(null)
   }
 
@@ -2403,16 +2544,26 @@ function QuoteManagement() {
 
     const doImplantar = async () => {
       setBusy(true)
-      await updateQuote(q.id, { status: 'implantado' })
+      const error = await updateQuote(q.id, { status: 'implantado' })
       setBusy(false)
+      if (error) {
+        console.error('[doImplantar]', error)
+        flashActionError(`Erro ao confirmar implantação: ${error.message || 'tente novamente.'}`)
+        return
+      }
       setConfirming(false)
     }
 
     const doPerdida = async () => {
       if (!motivoPerda) return
       setBusy(true)
-      await updateQuote(q.id, { status: 'perdida', motivo_perda: motivoPerda })
+      const error = await updateQuote(q.id, { status: 'perdida', motivo_perda: motivoPerda })
       setBusy(false)
+      if (error) {
+        console.error('[doPerdida]', error)
+        flashActionError(`Erro ao marcar como perdida: ${error.message || 'tente novamente.'}`)
+        return
+      }
       setConfirmingPerdida(false)
     }
 
@@ -2772,8 +2923,61 @@ function QuoteManagement() {
       </button>,
       document.body
     )}
+    {revisingQuote && revisingSuccessData && createPortal(
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col items-center text-center gap-4">
+          <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+            <CheckCircle2 size={40} className="text-green-500" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 mb-0.5">Revisão salva!</h3>
+            <p className="text-xs text-gray-400">
+              {revisingQuote.data?.numero_orcamento ? `EFF-${revisingQuote.data.numero_orcamento}` : revisingQuote.id} · revisão {revisingSuccessData.revisao}
+            </p>
+          </div>
+          <p className="text-xs text-gray-400">Fechando em <strong>{revisingCountdown}s</strong>…</p>
+          <button
+            onClick={() => { setRevisingSuccessData(null); setRevisingQuote(null) }}
+            className="text-sm text-weg-blue hover:underline font-semibold"
+          >
+            Fechar agora
+          </button>
+        </div>
+      </div>,
+      document.body
+    )}
+    {revisingQuote && !revisingSuccessData && createPortal(
+      <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4 overflow-y-auto" onClick={() => !revisingSaving && setRevisingQuote(null)}>
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div>
+              <h3 className="font-bold text-gray-900">Revisar cotação interna</h3>
+              <p className="text-xs text-gray-400">{revisingQuote.data?.numero_orcamento ? `EFF-${revisingQuote.data.numero_orcamento}` : revisingQuote.id}</p>
+            </div>
+            <button onClick={() => !revisingSaving && setRevisingQuote(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="p-6">
+            <InlineEditor
+              quote={revisingQuote}
+              onApply={handleApplyRevisao}
+              onCancel={() => setRevisingQuote(null)}
+              saving={revisingSaving}
+              error={revisingError}
+            />
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
     <div className="space-y-4">
 
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700 text-sm">
+          <AlertTriangle size={16} /> {actionError}
+        </div>
+      )}
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2 mr-auto">
@@ -3181,6 +3385,14 @@ function QuoteManagement() {
                           Associar a cliente cadastrado
                         </button>
                       )}
+                      {kd.criadoPorAdmin && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setRevisingError(''); setRevisingQuote(q) }}
+                          className="text-amber-700 hover:underline font-semibold flex items-center gap-1"
+                        >
+                          <Edit3 size={11} /> Revisar cotação
+                        </button>
+                      )}
                     </div>
 
                     {associatingId === q.id && (
@@ -3287,12 +3499,13 @@ function QuoteManagement() {
                             <textarea value={rejectMsg} onChange={e => setRejectMsg(e.target.value)}
                               rows={2} placeholder="Motivo da recusa (opcional)"
                               className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 resize-none" />
+                            {rejectError && <p className="text-xs text-red-600 font-medium">{rejectError}</p>}
                             <div className="flex gap-2">
-                              <button onClick={() => handleReject(q.id)}
-                                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
-                                <X size={12} /> Confirmar recusa
+                              <button onClick={() => handleReject(q.id)} disabled={rejectSending}
+                                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1 disabled:opacity-50">
+                                <X size={12} /> {rejectSending ? 'Recusando…' : 'Confirmar recusa'}
                               </button>
-                              <button onClick={() => setRejectingId(null)} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+                              <button onClick={() => { setRejectingId(null); setRejectError('') }} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
                             </div>
                           </div>
                         ) : (
@@ -3718,6 +3931,8 @@ function KitsFechadosPanel({ onBadgeChange }) {
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState({})
+  const [actionError, setActionError] = useState('')
+  const flashActionError = (msg) => { setActionError(msg); setTimeout(() => setActionError(''), 6000) }
   const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const fmtDt = d => d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
@@ -3753,7 +3968,13 @@ function KitsFechadosPanel({ onBadgeChange }) {
     if (Object.keys(dataFields).length > 0) {
       patch.data = { ...(q?.data || {}), ...dataFields }
     }
-    await supabase.from('quotes').update(patch).eq('id', id)
+    const { error } = await supabase.from('quotes').update(patch).eq('id', id)
+    setActing(a => ({ ...a, [id]: null }))
+    if (error) {
+      console.error('[updateStatus]', error)
+      flashActionError(`Erro ao atualizar status do pedido: ${error.message || 'tente novamente.'}`)
+      return
+    }
     setQuotes(qs => {
       const updated = qs.map(q => q.id === id
         ? { ...q, status, data: Object.keys(dataFields).length > 0 ? { ...(q.data || {}), ...dataFields } : q.data }
@@ -3762,12 +3983,12 @@ function KitsFechadosPanel({ onBadgeChange }) {
       return updated
     })
 
-    // Notifica cliente sobre avanço do status do pedido
+    // Notifica cliente sobre avanço do status do pedido — só depois de
+    // confirmar que a gravação deu certo, senão o cliente recebe aviso de
+    // "pedido faturado" mesmo quando o banco não mudou de verdade.
     if (q && ['implantado', 'faturado', 'em_transporte'].includes(status)) {
       try { notifyKitStatusChanged({ quoteId: id, status }) } catch (_) {}
     }
-
-    setActing(a => ({ ...a, [id]: null }))
   }
 
   const pending   = quotes.filter(q => ['fechado', 'implantado', 'faturado', 'em_transporte'].includes(q.status))
@@ -4039,6 +4260,11 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
   return (
     <div className="space-y-8">
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700 text-sm">
+          <AlertTriangle size={16} /> {actionError}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

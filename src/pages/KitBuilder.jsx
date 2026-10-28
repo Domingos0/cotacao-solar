@@ -2997,8 +2997,23 @@ function AccessoryRow({ icon: Icon, label, product, included, onToggle, qty, onQ
   )
 }
 
+// Cabo solar é vendido em múltiplos de 5m — qualquer valor digitado que não
+// seja múltiplo de 5 é arredondado pra cima automaticamente (evita cotar
+// metragem fracionada que a distribuidora não vende).
 function CableRow({ label, color, product, meters, onChange }) {
   const isRed = color === 'red'
+  const [adjustedMsg, setAdjustedMsg] = useState(false)
+
+  const handleChange = (raw) => {
+    const v = parseInt(raw) || 0
+    const rounded = v > 0 ? Math.ceil(v / 5) * 5 : 0
+    onChange(rounded)
+    if (rounded !== v) {
+      setAdjustedMsg(true)
+      setTimeout(() => setAdjustedMsg(false), 2500)
+    }
+  }
+
   return (
     <div className={`rounded-xl border-2 p-4 transition-all ${meters > 0 ? (isRed ? 'border-red-400 bg-red-50' : 'border-gray-600 bg-gray-50') : 'border-gray-200 opacity-60'}`}>
       <div className="flex items-center gap-2 mb-3">
@@ -3013,14 +3028,19 @@ function CableRow({ label, color, product, meters, onChange }) {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <input type="number" min="0" value={meters}
-          onChange={e => onChange(parseInt(e.target.value) || 0)}
+        <input type="number" min="0" step="5" value={meters}
+          onChange={e => handleChange(e.target.value)}
           className={`w-20 text-center rounded-lg px-2 py-1.5 text-sm font-bold bg-white focus:outline-none focus:ring-1 ${isRed ? 'border border-red-200 focus:ring-red-400' : 'border border-gray-300 focus:ring-gray-400'}`} />
         <span className="text-xs text-gray-500">metros</span>
         {product?.preco && meters > 0 && (
           <span className={`ml-auto text-sm font-bold ${isRed ? 'text-red-600' : 'text-gray-700'}`}>{fmt(moneyMul(product.preco, meters))}</span>
         )}
       </div>
+      {adjustedMsg && (
+        <p className="text-[11px] text-amber-600 mt-1.5 flex items-center gap-1">
+          <Info size={11} /> Arredondado para múltiplo de 5m (venda em rolo).
+        </p>
+      )}
     </div>
   )
 }
@@ -5196,13 +5216,15 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     if (!session || !discountMotivo.trim() || !savedId) return
     setDiscountStatus('sending')
 
-    try {
-      await supabase.from('quotes').update({
-        status: 'aguardando_desconto',
-        desconto_motivo: discountMotivo,
-      }).eq('id', savedId)
-    } catch (err) {
-      console.error('[requestDiscount]', err)
+    // supabase-js não lança exceção em erro de banco/RLS — resolve a promise
+    // com { error }. O try/catch sozinho não pega isso, por isso checamos
+    // error explicitamente (senão a tela mostrava "enviado" mesmo com falha).
+    const { error } = await supabase.from('quotes').update({
+      status: 'aguardando_desconto',
+      desconto_motivo: discountMotivo,
+    }).eq('id', savedId)
+    if (error) {
+      console.error('[requestDiscount]', error)
       setDiscountStatus('error')
       return
     }

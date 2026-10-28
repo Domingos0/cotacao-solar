@@ -133,6 +133,20 @@ export function ProductsProvider({ children }) {
   const [activeListCodes, setActiveListCodesState] = useState(loadActiveListCodes)
   const [condicoes, setCondicoes] = useState(loadCondicoes)
 
+  // Erro global de gravação do catálogo (rascunho no Supabase) — todas as
+  // funções save* abaixo gravam no localStorage/state local IMEDIATAMENTE
+  // (por isso a tela sempre parece "salvar na hora"), mas a escrita real no
+  // banco é assíncrona em segundo plano. Antes, se essa escrita falhasse, o
+  // erro só ia pro console — a tela continuava dizendo "salvo" mesmo com o
+  // rascunho no banco desatualizado. Centraliza isso aqui num state exposto
+  // pelo contexto, pra qualquer tela mostrar um aviso quando acontecer.
+  const [catalogSaveError, setCatalogSaveError] = useState(null)
+  const clearCatalogSaveError = useCallback(() => setCatalogSaveError(null), [])
+  const reportCatalogSaveError = useCallback((label, e) => {
+    console.warn(`[catalog] ${label} error:`, e?.message)
+    setCatalogSaveError(`Falha ao sincronizar "${label}" com o servidor — suas alterações ficaram só neste navegador até você tentar de novo. (${e?.message || 'erro desconhecido'})`)
+  }, [])
+
   // id da versão de rascunho em edição (admin), resolvido sob demanda e
   // reaproveitado enquanto durar esta sessão
   const draftVersionIdRef = useRef(null)
@@ -238,8 +252,8 @@ export function ProductsProvider({ children }) {
     ensureDraftVersion().then(draftId => {
       if (!draftId) return
       return supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts })
-    }).catch(e => console.warn('[catalog] save products error:', e?.message))
-  }, [ensureDraftVersion])
+    }).catch(e => reportCatalogSaveError('produtos', e))
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   const saveTableInfo = useCallback((info) => {
     setTableInfo(info)
@@ -251,8 +265,8 @@ export function ProductsProvider({ children }) {
         label: info.nome, vigencia_mes: info.mes, versao: info.versao, observacao: info.observacao,
         validity_days: Math.max(1, Number(info.validityDays) || 7),
       }).eq('id', draftId)
-    }).catch(e => console.warn('[catalog] save table info error:', e?.message))
-  }, [ensureDraftVersion])
+    }).catch(e => reportCatalogSaveError('dados da tabela', e))
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   const setActiveListCodes = useCallback((codes) => {
     const s = codes && codes.length > 0 ? new Set(codes) : null
@@ -265,16 +279,16 @@ export function ProductsProvider({ children }) {
         if (!draftId) return
         await supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
         await supabase.from('price_catalog_active_codes').insert(arr.map(codigo => ({ version_id: draftId, codigo })))
-      }).catch(e => console.warn('[catalog] save active codes error:', e?.message))
+      }).catch(e => reportCatalogSaveError('lista ativa', e))
     } else {
       localStorage.removeItem(ACTIVE_LIST_KEY)
       if (IS_DEV) return
       ensureDraftVersion().then(draftId => {
         if (!draftId) return
         return supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
-      }).catch(e => console.warn('[catalog] clear active codes error:', e?.message))
+      }).catch(e => reportCatalogSaveError('lista ativa', e))
     }
-  }, [ensureDraftVersion])
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   const clearActiveList = useCallback(() => {
     setActiveListCodesState(null)
@@ -283,8 +297,8 @@ export function ProductsProvider({ children }) {
     ensureDraftVersion().then(draftId => {
       if (!draftId) return
       return supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
-    }).catch(e => console.warn('[catalog] clear active codes error:', e?.message))
-  }, [ensureDraftVersion])
+    }).catch(e => reportCatalogSaveError('lista ativa', e))
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   const addProduct = useCallback((product) => {
     const newId = Math.max(...products.map(p => p.id), 0) + 1
@@ -332,8 +346,8 @@ export function ProductsProvider({ children }) {
     ensureDraftVersion().then(draftId => {
       if (!draftId) return
       return supabase.from('discount_defaults').upsert({ version_id: draftId, desconto: v })
-    }).catch(e => console.warn('[catalog] save desconto error:', e?.message))
-  }, [ensureDraftVersion])
+    }).catch(e => reportCatalogSaveError('desconto padrão', e))
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   const saveCondicoes = useCallback((texto) => {
     const v = typeof texto === 'string' ? texto : DEFAULT_CONDICOES
@@ -343,8 +357,8 @@ export function ProductsProvider({ children }) {
     ensureDraftVersion().then(draftId => {
       if (!draftId) return
       return supabase.from('price_catalog_versions').update({ condicoes: v }).eq('id', draftId)
-    }).catch(e => console.warn('[catalog] save condicoes error:', e?.message))
-  }, [ensureDraftVersion])
+    }).catch(e => reportCatalogSaveError('condições comerciais', e))
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   const saveFrete = useCallback((opcoes) => {
     setFreteOpcoes(opcoes)
@@ -356,8 +370,8 @@ export function ProductsProvider({ children }) {
       if (opcoes.length) {
         await supabase.from('freight_options').insert(opcoes.map(o => ({ version_id: draftId, nome: o.nome, acrescimo: o.acrescimo })))
       }
-    }).catch(e => console.warn('[catalog] save frete error:', e?.message))
-  }, [ensureDraftVersion])
+    }).catch(e => reportCatalogSaveError('opções de frete', e))
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   const addFreteOpcao = useCallback((opcao) => {
     const nextId = Math.max(...freteOpcoes.map(f => f.id), 0) + 1
@@ -419,8 +433,24 @@ export function ProductsProvider({ children }) {
       deleteFreteOpcao,
       resetFrete,
       publishCatalog,
+      catalogSaveError,
+      clearCatalogSaveError,
     }}>
       {children}
+      {/* Aviso global: aparece em qualquer tela sempre que uma gravação do
+          catálogo falhar em segundo plano (ver reportCatalogSaveError acima) —
+          sem isso, a tela mostrava "salvo" mesmo com a escrita no banco falha. */}
+      {catalogSaveError && (
+        <div style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 9999, maxWidth: 380 }}
+          className="bg-red-50 border border-red-300 rounded-xl shadow-lg p-4 text-sm text-red-800 flex items-start gap-2">
+          <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+          <div className="flex-1">
+            <p className="font-semibold mb-0.5">Erro ao salvar no servidor</p>
+            <p className="text-xs">{catalogSaveError}</p>
+          </div>
+          <button onClick={clearCatalogSaveError} className="text-red-400 hover:text-red-600 text-xs font-bold px-1">✕</button>
+        </div>
+      )}
     </ProductsContext.Provider>
   )
 }
