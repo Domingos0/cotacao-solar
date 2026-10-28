@@ -65,6 +65,68 @@ async function sendWhatsApp(phone?: string | null, apikey?: string | null, messa
   try { await fetch(url) } catch (e) { console.warn("[send-notification] whatsapp error:", e) }
 }
 
+// WA-AKG: gateway self-hosted (Baileys). Diferente do CallMeBot, não precisa
+// de API key por cliente — manda direto pro número informado. Normaliza o
+// telefone pra dígitos (DDI+DDD+número) antes de montar o JID.
+function onlyDigits(v: string) {
+  return v.replace(/\D/g, "")
+}
+// Bug conhecido do Baileys com números BR: a API aceita e retorna "sucesso"
+// mesmo mandando pro JID errado, só que a mensagem nunca chega de verdade.
+// Testado manualmente: 5599988230393 (13 dígitos, COM o 9º dígito) não
+// entregava; 559988230393 (12 dígitos, SEM) entregou. Então sempre remove
+// esse 9º dígito extra de celulares BR (DDI 55 + DDD 2 dígitos + 9 + 8
+// dígitos = 13 → vira 12) antes de montar o JID.
+function normalizeBrPhoneForWhatsApp(digits: string) {
+  if (digits.length === 13 && digits.startsWith("55") && digits[4] === "9") {
+    return digits.slice(0, 4) + digits.slice(5) // remove o "9" na posição 5
+  }
+  return digits
+}
+// Bloqueia tentativas óbvias de SSRF (baseUrl apontando pra localhost/rede
+// interna) — só deixa passar hostname público por HTTPS. Não substitui uma
+// allowlist real, mas corta o caso comum de abuso dessa rota como pivô.
+function isPublicHttpsHost(urlStr: string): boolean {
+  let u: URL
+  try { u = new URL(urlStr) } catch { return false }
+  if (u.protocol !== "https:") return false
+  const h = u.hostname.toLowerCase()
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0") return false
+  if (/^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return false
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false
+  return true
+}
+// Retorna o resultado (ok/status/corpo) em vez de só logar — usado tanto
+// pelo dispatch() normal (fire-and-forget) quanto pelo handler de teste do
+// painel (que precisa mostrar erro real pro admin).
+async function sendWhatsAppWaAkgRaw(baseUrl: string, apiKey: string, sessionId: string, phone: string, message: string) {
+  if (!isPublicHttpsHost(baseUrl)) return { ok: false, status: 0, body: "baseUrl inválida (precisa ser https:// pública)" }
+  const rawDigits = onlyDigits(phone)
+  if (!rawDigits) return { ok: false, status: 0, body: "telefone vazio" }
+  // Telefones salvos no sistema às vezes vêm sem o 55 (DDI Brasil) — completa se faltar.
+  const withDdi = rawDigits.length <= 11 ? `55${rawDigits}` : rawDigits
+  const digits = normalizeBrPhoneForWhatsApp(withDdi)
+  const jid = `${digits}@s.whatsapp.net`
+  const url = `${baseUrl.replace(/\/+$/, "")}/api/messages/${encodeURIComponent(sessionId)}/${encodeURIComponent(jid)}/send`
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "X-API-Key": apiKey, "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ message: { text: message } }),
+      signal: AbortSignal.timeout(15000),
+    })
+    const body = await res.text()
+    return { ok: res.ok, status: res.status, body }
+  } catch (e) {
+    return { ok: false, status: 0, body: String(e) }
+  }
+}
+async function sendWhatsAppWaAkg(baseUrl?: string, apiKey?: string, sessionId?: string, phone?: string | null, message?: string | null) {
+  if (!baseUrl || !apiKey || !sessionId || !phone || !message) return
+  const r = await sendWhatsAppWaAkgRaw(baseUrl, apiKey, sessionId, phone, message)
+  if (!r.ok) console.warn("[send-notification] wa-akg error:", r.status, r.body)
+}
+
 async function sendEmail(opts: {
   serviceId?: string; templateId?: string; publicKey?: string; privateKey?: string
   toEmail?: string; subject?: string; message?: string
@@ -95,9 +157,14 @@ async function getNotifySettings() {
 async function dispatch(adminMsg: string | null, clientMsg: string | null, clientEmail?: string | null, clientPhone?: string | null, clientWaKey?: string | null) {
   const s = await getNotifySettings()
   const tasks: Promise<void>[] = []
+  const useWaAkg = s.waProvider === "wa_akg" && s.waAkgBaseUrl && s.waAkgApiKey && s.waAkgSessionId
 
   if (adminMsg) {
-    if (s.adminPhone && s.adminWaKey) tasks.push(sendWhatsApp(s.adminPhone, s.adminWaKey, adminMsg))
+    if (useWaAkg && s.adminPhone) {
+      tasks.push(sendWhatsAppWaAkg(s.waAkgBaseUrl, s.waAkgApiKey, s.waAkgSessionId, s.adminPhone, adminMsg))
+    } else if (s.adminPhone && s.adminWaKey) {
+      tasks.push(sendWhatsApp(s.adminPhone, s.adminWaKey, adminMsg))
+    }
     if (s.emailServiceId && s.emailTemplateId && s.emailPublicKey && s.adminEmail) {
       tasks.push(sendEmail({
         serviceId: s.emailServiceId, templateId: s.emailTemplateId, publicKey: s.emailPublicKey, privateKey: s.emailPrivateKey,
@@ -107,7 +174,13 @@ async function dispatch(adminMsg: string | null, clientMsg: string | null, clien
   }
 
   if (clientMsg) {
-    if (clientPhone && clientWaKey) tasks.push(sendWhatsApp(clientPhone, clientWaKey, clientMsg))
+    // WA-AKG não precisa da apikey pessoal do cliente (clientWaKey) — manda
+    // direto pro telefone cadastrado no perfil, bastando o gateway estar ativo.
+    if (useWaAkg && clientPhone) {
+      tasks.push(sendWhatsAppWaAkg(s.waAkgBaseUrl, s.waAkgApiKey, s.waAkgSessionId, clientPhone, clientMsg))
+    } else if (clientPhone && clientWaKey) {
+      tasks.push(sendWhatsApp(clientPhone, clientWaKey, clientMsg))
+    }
     if (clientEmail && s.emailServiceId && s.emailTemplateId && s.emailPublicKey) {
       tasks.push(sendEmail({
         serviceId: s.emailServiceId, templateId: s.emailTemplateId, publicKey: s.emailPublicKey, privateKey: s.emailPrivateKey,
@@ -287,6 +360,21 @@ async function handleKitStatusChanged(req: Request, payload: { quoteId?: string;
   return json({ ok: true })
 }
 
+// Testa a config do WA-AKG direto do servidor (evita CORS, já que o gateway
+// não manda os headers de Access-Control-Allow-Origin pra chamadas de browser).
+// Exige admin autenticado + bloqueia IPs internos/privados como baseUrl —
+// reduz o risco de um admin comprometido usar essa rota como pivô (SSRF)
+// pra fazer a infraestrutura do Supabase acessar endereços internos.
+async function handleTestWaAkg(req: Request, payload: { baseUrl?: string; apiKey?: string; sessionId?: string; phone?: string }) {
+  if (!(await requireAdmin(req))) return json({ error: "somente admin" }, 403)
+  const { baseUrl, apiKey, sessionId, phone } = payload
+  if (!baseUrl || !apiKey || !sessionId || !phone) return json({ error: "dados incompletos" }, 400)
+  if (!isPublicHttpsHost(baseUrl)) return json({ error: "URL do gateway precisa ser https:// pública (não local/interna)" }, 400)
+  const r = await sendWhatsAppWaAkgRaw(baseUrl, apiKey, sessionId, phone, "✅ Teste — Ernaniff Solar (WA-AKG). Notificações funcionando!")
+  if (!r.ok) return json({ error: `Gateway respondeu ${r.status}: ${r.body}` }, 502)
+  return json({ ok: true })
+}
+
 // ─── Roteador ───────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS })
@@ -302,6 +390,7 @@ Deno.serve(async (req) => {
       case "kitStatusChanged": return await handleKitStatusChanged(req, payload || {})
       case "precoTravado": return await handlePrecoTravado(req, payload || {})
       case "cotacaoVencida": return await handleCotacaoVencida(payload || {})
+      case "testWaAkg": return await handleTestWaAkg(req, payload || {})
       default: return json({ error: "evento desconhecido" }, 400)
     }
   } catch (e) {

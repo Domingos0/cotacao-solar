@@ -3463,6 +3463,32 @@ function NotificationSettings() {
     setTestStatus(t => ({ ...t, wa: ok ? 'ok' : 'error' }))
   }
 
+  const [waAkgError, setWaAkgError] = useState('')
+
+  // Testa via Edge Function (server-to-server) em vez de bater direto no
+  // gateway do navegador — o WA-AKG não manda header de CORS pra chamadas de
+  // browser, então uma chamada direta sempre falharia mesmo com tudo certo.
+  const testWaAkg = async () => {
+    setTestStatus(t => ({ ...t, waAkg: 'sending' }))
+    setWaAkgError('')
+    try {
+      const { data, error } = await supabase.functions.invoke('send-notification', {
+        body: { event: 'testWaAkg', payload: {
+          baseUrl: s.waAkgBaseUrl, apiKey: s.waAkgApiKey, sessionId: s.waAkgSessionId, phone: s.adminPhone,
+        } },
+      })
+      if (error || data?.error) {
+        setWaAkgError(data?.error || error?.message || 'erro desconhecido')
+        setTestStatus(t => ({ ...t, waAkg: 'error' }))
+      } else {
+        setTestStatus(t => ({ ...t, waAkg: 'ok' }))
+      }
+    } catch (e) {
+      setWaAkgError(e?.message || 'erro desconhecido')
+      setTestStatus(t => ({ ...t, waAkg: 'error' }))
+    }
+  }
+
   const testEmail = async () => {
     setTestStatus(t => ({ ...t, email: 'sending' }))
     const ok = await sendEmail({
@@ -3491,44 +3517,110 @@ function NotificationSettings() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
         <div className="flex items-center gap-2 mb-1">
           <MessageCircle size={18} className="text-green-600" />
-          <h4 className="font-semibold text-gray-800">WhatsApp (CallMeBot — gratuito)</h4>
+          <h4 className="font-semibold text-gray-800">WhatsApp</h4>
         </div>
 
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800 space-y-1">
-          <p className="font-semibold">Como ativar em 3 passos:</p>
-          <p>1. Adicione <strong>+34 611 01 16 37</strong> aos seus contatos do WhatsApp com o nome "CallMeBot".</p>
-          <p>2. Envie a mensagem: <code className="bg-green-100 px-1 rounded">I allow callmebot to send me messages</code></p>
-          <p>3. Você receberá seu <strong>API Key</strong> por WhatsApp. Cole abaixo.</p>
+        <div className="flex rounded-xl overflow-hidden border border-gray-200 w-fit">
+          {[['callmebot', 'CallMeBot (gratuito, simples)'], ['wa_akg', 'WA-AKG (gateway próprio)']].map(([key, label]) => (
+            <button key={key} onClick={() => setS(prev => ({ ...prev, waProvider: key }))}
+              className={`px-3 py-2 text-xs font-semibold transition-colors ${
+                (s.waProvider || 'callmebot') === key ? 'bg-weg-blue text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+              }`}>
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Seu número (com DDI)</label>
-            <input type="tel" value={s.adminPhone || ''} onChange={set('adminPhone')}
-              placeholder="5599988230393"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">API Key do CallMeBot</label>
-            <div className="relative">
-              <input type={showWaKey ? 'text' : 'password'} value={s.adminWaKey || ''} onChange={set('adminWaKey')}
-                placeholder="Ex: 123456"
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 pr-9 focus:outline-none focus:border-weg-blue" />
-              <button onClick={() => setShowWaKey(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400">
-                {showWaKey ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
+        {(s.waProvider || 'callmebot') === 'callmebot' ? (
+          <>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800 space-y-1">
+              <p className="font-semibold">Como ativar em 3 passos:</p>
+              <p>1. Adicione <strong>+34 611 01 16 37</strong> aos seus contatos do WhatsApp com o nome "CallMeBot".</p>
+              <p>2. Envie a mensagem: <code className="bg-green-100 px-1 rounded">I allow callmebot to send me messages</code></p>
+              <p>3. Você receberá seu <strong>API Key</strong> por WhatsApp. Cole abaixo.</p>
             </div>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <button onClick={testWa} disabled={!s.adminPhone || !s.adminWaKey || testStatus.wa === 'sending'}
-            className="text-xs font-semibold bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
-            <MessageCircle size={13} /> Testar WhatsApp {statusIcon('wa')}
-          </button>
-          {testStatus.wa === 'ok' && <span className="text-xs text-green-600">Mensagem enviada!</span>}
-          {testStatus.wa === 'error' && <span className="text-xs text-red-500">Erro — verifique número e API key.</span>}
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Seu número (com DDI)</label>
+                <input type="tel" value={s.adminPhone || ''} onChange={set('adminPhone')}
+                  placeholder="5599988230393"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">API Key do CallMeBot</label>
+                <div className="relative">
+                  <input type={showWaKey ? 'text' : 'password'} value={s.adminWaKey || ''} onChange={set('adminWaKey')}
+                    placeholder="Ex: 123456"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 pr-9 focus:outline-none focus:border-weg-blue" />
+                  <button onClick={() => setShowWaKey(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400">
+                    {showWaKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button onClick={testWa} disabled={!s.adminPhone || !s.adminWaKey || testStatus.wa === 'sending'}
+                className="text-xs font-semibold bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                <MessageCircle size={13} /> Testar WhatsApp {statusIcon('wa')}
+              </button>
+              {testStatus.wa === 'ok' && <span className="text-xs text-green-600">Mensagem enviada!</span>}
+              {testStatus.wa === 'error' && <span className="text-xs text-red-500">Erro — verifique número e API key.</span>}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 space-y-1">
+              <p className="font-semibold">Gateway próprio (self-hosted, WA-AKG):</p>
+              <p>Manda direto pro número de qualquer cliente, sem precisar que cada um ative nada antes. Preencha os dados do seu gateway abaixo.</p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">URL do gateway</label>
+                <input type="text" value={s.waAkgBaseUrl || ''} onChange={set('waAkgBaseUrl')}
+                  placeholder="https://seu-gateway.exemplo.com"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+                  <div className="relative">
+                    <input type={showWaKey ? 'text' : 'password'} value={s.waAkgApiKey || ''} onChange={set('waAkgApiKey')}
+                      placeholder="wag_xxxxxxxxxxxx"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 pr-9 focus:outline-none focus:border-weg-blue" />
+                    <button onClick={() => setShowWaKey(v => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400">
+                      {showWaKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Session ID</label>
+                  <input type="text" value={s.waAkgSessionId || ''} onChange={set('waAkgSessionId')}
+                    placeholder="ex: n8guvb"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Seu número (com DDI, pra teste)</label>
+                <input type="tel" value={s.adminPhone || ''} onChange={set('adminPhone')}
+                  placeholder="5599988230393"
+                  className="w-full sm:w-1/2 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-weg-blue" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button onClick={testWaAkg}
+                disabled={!s.waAkgBaseUrl || !s.waAkgApiKey || !s.waAkgSessionId || !s.adminPhone || testStatus.waAkg === 'sending'}
+                className="text-xs font-semibold bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-1.5 disabled:opacity-50">
+                <MessageCircle size={13} /> Testar WhatsApp {statusIcon('waAkg')}
+              </button>
+              {testStatus.waAkg === 'ok' && <span className="text-xs text-green-600">Mensagem enviada!</span>}
+              {testStatus.waAkg === 'error' && <span className="text-xs text-red-500">Erro: {waAkgError || 'verifique URL, API key, sessão e número.'}</span>}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Email via EmailJS */}
@@ -3590,14 +3682,23 @@ function NotificationSettings() {
           <MessageCircle size={18} className="text-amber-500" />
           <h4 className="font-semibold text-gray-800">WhatsApp para clientes</h4>
         </div>
-        <p className="text-xs text-gray-500">
-          Para que os clientes recebam notificações via WhatsApp, eles precisam ter ativado o CallMeBot e fornecido
-          o API key durante o cadastro. Quando configurado, as notificações de aprovação e resposta de desconto
-          são enviadas automaticamente.
-        </p>
-        <p className="text-xs text-gray-400 mt-2">
-          💡 Oriente os clientes a ativar o CallMeBot seguindo os mesmos 3 passos acima.
-        </p>
+        {(s.waProvider || 'callmebot') === 'callmebot' ? (
+          <>
+            <p className="text-xs text-gray-500">
+              Para que os clientes recebam notificações via WhatsApp, eles precisam ter ativado o CallMeBot e fornecido
+              o API key durante o cadastro. Quando configurado, as notificações de aprovação e resposta de desconto
+              são enviadas automaticamente.
+            </p>
+            <p className="text-xs text-gray-400 mt-2">
+              💡 Oriente os clientes a ativar o CallMeBot seguindo os mesmos 3 passos acima.
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-gray-500">
+            Com o WA-AKG, os clientes <strong>não precisam configurar nada</strong> — as notificações já são enviadas
+            direto pro telefone cadastrado no perfil de cada um, assim que o gateway estiver ativo.
+          </p>
+        )}
       </div>
 
       {/* Salvar */}
