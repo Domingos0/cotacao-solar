@@ -3219,6 +3219,19 @@ function Step4({ data, onChange, products }) {
       : []                                                  // SIW200H/SIW400H/SIW400G/SIW420G — Wi-Fi, sem gateway listado
   const loggerOptions = LOGGER_SAPS.map(sap => bySAP(sap)).filter(Boolean)
 
+  // O card do gateway sugerido já aparece marcado (✓) na tela mesmo antes do
+  // usuário clicar — era só um default visual (via `d('monitorSAP')`), nunca
+  // gravado em data.monitorSAP de fato. Se o usuário confiasse na marcação e
+  // não clicasse, o item de Monitoramento sumia da lista final do kit (Step5
+  // lê data.monitorSAP direto, sem fallback). Agora grava o valor sugerido
+  // assim que ele existir, pra marcação na tela refletir o que realmente vai
+  // pro kit — sem precisar de um clique "confirmando" o que já era o padrão.
+  useEffect(() => {
+    if (!data.monitorSAP && loggerOptions[0]?.codigo) {
+      onChange({ ...data, monitorSAP: loggerOptions[0].codigo })
+    }
+  }, [loggerOptions[0]?.codigo]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Produtos Bombeamento ─────────────────────────────────────────────────
   const surgeCCBombP = bySAP(KIT_SAPS.SURGE_CC_12) || byRole(KIT_ROLE.SURGE_DC)
   const fusivelP     = bySAP(KIT_SAPS.FUSIVEL_CC)
@@ -3923,31 +3936,44 @@ function StructureSection({ data, onChange, panelCount }) {
     }
   }, [availableKits]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Solo: o SKU do kit depende do módulo escolhido — e alguns kits Solo são
-  // específicos por marca/modelo (ex.: "610 Wp - BYD Bifacial"), não só pelo
-  // Wp. Comparar só a potência deixava o kit preso na marca antiga quando o
-  // cliente trocava pra outro módulo de mesmo Wp mas marca diferente — por
-  // isso compara pelo id do produto (fallback pra potência se não tiver id).
-  // Se o cliente trocar de módulo depois de já ter um kit Solo selecionado, o
-  // efeito acima não reavalia (só roda quando ainda não há kit escolhido) —
-  // sem isto, a estrutura ficava presa no módulo antigo mesmo reabrindo Módulos.
+  // Reavalia a estrutura já selecionada quando o módulo muda — em QUALQUER
+  // tipo de telhado, não só Solo. Dois gatilhos:
+  //  (1) panelCount muda (trocar de módulo quase sempre recalcula a
+  //      quantidade de painéis pro mesmo kWp alvo) — a quantidade de kits de
+  //      estrutura precisa acompanhar, senão fica faltando/sobrando kit.
+  //  (2) Solo especificamente: o SKU é específico por marca/modelo (ex.:
+  //      "610 Wp - BYD Bifacial"), não só pelo Wp — por isso também reavalia
+  //      quando o painel muda de identidade mesmo com o mesmo panelCount.
   // IMPORTANTE: não dá pra só zerar estruturaKit/estruturaQty aqui e confiar
   // no efeito de auto-seleção acima pra recalcular depois — aquele efeito só
-  // roda quando `availableKits` muda de referência, e quando o painel muda
-  // mas o kit Solo continua sendo o mesmo SAP (único da região), a lista não
-  // muda de referência a tempo, então o campo ficava com a quantidade antiga
-  // mesmo com o card de cima já mostrando o total certo. Por isso já recalcula
-  // e grava o kit + a quantidade corretos num único onChange, sem esperar.
+  // roda quando `availableKits`/`kits4`/`kits3` mudam de referência, e quando
+  // o kit continua sendo o mesmo SAP (comum pra Solo, que só tem 1 por
+  // região), a lista não muda de referência a tempo — o campo ficava com a
+  // quantidade antiga mesmo com o preview já mostrando o total certo. Por
+  // isso já recalcula e grava kit(s) + quantidade(s) corretos num único
+  // onChange, sem esperar outro efeito "pegar carona" depois.
   const panelKey = data.panel?.id ?? data.panel?.potencia
+  const prevPanelCount = useRef(panelCount)
   const prevPanelKey = useRef(panelKey)
   useEffect(() => {
-    if (roofType === 'Solo' && prevPanelKey.current !== panelKey && data.estruturaKit) {
-      const freshKit = availableKits.find(k => k.id === data.estruturaKit.id) || availableKits[0] || null
-      const freshQty = freshKit ? Math.ceil(panelCount / (freshKit.potencia || 1)) : null
-      onChange({ ...data, estruturaKit: freshKit, estruturaQty: freshQty })
+    const countChanged = prevPanelCount.current !== panelCount
+    const keyChanged = prevPanelKey.current !== panelKey
+    const shouldReavaliar = countChanged || (roofType === 'Solo' && keyChanged)
+    if (roofType && roofType !== 'Carport' && shouldReavaliar && (data.estruturaKit || data.estruturaKit3)) {
+      if (hasBothMods) {
+        const freshMix = computeOptimalMix(panelCount)
+        const k4 = kits4.find(k => k.id === data.estruturaKit?.id) || kits4[0] || null
+        const k3 = kits3.find(k => k.id === data.estruturaKit3?.id) || kits3[0] || null
+        onChange({ ...data, estruturaKit: k4, estruturaKit3: k3 || null, estruturaQty: freshMix.n4, estruturaQty3: freshMix.n3 })
+      } else {
+        const freshKit = availableKits.find(k => k.id === data.estruturaKit?.id) || availableKits[0] || null
+        const freshQty = freshKit ? Math.ceil(panelCount / (freshKit.potencia || 1)) : null
+        onChange({ ...data, estruturaKit: freshKit, estruturaQty: freshQty, estruturaKit3: null, estruturaQty3: null })
+      }
     }
+    prevPanelCount.current = panelCount
     prevPanelKey.current = panelKey
-  }, [panelKey, roofType]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [panelCount, panelKey, roofType, hasBothMods]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (wants === undefined || wants === null) {
     // Unanswered — show the question
@@ -4560,6 +4586,14 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const { session, isAdmin, profile } = useAuth()
   // Desconto individual do perfil tem prioridade sobre o desconto global
   const desconto = profile?.desconto_comercial != null ? profile.desconto_comercial : globalDesconto
+  // Admin pode definir um desconto específico pra esse kit já na montagem
+  // (pro cenário de montar o kit pra um cliente em avaliação) — substitui o
+  // desconto padrão só nessa cotação, sem precisar do fluxo de solicitar/
+  // aprovar depois.
+  const descontoAdminRaw = isAdmin ? String(data.descontoAdminPct ?? '').trim() : ''
+  const descontoEfetivo = descontoAdminRaw !== ''
+    ? Math.max(0, Math.min(100, parseFloat(descontoAdminRaw.replace(',', '.')) || 0))
+    : desconto
   const [freteId, setFreteId] = useState(() => {
     if (data.freteAutoId && freteOpcoes.some(f => f.id === data.freteAutoId)) return data.freteAutoId
     if (data.freteAutoIdByRegiao && freteOpcoes.some(f => f.id === data.freteAutoIdByRegiao)) return data.freteAutoIdByRegiao
@@ -4935,7 +4969,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   // Subtotal: sum raw price×qty for all lines, round only the total (Excel: ROUND(SOMARPRODUTO(preços,qtds),2))
   const subtotal    = round2(kitItems.reduce((sum, item) => sum + (item.product.preco || 0) * item.qty, 0))
   const freteOpcao  = freteOpcoes.find(f => f.id === freteId) || freteOpcoes[0] || { nome: 'FOB', acrescimo: 1 }
-  const fatorDesc   = 1 - (desconto / 100)
+  const fatorDesc   = 1 - (descontoEfetivo / 100)
   // Excel: ROUND(subtotal × F1 × F2 × F3 × F4 × fatorDesc, 2) — one multiplication, one round
   const totalAjust  = round2(subtotal * F1 * F2 * F3 * F4 * fatorDesc)
   const ajusteAmt   = round2(subtotal - totalAjust)
@@ -4953,7 +4987,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     kit_type:    data.kitType,
     kwp:         realKwp,
     subtotal,
-    desconto_pct: desconto,
+    desconto_pct: descontoEfetivo,
     frete_nome:  freteOpcao.nome,
     frete_pct:   freteOpcao.acrescimo,
     total_final: totalFinal,
@@ -4989,7 +5023,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     try {
       let kitDataToSave
       let statusToSend
-      let descontoToSend = desconto
+      let descontoToSend = descontoEfetivo
 
       if (!quoteId) {
         // ── Gera número único de referência EFF-YYYY-NNN (global, sem repetição) ──
@@ -5505,7 +5539,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                   <td colSpan="5" className="px-4 py-2 text-right text-sm font-semibold text-green-700">
                     Ajuste
                     <span className="font-normal text-green-600 ml-1">
-                      (×{F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × ${fatorDesc.toFixed(4)}` : ''})
+                      (×{F1} × {F2} × {F3} × {F4}{descontoEfetivo > 0 ? ` × ${fatorDesc.toFixed(4)}` : ''})
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right text-sm font-bold text-green-700">
@@ -5699,7 +5733,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
           {isAdmin && (
             <p className="print:hidden text-[10px] text-gray-400">
-              Fator de precificação: {F1} × {F2} × {F3} × {F4}{desconto > 0 ? ` × (1 − ${desconto}%)` : ''}.
+              Fator de precificação: {F1} × {F2} × {F3} × {F4}{descontoEfetivo > 0 ? ` × (1 − ${descontoEfetivo}%)` : ''}.
             </p>
           )}
           {data.criadoPorAdmin && (
@@ -5862,6 +5896,25 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                 />
               </div>
             </div>
+
+            {isAdmin && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <label className="block text-xs font-semibold text-green-800 mb-1 flex items-center gap-1.5">
+                  <BadgePercent size={13} /> Desconto especial pra essa cotação (%)
+                </label>
+                <input
+                  type="number" min="0" max="100" step="0.5"
+                  value={data.descontoAdminPct ?? ''}
+                  onChange={e => onChange({ ...data, descontoAdminPct: e.target.value })}
+                  placeholder={`padrão: ${desconto}%`}
+                  className="w-32 text-sm border border-green-300 rounded-lg px-3 py-2 focus:outline-none focus:border-green-500"
+                />
+                <p className="text-[11px] text-green-700 mt-1">
+                  Deixe em branco pra usar o desconto padrão da lista ({desconto}%). Preenchendo, esse valor substitui o padrão só nesta cotação — sem precisar do fluxo de solicitar/aprovar desconto depois.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Validade da proposta (dias)</label>
               <input

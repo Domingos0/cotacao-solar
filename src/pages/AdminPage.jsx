@@ -2175,6 +2175,7 @@ function QuoteManagement() {
   const [approvingId, setApprovingId] = useState(null)
   const [approveDiscount, setApproveDiscount] = useState('')
   const [approveMsg, setApproveMsg] = useState('')
+  const [approveError, setApproveError] = useState('')
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectMsg, setRejectMsg] = useState('')
   const [printingQuote, setPrintingQuote] = useState(null)
@@ -2223,7 +2224,11 @@ function QuoteManagement() {
   // sobre o total_final que o cliente enviou, que herdava qualquer erro.
   const handleApprove = async (quote) => {
     const pct = parseFloat(approveDiscount.replace(',', '.'))
-    if (isNaN(pct) || pct < 0 || pct > 100) return
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+      setApproveError('Informe um desconto válido entre 0 e 100%.')
+      return
+    }
+    setApproveError('')
     const resposta = approveMsg.trim() || `Desconto especial aprovado para este kit.`
 
     const { data: result, error } = await supabase.rpc('approve_quote_discount', {
@@ -2231,7 +2236,11 @@ function QuoteManagement() {
       p_pct: pct,
       p_resposta: resposta,
     })
-    if (error) { console.error('[handleApprove]', error); return }
+    if (error) {
+      console.error('[handleApprove]', error)
+      setApproveError(`Erro ao aprovar: ${error.message || error.hint || error.code || 'erro desconhecido'}`)
+      return
+    }
 
     const row = Array.isArray(result) ? result[0] : result
     setQuotes(qs => qs.map(q => q.id === quote.id
@@ -2242,6 +2251,7 @@ function QuoteManagement() {
     setApprovingId(null)
     setApproveDiscount('')
     setApproveMsg('')
+    setApproveError('')
 
     // Notifica cliente
     try { notifyDescontoAprovado({ quoteId: quote.id }) } catch (_) {}
@@ -3254,9 +3264,13 @@ function QuoteManagement() {
                             <div className="flex items-center gap-2">
                               <label className="text-xs text-gray-700 whitespace-nowrap">Desconto (%):</label>
                               <input type="number" min="0" max="100" step="0.5"
-                                value={approveDiscount} onChange={e => setApproveDiscount(e.target.value)}
-                                className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-sm" placeholder="ex: 5" autoFocus />
+                                value={approveDiscount} onChange={e => { setApproveDiscount(e.target.value); setApproveError('') }}
+                                className={`w-24 border rounded-lg px-2 py-1 text-sm ${approveError ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-300'}`}
+                                placeholder="ex: 5" autoFocus />
                             </div>
+                            {approveError && (
+                              <p className="text-xs text-red-600 font-medium">{approveError}</p>
+                            )}
                             <textarea value={approveMsg} onChange={e => setApproveMsg(e.target.value)}
                               rows={2} placeholder="Mensagem para o cliente (opcional)"
                               className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 resize-none" />
@@ -3265,7 +3279,7 @@ function QuoteManagement() {
                                 className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
                                 <Check size={12} /> Aprovar e enviar
                               </button>
-                              <button onClick={() => setApprovingId(null)} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+                              <button onClick={() => { setApprovingId(null); setApproveError('') }} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
                             </div>
                           </div>
                         ) : rejectingId === q.id ? (

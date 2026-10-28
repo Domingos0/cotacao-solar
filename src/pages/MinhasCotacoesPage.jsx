@@ -8,6 +8,7 @@ import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES } from '../data/products'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
+import { ESTADOS } from '../data/cidadesPorEstado'
 import {
   FileText, RefreshCw, Edit3, CheckCircle2, Clock, XCircle,
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
@@ -296,6 +297,11 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
   const isBomb     = kitType === 'bombeamento'
   const targetKwp  = parseFloat(kitData.kwpDesejado || quote.kwp || 0)
 
+  // ── Cliente state ──
+  const [clienteNome, setClienteNome]     = useState(kitData.clienteNome || '')
+  const [clienteUF, setClienteUF]         = useState(kitData.clienteUF || '')
+  const [clienteCidade, setClienteCidade] = useState(kitData.clienteCidade || '')
+
   // ── Panel state ──
   const [tab, setTab]           = useState('modulos')
   const [selPanel, setSelPanel] = useState(initialPanel || kitData.panel || null)
@@ -336,7 +342,11 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
       cableNegMeters: kitData.cableNegMeters ?? def.cableNegMeters,
       surgeACQty:     kitData.surgeACQty     ?? def.surgeACQty,
       inclSurgeCA:    kitData.inclSurgeCA    ?? def.inclSurgeCA,
-      inclSurgeDC:    kitData.inclSurgeDC    ?? (!isMicro && !isBomb),
+      // Protetor de Surto CC só existe de verdade no Kit Builder pro kit de
+    // Bombeamento — pra On-Grid/Híbrido/Micro esse acessório nunca é
+    // oferecido lá, então aqui também não pode vir ligado por padrão
+    // (senão a revisão "inventa" um item que nunca esteve no kit original).
+    inclSurgeDC:    kitData.inclSurgeDC    ?? isBomb,
       surgeDCQty:     kitData.surgeDCQty     ?? 1,
       inclBreaker:    kitData.inclBreaker    ?? true,
       breakerQty:     kitData.breakerQty     ?? def.breakerQty,
@@ -487,6 +497,9 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
   const doApply = () => {
     const updatedData = {
       ...kitData,
+      clienteNome:   clienteNome || kitData.clienteNome,
+      clienteUF:     clienteUF || kitData.clienteUF,
+      clienteCidade: clienteCidade || kitData.clienteCidade,
       panel:       selPanel || kitData.panel,
       panelQty:    panelQty || kitData.panelQty,
       inverter:    mixMode ? undefined : (selInv || kitData.inverter),
@@ -536,7 +549,7 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
       // Ordem: proteção, conector, cabos, disjuntor
       !isMicro && !isBomb && acc.inclSurgeCA && surgeCAP &&
         { label: 'Protetor de Surto CA', product: surgeCAP, qty: acc.surgeACQty, unit: 'un' },
-      !isMicro && !isBomb && acc.inclSurgeDC && surgeDCP &&
+      isBomb && acc.inclSurgeDC && surgeDCP &&
         { label: 'Protetor de Surto CC', product: surgeDCP, qty: acc.surgeDCQty, unit: 'un' },
       !isMicro && acc.mc4Qty > 0 && mc4P &&
         { label: 'Conector MC4 6mm²', product: mc4P, qty: acc.mc4Qty, unit: 'pares' },
@@ -610,9 +623,9 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
         {mixMode && mixKw > 0 && <span>Inv: <strong>{(mixKw / 1000).toFixed(2)} kW</strong></span>}
       </div>
 
-      {/* Tab toggle — 3 tabs */}
+      {/* Tab toggle */}
       <div className="flex rounded-xl overflow-hidden border border-gray-200">
-        {[['modulos', '☀️ Módulos'], ['inversores', '⚡ Inversores'], ['acessorios', '🔧 Acessórios']].map(([key, label]) => (
+        {[['modulos', '☀️ Módulos'], ['inversores', '⚡ Inversores'], ['acessorios', '🔧 Acessórios'], ['cliente', '👤 Cliente']].map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -785,8 +798,8 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
               qty={acc.surgeACQty} onQtyChange={v => setA('surgeACQty', v)} />
           )}
 
-          {/* Protetor Surto CC */}
-          {!isBomb && !isMicro && surgeDCP && (
+          {/* Protetor Surto CC — só existe de verdade pro kit de Bombeamento */}
+          {isBomb && surgeDCP && (
             <AccRow label="Protetor de Surto CC (SPW12)" product={surgeDCP}
               included={acc.inclSurgeDC} onToggle={() => setA('inclSurgeDC', !acc.inclSurgeDC)}
               qty={acc.surgeDCQty} onQtyChange={v => setA('surgeDCQty', v)} />
@@ -950,6 +963,47 @@ function InlineEditor({ quote, onApply, onCancel, initialPanel }) {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Cliente ── */}
+      {tab === 'cliente' && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Nome do cliente</label>
+            <input
+              type="text"
+              value={clienteNome}
+              onChange={e => setClienteNome(e.target.value)}
+              placeholder="Nome completo"
+              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-weg-blue"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Estado</label>
+              <select
+                value={clienteUF}
+                onChange={e => setClienteUF(e.target.value)}
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-weg-blue"
+              >
+                <option value="">Selecione…</option>
+                {ESTADOS.map(e => (
+                  <option key={e.uf} value={e.uf}>{e.uf} — {e.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
+              <input
+                type="text"
+                value={clienteCidade}
+                onChange={e => setClienteCidade(e.target.value)}
+                placeholder="Cidade"
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-weg-blue"
+              />
+            </div>
+          </div>
         </div>
       )}
 
