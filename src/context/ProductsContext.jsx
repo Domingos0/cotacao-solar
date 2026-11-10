@@ -148,21 +148,56 @@ export function ProductsProvider({ children }) {
   }, [])
 
   // id da versão de rascunho em edição (admin), resolvido sob demanda e
-  // reaproveitado enquanto durar esta sessão
-  const draftVersionIdRef = useRef(null)
+  // reaproveitado enquanto durar esta sessão. Guardamos a PROMISE (não só o
+  // id) para que várias gravações disparadas ao mesmo tempo — ex.: importar
+  // planilha grava produtos + lista ativa + nome da tabela de uma vez —
+  // compartilhem o mesmo rascunho em vez de criar rascunhos concorrentes.
+  const draftPromiseRef = useRef(null)
 
-  const ensureDraftVersion = useCallback(async () => {
-    if (draftVersionIdRef.current) return draftVersionIdRef.current
-    try {
-      const { data, error } = await supabase.rpc('get_or_create_draft_catalog_version')
-      if (error) throw error
-      draftVersionIdRef.current = data
-      return data
-    } catch (e) {
-      console.warn('[catalog] draft version error:', e?.message)
-      return null
+  const ensureDraftVersion = useCallback(() => {
+    if (!draftPromiseRef.current) {
+      draftPromiseRef.current = (async () => {
+        const { data, error } = await supabase.rpc('get_or_create_draft_catalog_version')
+        if (error) throw error
+        if (!data) throw new Error('rascunho do catálogo não retornado')
+        return data
+      })().catch(e => {
+        draftPromiseRef.current = null // permite tentar de novo na próxima gravação
+        throw e
+      })
     }
+    return draftPromiseRef.current
   }, [])
+
+  // Gravações no rascunho ainda em andamento. publishCatalog() espera todas
+  // terminarem antes de publicar — senão publicaria o rascunho sem a planilha.
+  const pendingWritesRef = useRef(new Set())
+  // true quando há alterações gravadas no rascunho que ainda não foram publicadas
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false)
+
+  // Executa uma gravação no rascunho: resolve o rascunho, roda `fn(draftId)`,
+  // trata erros do Supabase (que vêm em { error }, não como exceção) e
+  // registra a promise como pendente. Retorna { ok, error }.
+  const writeDraft = useCallback((label, fn) => {
+    if (IS_DEV) return Promise.resolve({ ok: true })
+    const p = (async () => {
+      try {
+        const draftId = await ensureDraftVersion()
+        const results = await fn(draftId)
+        const list = Array.isArray(results) ? results : [results]
+        const failed = list.find(r => r && r.error)
+        if (failed) throw failed.error
+        setHasUnpublishedChanges(true)
+        return { ok: true }
+      } catch (e) {
+        reportCatalogSaveError(label, e)
+        return { ok: false, error: e?.message || String(e) }
+      }
+    })()
+    pendingWritesRef.current.add(p)
+    p.finally(() => pendingWritesRef.current.delete(p))
+    return p
+  }, [ensureDraftVersion, reportCatalogSaveError])
 
   // Compara a versão publicada com a que está em cache e só refaz o fetch
   // quando elas divergem — corrige o bug de cache desatualizado. Roda ao
@@ -248,25 +283,26 @@ export function ProductsProvider({ children }) {
   const saveProducts = useCallback((newProducts) => {
     setProducts(newProducts)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newProducts))
-    if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
-      if (!draftId) return
-      return supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts })
-    }).catch(e => reportCatalogSaveError('produtos', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    return writeDraft('produtos', draftId =>
+      supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts }))
+  }, [writeDraft])
 
   const saveTableInfo = useCallback((info) => {
     setTableInfo(info)
     localStorage.setItem(TABLE_KEY, JSON.stringify(info))
-    if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
-      if (!draftId) return
-      return supabase.from('price_catalog_versions').update({
+    return writeDraft('dados da tabela', draftId =>
+      supabase.from('price_catalog_versions').update({
         label: info.nome, vigencia_mes: info.mes, versao: info.versao, observacao: info.observacao,
         validity_days: Math.max(1, Number(info.validityDays) || 7),
-      }).eq('id', draftId)
-    }).catch(e => reportCatalogSaveError('dados da tabela', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+      }).eq('id', draftId))
+  }, [writeDraft])
+
+  const replaceActiveCodes = useCallback((arr) =>
+    writeDraft('lista ativa', async (draftId) => {
+      const del = await supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
+      if (del.error || !arr.length) return del
+      return supabase.from('price_catalog_active_codes').insert(arr.map(codigo => ({ version_id: draftId, codigo })))
+    }), [writeDraft])
 
   const setActiveListCodes = useCallback((codes) => {
     const s = codes && codes.length > 0 ? new Set(codes) : null
@@ -274,31 +310,17 @@ export function ProductsProvider({ children }) {
     if (s) {
       const arr = [...s]
       localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(arr))
-      if (IS_DEV) return
-      ensureDraftVersion().then(async (draftId) => {
-        if (!draftId) return
-        await supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
-        await supabase.from('price_catalog_active_codes').insert(arr.map(codigo => ({ version_id: draftId, codigo })))
-      }).catch(e => reportCatalogSaveError('lista ativa', e))
-    } else {
-      localStorage.removeItem(ACTIVE_LIST_KEY)
-      if (IS_DEV) return
-      ensureDraftVersion().then(draftId => {
-        if (!draftId) return
-        return supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
-      }).catch(e => reportCatalogSaveError('lista ativa', e))
+      return replaceActiveCodes(arr)
     }
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    localStorage.removeItem(ACTIVE_LIST_KEY)
+    return replaceActiveCodes([])
+  }, [replaceActiveCodes])
 
   const clearActiveList = useCallback(() => {
     setActiveListCodesState(null)
     localStorage.removeItem(ACTIVE_LIST_KEY)
-    if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
-      if (!draftId) return
-      return supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
-    }).catch(e => reportCatalogSaveError('lista ativa', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    return replaceActiveCodes([])
+  }, [replaceActiveCodes])
 
   const addProduct = useCallback((product) => {
     const newId = Math.max(...products.map(p => p.id), 0) + 1
@@ -342,36 +364,27 @@ export function ProductsProvider({ children }) {
     const v = Math.min(100, Math.max(0, Number(val) || 0))
     setDesconto(v)
     localStorage.setItem(DESCONTO_KEY, String(v))
-    if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
-      if (!draftId) return
-      return supabase.from('discount_defaults').upsert({ version_id: draftId, desconto: v })
-    }).catch(e => reportCatalogSaveError('desconto padrão', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    return writeDraft('desconto padrão', draftId =>
+      supabase.from('discount_defaults').upsert({ version_id: draftId, desconto: v }))
+  }, [writeDraft])
 
   const saveCondicoes = useCallback((texto) => {
     const v = typeof texto === 'string' ? texto : DEFAULT_CONDICOES
     setCondicoes(v)
     localStorage.setItem(CONDICOES_KEY, v)
-    if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
-      if (!draftId) return
-      return supabase.from('price_catalog_versions').update({ condicoes: v }).eq('id', draftId)
-    }).catch(e => reportCatalogSaveError('condições comerciais', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    return writeDraft('condições comerciais', draftId =>
+      supabase.from('price_catalog_versions').update({ condicoes: v }).eq('id', draftId))
+  }, [writeDraft])
 
   const saveFrete = useCallback((opcoes) => {
     setFreteOpcoes(opcoes)
     localStorage.setItem(FRETE_KEY, JSON.stringify(opcoes))
-    if (IS_DEV) return
-    ensureDraftVersion().then(async (draftId) => {
-      if (!draftId) return
-      await supabase.from('freight_options').delete().eq('version_id', draftId)
-      if (opcoes.length) {
-        await supabase.from('freight_options').insert(opcoes.map(o => ({ version_id: draftId, nome: o.nome, acrescimo: o.acrescimo })))
-      }
-    }).catch(e => reportCatalogSaveError('opções de frete', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    return writeDraft('opções de frete', async (draftId) => {
+      const del = await supabase.from('freight_options').delete().eq('version_id', draftId)
+      if (del.error || !opcoes.length) return del
+      return supabase.from('freight_options').insert(opcoes.map(o => ({ version_id: draftId, nome: o.nome, acrescimo: o.acrescimo })))
+    })
+  }, [writeDraft])
 
   const addFreteOpcao = useCallback((opcao) => {
     const nextId = Math.max(...freteOpcoes.map(f => f.id), 0) + 1
@@ -391,15 +404,24 @@ export function ProductsProvider({ children }) {
   }, [saveFrete])
 
   // Publica a versão de rascunho em edição, tornando-a a versão oficial
-  // vista por todos os clientes (via current_catalog_version()).
+  // vista por todos os usuários (via current_catalog_version()). Antes de
+  // publicar, espera todas as gravações pendentes no rascunho terminarem.
   const publishCatalog = useCallback(async () => {
     if (IS_DEV) return { ok: false, error: 'Publicação indisponível em desenvolvimento.' }
-    const draftId = draftVersionIdRef.current || await ensureDraftVersion()
-    if (!draftId) return { ok: false, error: 'Não foi possível preparar a versão para publicação.' }
+    const pending = [...pendingWritesRef.current]
+    const results = await Promise.all(pending)
+    const failed = results.find(r => r && !r.ok)
+    if (failed) return { ok: false, error: `Uma gravação falhou, nada foi publicado: ${failed.error}` }
+
+    let draftId
+    try { draftId = await ensureDraftVersion() }
+    catch (e) { return { ok: false, error: 'Não foi possível preparar a versão para publicação: ' + (e?.message || '') } }
+
     try {
       const { error } = await supabase.rpc('publish_price_catalog', { p_version_id: draftId })
       if (error) throw error
-      draftVersionIdRef.current = null
+      draftPromiseRef.current = null
+      setHasUnpublishedChanges(false)
       localStorage.setItem(CATALOG_VERSION_KEY, draftId)
       return { ok: true }
     } catch (e) {
@@ -433,6 +455,7 @@ export function ProductsProvider({ children }) {
       deleteFreteOpcao,
       resetFrete,
       publishCatalog,
+      hasUnpublishedChanges,
       catalogSaveError,
       clearCatalogSaveError,
     }}>
