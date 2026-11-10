@@ -226,6 +226,8 @@ function ImportModal({ onClose, onImport }) {
   const [loading, setLoading] = useState(false)
   const [parsed, setParsed]   = useState(null)      // { products, tableName }
   const [mode, setMode]       = useState('prices')  // 'prices' | 'full'
+  const [publishing, setPublishing] = useState(false)
+  const [publishResult, setPublishResult] = useState(null) // { ok, error }
   const fileRef               = useRef()
 
   const handleFile = async (file) => {
@@ -252,10 +254,19 @@ function ImportModal({ onClose, onImport }) {
     if (file) handleFile(file)
   }
 
-  const handleConfirm = () => {
-    if (!parsed) return
-    onImport(parsed, mode)
+  const handleConfirm = async () => {
+    if (!parsed || publishing) return
+    setPublishing(true)
     setStep('done')
+    try {
+      // onImport grava no rascunho E publica para todos os usuários
+      const res = await onImport(parsed, mode)
+      setPublishResult(res || { ok: true })
+    } catch (e) {
+      setPublishResult({ ok: false, error: e?.message || 'Erro ao publicar.' })
+    } finally {
+      setPublishing(false)
+    }
   }
 
   // Stats for preview
@@ -405,13 +416,34 @@ function ImportModal({ onClose, onImport }) {
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
                 <Check size={32} className="text-green-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900">Tabela importada com sucesso!</h3>
-              <p className="text-gray-500 text-sm">
-                {stats?.total} produtos foram carregados no catálogo.
-              </p>
-              <button onClick={onClose} className="btn-primary px-8 py-3">
-                Fechar
-              </button>
+              {publishing ? (
+                <>
+                  <div className="w-10 h-10 border-4 border-weg-blue border-t-transparent rounded-full animate-spin mx-auto" />
+                  <h3 className="text-xl font-bold text-gray-900">Publicando para todos os usuários…</h3>
+                  <p className="text-gray-500 text-sm">Gravando {stats?.total} produtos no servidor. Não feche esta janela.</p>
+                </>
+              ) : publishResult?.ok ? (
+                <>
+                  <h3 className="text-xl font-bold text-gray-900">Tabela importada e publicada!</h3>
+                  <p className="text-gray-500 text-sm">
+                    {stats?.total} produtos carregados. Todos os usuários passam a ver a nova lista
+                    ao abrir o site ou voltar para a aba (em até 5 minutos para quem estiver com ela aberta).
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-xl font-bold text-red-700">Importada, mas NÃO publicada</h3>
+                  <p className="text-red-600 text-sm">
+                    A lista nova está só neste navegador. Erro: {publishResult?.error || 'desconhecido'}.
+                    Feche e use o botão “Publicar para todos” para tentar de novo.
+                  </p>
+                </>
+              )}
+              {!publishing && (
+                <button onClick={onClose} className="btn-primary px-8 py-3">
+                  Fechar
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -424,6 +456,20 @@ function ImportModal({ onClose, onImport }) {
 function TableInfoEditor({ tableInfo, onSave, onImportClick }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(tableInfo)
+  const { publishCatalog, hasUnpublishedChanges } = useProducts()
+  const [publishing, setPublishing] = useState(false)
+  const [publishMsg, setPublishMsg] = useState(null) // { ok, text }
+
+  const handlePublish = async () => {
+    if (publishing) return
+    if (!window.confirm('Publicar a lista de preços atual para TODOS os usuários?')) return
+    setPublishing(true); setPublishMsg(null)
+    const res = await publishCatalog()
+    setPublishing(false)
+    setPublishMsg(res.ok
+      ? { ok: true,  text: 'Lista publicada para todos os usuários.' }
+      : { ok: false, text: 'Falha ao publicar: ' + res.error })
+  }
 
   const submit = () => {
     onSave(form)
@@ -439,8 +485,23 @@ function TableInfoEditor({ tableInfo, onSave, onImportClick }) {
           {tableInfo.observacao && (
             <p className="text-white/60 text-xs mt-0.5">{tableInfo.observacao}</p>
           )}
+          {hasUnpublishedChanges && !publishing && (
+            <p className="text-yellow-200 text-xs mt-1 font-semibold">
+              ⚠ Há alterações ainda não publicadas — os usuários continuam vendo a lista anterior.
+            </p>
+          )}
+          {publishMsg && (
+            <p className={`text-xs mt-1 font-semibold ${publishMsg.ok ? 'text-green-200' : 'text-red-200'}`}>{publishMsg.text}</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handlePublish}
+            disabled={publishing}
+            className={`flex items-center gap-1.5 border border-white/20 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${hasUnpublishedChanges ? 'bg-green-600 hover:bg-green-700' : 'bg-white/10 hover:bg-white/20'}`}
+          >
+            <Check size={15} /> {publishing ? 'Publicando…' : 'Publicar para todos'}
+          </button>
           <button
             onClick={onImportClick}
             className="flex items-center gap-1.5 bg-weg-orange hover:bg-weg-orange-dark border border-white/20 rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
@@ -4341,7 +4402,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
 // ─── Admin Dashboard (rendered only when authenticated) ───────────────────────
 function AdminDashboard() {
-  const { products, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices } = useProducts()
+  const { products, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices, publishCatalog } = useProducts()
   const { profile, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [search, setSearch] = useState('')
@@ -4351,7 +4412,7 @@ function AdminDashboard() {
   const [showImport, setShowImport] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
 
-  const handleImport = (parsed, mode) => {
+  const handleImport = async (parsed, mode) => {
     const { products: imported, tableName } = parsed
 
     // Atualiza preços dos fixedProducts:
@@ -4415,6 +4476,12 @@ function AdminDashboard() {
     if (tableName) {
       saveTableInfo({ ...tableInfo, nome: tableName })
     }
+
+    // Publica para todos os usuários. publishCatalog espera as gravações
+    // acima (produtos, lista ativa, nome da tabela) terminarem no servidor.
+    // Antes desta correção a importação ficava só no rascunho/localStorage
+    // do admin e nunca chegava aos outros usuários.
+    return publishCatalog()
   }
 
   const filtered = useMemo(() => {
