@@ -59,10 +59,24 @@ async function callerUserId(req: Request): Promise<string | null> {
 }
 
 // ─── Envio ──────────────────────────────────────────────────────────────────
-async function sendWhatsApp(phone?: string | null, apikey?: string | null, message?: string | null) {
-  if (!phone || !apikey || !message) return
+// Cada send* abaixo devolve {ok, error} (em vez de void) pra dispatch() poder
+// gravar no notification_log se o envio realmente funcionou ou não — antes
+// disso, uma falha (CallMeBot fora do ar, gateway sem resposta etc.) só
+// gerava um console.warn, sem nenhum jeito de o admin saber quais clientes
+// efetivamente receberam a notificação.
+type SendResult = { ok: boolean; error?: string }
+
+async function sendWhatsApp(phone?: string | null, apikey?: string | null, message?: string | null): Promise<SendResult> {
+  if (!phone || !apikey || !message) return { ok: false, error: "dados incompletos" }
   const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apikey)}`
-  try { await fetch(url) } catch (e) { console.warn("[send-notification] whatsapp error:", e) }
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    return { ok: true }
+  } catch (e) {
+    console.warn("[send-notification] whatsapp error:", e)
+    return { ok: false, error: String(e) }
+  }
 }
 
 // WA-AKG: gateway self-hosted (Baileys). Diferente do CallMeBot, não precisa
@@ -121,18 +135,22 @@ async function sendWhatsAppWaAkgRaw(baseUrl: string, apiKey: string, sessionId: 
     return { ok: false, status: 0, body: String(e) }
   }
 }
-async function sendWhatsAppWaAkg(baseUrl?: string, apiKey?: string, sessionId?: string, phone?: string | null, message?: string | null) {
-  if (!baseUrl || !apiKey || !sessionId || !phone || !message) return
+async function sendWhatsAppWaAkg(baseUrl?: string, apiKey?: string, sessionId?: string, phone?: string | null, message?: string | null): Promise<SendResult> {
+  if (!baseUrl || !apiKey || !sessionId || !phone || !message) return { ok: false, error: "configuração incompleta" }
   const r = await sendWhatsAppWaAkgRaw(baseUrl, apiKey, sessionId, phone, message)
-  if (!r.ok) console.warn("[send-notification] wa-akg error:", r.status, r.body)
+  if (!r.ok) {
+    console.warn("[send-notification] wa-akg error:", r.status, r.body)
+    return { ok: false, error: `HTTP ${r.status}: ${String(r.body).slice(0, 300)}` }
+  }
+  return { ok: true }
 }
 
 async function sendEmail(opts: {
   serviceId?: string; templateId?: string; publicKey?: string; privateKey?: string
   toEmail?: string; subject?: string; message?: string
-}) {
+}): Promise<SendResult> {
   const { serviceId, templateId, publicKey, privateKey, toEmail, subject, message } = opts
-  if (!serviceId || !templateId || !publicKey || !toEmail) return
+  if (!serviceId || !templateId || !publicKey || !toEmail) return { ok: false, error: "configuração incompleta" }
   try {
     const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
@@ -145,8 +163,16 @@ async function sendEmail(opts: {
         template_params: { to_email: toEmail, subject, message },
       }),
     })
-    if (!res.ok) console.warn("[send-notification] email error:", res.status, await res.text())
-  } catch (e) { console.warn("[send-notification] email error:", e) }
+    if (!res.ok) {
+      const t = await res.text()
+      console.warn("[send-notification] email error:", res.status, t)
+      return { ok: false, error: `HTTP ${res.status}: ${t.slice(0, 300)}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    console.warn("[send-notification] email error:", e)
+    return { ok: false, error: String(e) }
+  }
 }
 
 async function getNotifySettings() {
@@ -154,19 +180,68 @@ async function getNotifySettings() {
   return (data?.value ?? {}) as Record<string, string>
 }
 
-async function dispatch(adminMsg: string | null, clientMsg: string | null, clientEmail?: string | null, clientPhone?: string | null, clientWaKey?: string | null) {
+// Grava uma tentativa de envio no notification_log — é o que alimenta o
+// painel "Acompanhamento de notificações" no Admin. Nunca derruba o envio
+// em si: se o próprio log falhar (ex: migração não aplicada ainda), só loga
+// no console e segue.
+async function logNotification(entry: {
+  event: string
+  recipientType: "admin" | "cliente"
+  channel: "whatsapp" | "email"
+  destino: string | null
+  userId: string | null
+  clienteNome: string | null
+  quoteId: string | null
+  result: SendResult
+}) {
+  try {
+    await admin.from("notification_log").insert({
+      event: entry.event,
+      recipient_type: entry.recipientType,
+      channel: entry.channel,
+      destino: entry.destino,
+      user_id: entry.userId,
+      cliente_nome: entry.clienteNome,
+      quote_id: entry.quoteId,
+      success: entry.result.ok,
+      error: entry.result.error ?? null,
+    })
+  } catch (e) {
+    console.warn("[send-notification] log error:", e)
+  }
+}
+
+async function dispatch(opts: {
+  event: string
+  userId?: string | null
+  quoteId?: string | null
+  clienteNome?: string | null
+  adminMsg: string | null
+  clientMsg: string | null
+  clientEmail?: string | null
+  clientPhone?: string | null
+  clientWaKey?: string | null
+}) {
+  const { event, userId = null, quoteId = null, clienteNome = null, adminMsg, clientMsg, clientEmail, clientPhone, clientWaKey } = opts
   const s = await getNotifySettings()
   const tasks: Promise<void>[] = []
   const useWaAkg = s.waProvider === "wa_akg" && s.waAkgBaseUrl && s.waAkgApiKey && s.waAkgSessionId
 
+  const track = (
+    recipientType: "admin" | "cliente", channel: "whatsapp" | "email", destino: string | null | undefined,
+    send: Promise<SendResult>,
+  ) => tasks.push(send.then(result =>
+    logNotification({ event, recipientType, channel, destino: destino ?? null, userId, clienteNome, quoteId, result })
+  ))
+
   if (adminMsg) {
     if (useWaAkg && s.adminPhone) {
-      tasks.push(sendWhatsAppWaAkg(s.waAkgBaseUrl, s.waAkgApiKey, s.waAkgSessionId, s.adminPhone, adminMsg))
+      track("admin", "whatsapp", s.adminPhone, sendWhatsAppWaAkg(s.waAkgBaseUrl, s.waAkgApiKey, s.waAkgSessionId, s.adminPhone, adminMsg))
     } else if (s.adminPhone && s.adminWaKey) {
-      tasks.push(sendWhatsApp(s.adminPhone, s.adminWaKey, adminMsg))
+      track("admin", "whatsapp", s.adminPhone, sendWhatsApp(s.adminPhone, s.adminWaKey, adminMsg))
     }
     if (s.emailServiceId && s.emailTemplateId && s.emailPublicKey && s.adminEmail) {
-      tasks.push(sendEmail({
+      track("admin", "email", s.adminEmail, sendEmail({
         serviceId: s.emailServiceId, templateId: s.emailTemplateId, publicKey: s.emailPublicKey, privateKey: s.emailPrivateKey,
         toEmail: s.adminEmail, subject: adminMsg.split("\n")[0].replace(/[*_]/g, ""), message: adminMsg,
       }))
@@ -177,12 +252,12 @@ async function dispatch(adminMsg: string | null, clientMsg: string | null, clien
     // WA-AKG não precisa da apikey pessoal do cliente (clientWaKey) — manda
     // direto pro telefone cadastrado no perfil, bastando o gateway estar ativo.
     if (useWaAkg && clientPhone) {
-      tasks.push(sendWhatsAppWaAkg(s.waAkgBaseUrl, s.waAkgApiKey, s.waAkgSessionId, clientPhone, clientMsg))
+      track("cliente", "whatsapp", clientPhone, sendWhatsAppWaAkg(s.waAkgBaseUrl, s.waAkgApiKey, s.waAkgSessionId, clientPhone, clientMsg))
     } else if (clientPhone && clientWaKey) {
-      tasks.push(sendWhatsApp(clientPhone, clientWaKey, clientMsg))
+      track("cliente", "whatsapp", clientPhone, sendWhatsApp(clientPhone, clientWaKey, clientMsg))
     }
     if (clientEmail && s.emailServiceId && s.emailTemplateId && s.emailPublicKey) {
-      tasks.push(sendEmail({
+      track("cliente", "email", clientEmail, sendEmail({
         serviceId: s.emailServiceId, templateId: s.emailTemplateId, publicKey: s.emailPublicKey, privateKey: s.emailPrivateKey,
         toEmail: clientEmail, subject: clientMsg.split("\n")[0].replace(/[*_]/g, ""), message: clientMsg,
       }))
@@ -203,7 +278,7 @@ async function handleClienteRegistered(payload: { userId?: string }) {
   if (!p) return json({ ok: true }) // nada a notificar (id inválido ou já não está pendente)
 
   const msg = `🆕 *Novo cadastro pendente — Ernaniff*\n\nNome: ${p.nome}${p.empresa ? `\nEmpresa: ${p.empresa}` : ""}\nEmail: ${p.email}${p.telefone ? `\nTel: ${p.telefone}` : ""}\n\nAcesse o painel para aprovar.`
-  await dispatch(msg, null)
+  await dispatch({ event: "clienteRegistered", userId: payload.userId, clienteNome: p.nome, adminMsg: msg, clientMsg: null })
   return json({ ok: true })
 }
 
@@ -227,7 +302,10 @@ async function handleDescontoSolicitado(req: Request, payload: { quoteId?: strin
 
   const adminMsg = `💰 *Solicitação de desconto — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nValor: ${fmt(q.total_final)}\n\nMotivo: ${q.desconto_motivo || ""}\n\nAcesse o painel para responder.`
   const clientMsg = `✅ *Desconto enviado — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto para o kit "${kitNome}" foi enviada com sucesso. O administrador irá analisar e responder em breve.`
-  await dispatch(adminMsg, clientMsg, profile?.email, profile?.telefone, waKey)
+  await dispatch({
+    event: "descontoSolicitado", userId, quoteId: payload.quoteId, clienteNome,
+    adminMsg, clientMsg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
   return json({ ok: true })
 }
 
@@ -241,7 +319,10 @@ async function handleClienteApproved(req: Request, payload: { userId?: string })
   const waKey = authUser?.user?.user_metadata?.whatsapp_apikey || ""
 
   const msg = `✅ *Cadastro autorizado — Ernaniff*\n\nOlá, ${p.nome}!\n\nVocê está autorizado! Agora você já pode seguir cotando seus kits solares no sistema. 🌞`
-  await dispatch(null, msg, p.email, p.telefone, waKey)
+  await dispatch({
+    event: "clienteApproved", userId: payload.userId, clienteNome: p.nome,
+    adminMsg: null, clientMsg: msg, clientEmail: p.email, clientPhone: p.telefone, clientWaKey: waKey,
+  })
   return json({ ok: true })
 }
 
@@ -263,7 +344,10 @@ async function handleDescontoAprovado(req: Request, payload: { quoteId?: string 
 
   const msg = `🎉 *Proposta revisada — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto foi respondida.\n\nKit: ${kitNome}\nDesconto aprovado: ${q.desconto_pct}%\nValor original: ${fmt(totalOriginal)}\nValor com desconto: ${fmt(q.total_final)}\n\nMensagem: ${q.desconto_resposta || ""}\n\nAcesse o sistema para ver a proposta atualizada. 🌞`
   const adminMsg = `✅ *Desconto aprovado — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nDesconto: ${q.desconto_pct}%\nValor final: ${fmt(q.total_final)}`
-  await dispatch(adminMsg, msg, profile?.email, profile?.telefone, waKey)
+  await dispatch({
+    event: "descontoAprovado", userId: q.user_id, quoteId: payload.quoteId, clienteNome,
+    adminMsg, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
   return json({ ok: true })
 }
 
@@ -284,7 +368,10 @@ async function handleDescontoRecusado(req: Request, payload: { quoteId?: string 
 
   const msg = `📋 *Resposta sobre desconto — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto para o kit "${kitNome}" foi analisada.\n\nMensagem: ${q.desconto_resposta || ""}\n\nQualquer dúvida, entre em contato.`
   const adminMsg = `❌ *Desconto recusado — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nMotivo: ${q.desconto_resposta || "—"}`
-  await dispatch(adminMsg, msg, profile?.email, profile?.telefone, waKey)
+  await dispatch({
+    event: "descontoRecusado", userId: q.user_id, quoteId: payload.quoteId, clienteNome,
+    adminMsg, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
   return json({ ok: true })
 }
 
@@ -304,7 +391,10 @@ async function handlePrecoTravado(req: Request, payload: { quoteId?: string }) {
   const clienteNome = profile?.nome || "Cliente"
 
   const msg = `🔒 *Preço antigo mantido — Ernaniff*\n\nOlá, ${clienteNome}!\n\nMesmo com a cotação do kit "${kitNome}" vencida, decidimos manter o valor original: ${fmt(q.total_final)}.\n\nFale com a gente para fechar! 🌞`
-  await dispatch(null, msg, profile?.email, profile?.telefone, waKey)
+  await dispatch({
+    event: "precoTravado", userId: q.user_id, quoteId: payload.quoteId, clienteNome,
+    adminMsg: null, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
   return json({ ok: true })
 }
 
@@ -326,7 +416,10 @@ async function handleCotacaoVencida(payload: { quoteId?: string }) {
   const dataVenc = q.valid_until ? new Date(q.valid_until as string).toLocaleDateString("pt-BR") : ""
 
   const msg = `⏰ *Cotação vencida — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua cotação do kit "${kitNome}" venceu em ${dataVenc}.\n\nOs preços podem ter mudado — reabra a cotação no sistema pra ver o valor atualizado, ou fale com a gente se quiser manter o valor anterior.`
-  await dispatch(null, msg, profile?.email, profile?.telefone, waKey)
+  await dispatch({
+    event: "cotacaoVencida", userId: q.user_id, quoteId: payload.quoteId, clienteNome,
+    adminMsg: null, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
   return json({ ok: true })
 }
 
@@ -356,7 +449,10 @@ async function handleKitStatusChanged(req: Request, payload: { quoteId?: string;
   const corpo = KIT_STATUS_TEXT[payload.status]({ ovNumero: d.ov_numero as string, nfNumero: d.nf_numero as string })
 
   const msg = `📦 *Atualização do pedido — Ernaniff*\n\nOlá, ${clienteNome}!\n\nKit: ${kitNome}\n\n${corpo}`
-  await dispatch(null, msg, profile?.email, profile?.telefone, waKey)
+  await dispatch({
+    event: "kitStatusChanged", userId: q.user_id, quoteId: payload.quoteId, clienteNome,
+    adminMsg: null, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
   return json({ ok: true })
 }
 

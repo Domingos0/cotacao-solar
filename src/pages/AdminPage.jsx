@@ -421,7 +421,7 @@ function ImportModal({ onClose, onImport }) {
 }
 
 // ─── Table Info Editor ────────────────────────────────────────────────────────
-function TableInfoEditor({ tableInfo, onSave, onImportClick }) {
+function TableInfoEditor({ tableInfo, onSave, onImportClick, catalogLoading }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(tableInfo)
 
@@ -443,9 +443,11 @@ function TableInfoEditor({ tableInfo, onSave, onImportClick }) {
         <div className="flex items-center gap-2">
           <button
             onClick={onImportClick}
-            className="flex items-center gap-1.5 bg-weg-orange hover:bg-weg-orange-dark border border-white/20 rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
+            disabled={catalogLoading}
+            title={catalogLoading ? 'Aguarde o catálogo terminar de carregar do servidor' : undefined}
+            className="flex items-center gap-1.5 bg-weg-orange hover:bg-weg-orange-dark border border-white/20 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <ArrowUpFromLine size={15} /> Importar nova tabela
+            <ArrowUpFromLine size={15} /> {catalogLoading ? 'Carregando catálogo…' : 'Importar nova tabela'}
           </button>
           <button
             onClick={() => { setForm(tableInfo); setEditing(true) }}
@@ -3926,6 +3928,154 @@ function NotificationSettings() {
   )
 }
 
+// ─── Acompanhamento de notificações ───────────────────────────────────────────
+// Histórico de cada tentativa de envio (WhatsApp/Email) gravado pela Edge
+// Function send-notification em notification_log — antes disso não existia
+// NENHUM registro de quem recebeu o quê, nem se o envio deu certo.
+const NOTIF_EVENT_LABELS = {
+  clienteRegistered:  'Novo cadastro (aviso ao admin)',
+  descontoSolicitado: 'Desconto solicitado',
+  clienteApproved:    'Cadastro aprovado',
+  descontoAprovado:   'Desconto aprovado',
+  descontoRecusado:   'Desconto recusado',
+  precoTravado:       'Preço travado',
+  cotacaoVencida:     'Cotação vencida',
+  kitStatusChanged:   'Status do pedido',
+}
+
+function NotificationLogPanel() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [onlyFailed, setOnlyFailed] = useState(false)
+
+  const fetchLog = async () => {
+    setLoading(true)
+    setError('')
+    const { data, error: err } = await supabase
+      .from('notification_log')
+      .select('*, profiles:user_id(nome, empresa)')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    setLoading(false)
+    if (err) {
+      console.error('[NotificationLogPanel]', err)
+      setError('Erro ao carregar o histórico de notificações: ' + (err.message || 'erro desconhecido'))
+      return
+    }
+    setRows(data || [])
+  }
+
+  useEffect(() => { fetchLog() }, [])
+
+  const filtered = useMemo(() => {
+    let list = rows
+    if (onlyFailed) list = list.filter(r => !r.success)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(r =>
+        (r.cliente_nome || '').toLowerCase().includes(q) ||
+        (r.profiles?.empresa || '').toLowerCase().includes(q) ||
+        (r.destino || '').toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [rows, search, onlyFailed])
+
+  const fmtDt = d => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+            <Bell size={18} className="text-weg-blue" /> Acompanhamento de notificações
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">Últimas {rows.length} tentativas de envio (WhatsApp/Email) — quem recebeu e se deu certo.</p>
+        </div>
+        <button onClick={fetchLog} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue px-3 py-1.5 rounded-lg hover:bg-gray-100">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar cliente, empresa ou contato..."
+            className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
+          />
+        </div>
+        <button
+          onClick={() => setOnlyFailed(v => !v)}
+          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+            onlyFailed ? 'bg-red-50 border-red-300 text-red-700' : 'border-gray-200 text-gray-500 hover:border-red-200'
+          }`}
+        >
+          <XCircle size={13} /> Só falhas
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700 flex items-center gap-2">
+          <AlertTriangle size={14} className="shrink-0" /> {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-6 h-6 border-4 border-weg-blue border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-center text-gray-400 text-sm py-10">Nenhuma notificação encontrada.</p>
+      ) : (
+        <div className="overflow-x-auto -mx-5 px-5">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-xs text-gray-400 uppercase tracking-wide">
+                <th className="py-2 pr-3 font-semibold">Quando</th>
+                <th className="py-2 pr-3 font-semibold">Evento</th>
+                <th className="py-2 pr-3 font-semibold">Cliente</th>
+                <th className="py-2 pr-3 font-semibold">Para</th>
+                <th className="py-2 pr-3 font-semibold">Canal</th>
+                <th className="py-2 pr-3 font-semibold">Contato</th>
+                <th className="py-2 pr-3 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(r => (
+                <tr key={r.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60">
+                  <td className="py-2 pr-3 text-gray-500 whitespace-nowrap">{fmtDt(r.created_at)}</td>
+                  <td className="py-2 pr-3 text-gray-700">{NOTIF_EVENT_LABELS[r.event] || r.event}</td>
+                  <td className="py-2 pr-3">
+                    <p className="font-medium text-gray-800">{r.cliente_nome || '—'}</p>
+                    {r.profiles?.empresa && <p className="text-xs text-gray-400">{r.profiles.empresa}</p>}
+                  </td>
+                  <td className="py-2 pr-3 text-gray-500 capitalize">{r.recipient_type}</td>
+                  <td className="py-2 pr-3 text-gray-500">
+                    {r.channel === 'whatsapp'
+                      ? <span className="flex items-center gap-1"><MessageCircle size={13} className="text-green-600" /> WhatsApp</span>
+                      : <span className="flex items-center gap-1"><Mail size={13} className="text-blue-500" /> Email</span>}
+                  </td>
+                  <td className="py-2 pr-3 text-gray-500 font-mono text-xs">{r.destino || '—'}</td>
+                  <td className="py-2 pr-3">
+                    {r.success
+                      ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle2 size={12} /> Enviado</span>
+                      : <span title={r.error || ''} className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-full cursor-help"><XCircle size={12} /> Falhou</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Kits Fechados Panel ──────────────────────────────────────────────────────
 function KitsFechadosPanel({ onBadgeChange }) {
   const [quotes, setQuotes] = useState([])
@@ -4341,7 +4491,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
 // ─── Admin Dashboard (rendered only when authenticated) ───────────────────────
 function AdminDashboard() {
-  const { products, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices, publishCatalog } = useProducts()
+  const { products, catalogLoading, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices, publishCatalog } = useProducts()
   const { profile, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [search, setSearch] = useState('')
@@ -4373,6 +4523,28 @@ function AdminDashboard() {
   }
 
   const handleImport = async (parsed, mode) => {
+    if (catalogLoading) {
+      // O catálogo real (publicado) ainda está carregando do servidor — até
+      // ele chegar, "products" é só o bundle padrão embutido no código. Um
+      // import nesse meio tempo mesclaria contra essa lista errada, perdendo
+      // produtos que só existem na lista de verdade. Bloqueia e pede retry.
+      setPublishError('O catálogo ainda está carregando — aguarde alguns segundos e tente importar de novo.')
+      return
+    }
+    try {
+      await doImport(parsed, mode)
+      await autoPublish()
+    } catch (e) {
+      // Se qualquer gravação falhar no meio do caminho (ex: rascunho
+      // indisponível, erro de rede), aborta ANTES de publicar — antes disso,
+      // o código seguia até publishCatalog() mesmo com a gravação tendo
+      // falhado, publicando um rascunho antigo e mostrando sucesso indevido.
+      console.error('[handleImport]', e)
+      setPublishError('Falha ao salvar a importação — publicação cancelada. Veja o aviso de erro e tente de novo.')
+    }
+  }
+
+  const doImport = async (parsed, mode) => {
     const { products: imported, tableName } = parsed
 
     // Atualiza preços dos fixedProducts:
@@ -4436,8 +4608,6 @@ function AdminDashboard() {
     if (tableName) {
       await saveTableInfo({ ...tableInfo, nome: tableName })
     }
-
-    await autoPublish()
   }
 
   const filtered = useMemo(() => {
@@ -4600,14 +4770,14 @@ function AdminDashboard() {
       {activeTab === 'kits_fechados' && <KitsFechadosPanel onBadgeChange={setPendingImplants} />}
 
       {/* Tab: Notificações */}
-      {activeTab === 'notificacoes' && <NotificationSettings />}
+      {activeTab === 'notificacoes' && <><NotificationSettings /><NotificationLogPanel /></>}
 
       {/* Tab: Produtos */}
       {activeTab === 'produtos' && <>
 
       {/* Table info */}
       <div className="mb-5">
-        <TableInfoEditor tableInfo={tableInfo} onSave={saveTableInfo} onImportClick={() => setShowImport(true)} />
+        <TableInfoEditor tableInfo={tableInfo} onSave={saveTableInfo} onImportClick={() => setShowImport(true)} catalogLoading={catalogLoading} />
       </div>
 
       {/* Toolbar */}
@@ -4737,20 +4907,26 @@ function AdminDashboard() {
             </button>
             <button
               onClick={async () => {
+                if (catalogLoading) { setPublishError('O catálogo ainda está carregando — aguarde e tente de novo.'); return }
                 const { count, saved } = syncDefaultPrices()
                 setSyncMsg(count > 0
                   ? `${count} preco${count !== 1 ? 's' : ''} atualizado${count !== 1 ? 's' : ''} da tabela oficial`
                   : 'Todos os precos ja estao atualizados')
                 setTimeout(() => setSyncMsg(''), 4000)
-                if (count > 0) { await saved; await autoPublish() }
+                if (count > 0) {
+                  try { await saved; await autoPublish() }
+                  catch (e) { console.error('[syncDefaultPrices]', e); setPublishError('Falha ao salvar — publicação cancelada.') }
+                }
               }}
-              className="flex items-center gap-1.5 text-sm px-3 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50"
+              disabled={catalogLoading}
+              className="flex items-center gap-1.5 text-sm px-3 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw size={14} /> Sincronizar precos
             </button>
             <button
               onClick={() => setShowResetConfirm(true)}
-              className="flex items-center gap-1.5 text-sm px-3 py-2 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50"
+              disabled={catalogLoading}
+              className="flex items-center gap-1.5 text-sm px-3 py-2 border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw size={14} /> Restaurar padrao
             </button>
@@ -4795,7 +4971,10 @@ function AdminDashboard() {
             </p>
           </div>
           <div className="flex gap-2">
-            <button onClick={async () => { await resetToDefaults(); setShowResetConfirm(false); await autoPublish() }}
+            <button onClick={async () => {
+              try { await resetToDefaults(); setShowResetConfirm(false); await autoPublish() }
+              catch (e) { console.error('[resetToDefaults]', e); setShowResetConfirm(false); setPublishError('Falha ao salvar — publicação cancelada.') }
+            }}
               className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg">
               Sim, restaurar
             </button>
