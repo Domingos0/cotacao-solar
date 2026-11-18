@@ -248,8 +248,8 @@ export function ProductsProvider({ children }) {
   const saveProducts = useCallback((newProducts) => {
     setProducts(newProducts)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newProducts))
-    if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
+    if (IS_DEV) return Promise.resolve()
+    return ensureDraftVersion().then(draftId => {
       if (!draftId) return
       return supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts })
     }).catch(e => reportCatalogSaveError('produtos', e))
@@ -258,8 +258,8 @@ export function ProductsProvider({ children }) {
   const saveTableInfo = useCallback((info) => {
     setTableInfo(info)
     localStorage.setItem(TABLE_KEY, JSON.stringify(info))
-    if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
+    if (IS_DEV) return Promise.resolve()
+    return ensureDraftVersion().then(draftId => {
       if (!draftId) return
       return supabase.from('price_catalog_versions').update({
         label: info.nome, vigencia_mes: info.mes, versao: info.versao, observacao: info.observacao,
@@ -274,16 +274,16 @@ export function ProductsProvider({ children }) {
     if (s) {
       const arr = [...s]
       localStorage.setItem(ACTIVE_LIST_KEY, JSON.stringify(arr))
-      if (IS_DEV) return
-      ensureDraftVersion().then(async (draftId) => {
+      if (IS_DEV) return Promise.resolve()
+      return ensureDraftVersion().then(async (draftId) => {
         if (!draftId) return
         await supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
         await supabase.from('price_catalog_active_codes').insert(arr.map(codigo => ({ version_id: draftId, codigo })))
       }).catch(e => reportCatalogSaveError('lista ativa', e))
     } else {
       localStorage.removeItem(ACTIVE_LIST_KEY)
-      if (IS_DEV) return
-      ensureDraftVersion().then(draftId => {
+      if (IS_DEV) return Promise.resolve()
+      return ensureDraftVersion().then(draftId => {
         if (!draftId) return
         return supabase.from('price_catalog_active_codes').delete().eq('version_id', draftId)
       }).catch(e => reportCatalogSaveError('lista ativa', e))
@@ -319,7 +319,7 @@ export function ProductsProvider({ children }) {
   }, [products, saveProducts])
 
   const resetToDefaults = useCallback(() => {
-    saveProducts(defaultProducts)
+    return saveProducts(defaultProducts)
   }, [saveProducts])
 
   const syncDefaultPrices = useCallback(() => {
@@ -334,8 +334,8 @@ export function ProductsProvider({ children }) {
       if (changed) count++
       return changed ? { ...p, preco: defPreco, precoFrete: defPreco, ipi: def.ipi ?? p.ipi } : p
     })
-    saveProducts(updated)
-    return count
+    const saved = saveProducts(updated)
+    return { count, saved }
   }, [products, saveProducts])
 
   const saveDesconto = useCallback((val) => {

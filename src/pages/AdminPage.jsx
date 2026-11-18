@@ -4341,7 +4341,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
 // ─── Admin Dashboard (rendered only when authenticated) ───────────────────────
 function AdminDashboard() {
-  const { products, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices } = useProducts()
+  const { products, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices, publishCatalog } = useProducts()
   const { profile, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
   const [search, setSearch] = useState('')
@@ -4351,7 +4351,28 @@ function AdminDashboard() {
   const [showImport, setShowImport] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
 
-  const handleImport = (parsed, mode) => {
+  // Toda alteração do catálogo (importar xls, sincronizar preços, restaurar
+  // padrão...) grava primeiro num rascunho no banco — só vira visível pra
+  // todos os usuários quando alguém publica essa versão (ver publishCatalog
+  // em ProductsContext.jsx). Antes, nada aqui chamava publishCatalog: o
+  // admin via a lista nova (seu próprio cache local), mas o resto do
+  // sistema continuava preso na última versão publicada, como se o upload
+  // tivesse ficado só "no localhost" do admin. Agora essas ações publicam
+  // sozinhas assim que terminam de salvar, sem precisar de um botão à parte.
+  const [publishMsg, setPublishMsg] = useState('')
+  const [publishError, setPublishError] = useState('')
+  const autoPublish = async () => {
+    const res = await publishCatalog()
+    if (!res.ok) {
+      setPublishError(res.error || 'Erro ao publicar o catálogo pra todos os usuários.')
+      return
+    }
+    setPublishError('')
+    setPublishMsg('Lista atualizada para todos os usuários.')
+    setTimeout(() => setPublishMsg(''), 5000)
+  }
+
+  const handleImport = async (parsed, mode) => {
     const { products: imported, tableName } = parsed
 
     // Atualiza preços dos fixedProducts:
@@ -4387,7 +4408,7 @@ function AdminDashboard() {
         const ex = estoqueMap[p.codigo]
         return ex ? { ...p, estoque: ex.estoque, estoque_previsao: ex.estoque_previsao, kitRole: ex.kitRole ?? p.kitRole } : p
       })
-      saveProducts([...importedWithEstoque, ...updatedFixed])
+      await saveProducts([...importedWithEstoque, ...updatedFixed])
     } else {
       // Atualiza preços por código SAP e adiciona produtos novos (apenas regulares)
       const base = products.filter(p => !fixedProducts.some(f => f.id === p.id))
@@ -4405,16 +4426,18 @@ function AdminDashboard() {
           seen.add(imp.codigo)
         }
       })
-      saveProducts([...merged, ...updatedFixed])
+      await saveProducts([...merged, ...updatedFixed])
     }
 
     // ── Salva whitelist com os SAP codes da lista importada ──
     // O catálogo e kit builder mostrarão apenas esses produtos
-    setActiveListCodes(imported.map(p => p.codigo))
+    await setActiveListCodes(imported.map(p => p.codigo))
 
     if (tableName) {
-      saveTableInfo({ ...tableInfo, nome: tableName })
+      await saveTableInfo({ ...tableInfo, nome: tableName })
     }
+
+    await autoPublish()
   }
 
   const filtered = useMemo(() => {
@@ -4713,12 +4736,13 @@ function AdminDashboard() {
               <Printer size={14} /> Imprimir
             </button>
             <button
-              onClick={() => {
-                const count = syncDefaultPrices()
+              onClick={async () => {
+                const { count, saved } = syncDefaultPrices()
                 setSyncMsg(count > 0
                   ? `${count} preco${count !== 1 ? 's' : ''} atualizado${count !== 1 ? 's' : ''} da tabela oficial`
                   : 'Todos os precos ja estao atualizados')
                 setTimeout(() => setSyncMsg(''), 4000)
+                if (count > 0) { await saved; await autoPublish() }
               }}
               className="flex items-center gap-1.5 text-sm px-3 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50"
             >
@@ -4740,6 +4764,19 @@ function AdminDashboard() {
         </div>
       </div>
 
+      {publishMsg && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center gap-2 text-sm text-green-800">
+          <CheckCircle2 size={15} className="text-green-600 shrink-0" />
+          {publishMsg}
+        </div>
+      )}
+      {publishError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex items-center gap-2 text-sm text-red-700">
+          <AlertTriangle size={15} className="shrink-0" />
+          Erro ao publicar: {publishError}
+        </div>
+      )}
+
       {/* Sync price toast */}
       {syncMsg && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex items-center gap-2 text-sm text-green-800">
@@ -4758,7 +4795,7 @@ function AdminDashboard() {
             </p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => { resetToDefaults(); setShowResetConfirm(false) }}
+            <button onClick={async () => { await resetToDefaults(); setShowResetConfirm(false); await autoPublish() }}
               className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg">
               Sim, restaurar
             </button>
