@@ -6,6 +6,20 @@ import { sunPathForDay, SUN_PATH_DAYS, estimateHorizonShadingLoss, MONTH_NAMES }
 const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtKwh = v => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' kWh'
 
+// supabase-js não repassa o corpo de uma resposta non-2xx da Edge Function em
+// `data` — só um erro genérico ("Edge Function returned a non-2xx status
+// code"), escondendo a mensagem real que a function devolveu (ex: "Endereço
+// não encontrado"). O corpo de verdade fica em error.context (a Response).
+async function extractFunctionError(error, data) {
+  if (data?.error) return data.error
+  if (!error) return 'Erro desconhecido.'
+  try {
+    const body = await error.context?.json?.()
+    if (body?.error) return body.error
+  } catch { /* ignora — cai no fallback genérico abaixo */ }
+  return error.message || 'Erro desconhecido.'
+}
+
 // ─── Sun Path (SVG) ───────────────────────────────────────────────────────────
 // Eixo X = azimute (0-360°, Norte ao centro pro Brasil fazer mais sentido
 // visualmente — já que aqui o sol passa pelo Norte, não pelo Sul). Eixo Y =
@@ -83,7 +97,7 @@ export default function SolarSimulationPage() {
     setGeocoding(true); setGeoError('')
     const { data, error } = await supabase.functions.invoke('solar-simulate', { body: { action: 'geocode', payload: { query: endereco } } })
     setGeocoding(false)
-    if (error || data?.error) { setGeoError(data?.error || error?.message || 'Erro ao buscar endereço.'); return }
+    if (error || data?.error) { setGeoError(await extractFunctionError(error, data)); return }
     setLat(data.lat); setLon(data.lon); setDisplayName(data.displayName)
     setTilt(Math.round(Math.abs(data.lat)))
   }
@@ -105,7 +119,7 @@ export default function SolarSimulationPage() {
       body: { action: 'generation', payload: { lat, lon, peakpower: Number(peakpower), tilt: Number(tilt), orientacaoNorte: Number(orientacao) } },
     })
     setCalculating(false)
-    if (error || data?.error) { setCalcError(data?.error || error?.message || 'Erro ao calcular geração.'); return }
+    if (error || data?.error) { setCalcError(await extractFunctionError(error, data)); return }
     setResult(data)
   }
 

@@ -31,27 +31,38 @@ function json(body: unknown, status = 200) {
   })
 }
 
-// Identificação exigida pela política de uso do Nominatim — um User-Agent
-// genérico de browser seria rejeitado/bloqueado.
-const NOMINATIM_UA = "ErnaniffSolarApp/1.0 (vendas@ernaniff.com.br)"
-
+// Geocodificação via Photon (komoot, baseado em dados OpenStreetMap).
+// Nominatim era a primeira escolha óbvia (mesmos dados, API mais simples),
+// mas a política de uso deles bloqueia faixas de IP de provedores de nuvem
+// — incluindo a infra onde as Edge Functions do Supabase rodam — mesmo com
+// um User-Agent identificável correto (confirmado: funciona de uma máquina
+// comum, mas devolve 403 quando chamado a partir da function). Photon não
+// tem essa restrição.
 async function handleGeocode(payload: { query?: string }) {
   const query = (payload.query || "").trim()
   if (!query) return json({ error: "endereço vazio" }, 400)
 
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`
+  const url = `https://photon.komoot.io/api/?limit=3&q=${encodeURIComponent(query)}`
   try {
-    const res = await fetch(url, { headers: { "User-Agent": NOMINATIM_UA } })
-    if (!res.ok) return json({ error: `Nominatim respondeu ${res.status}` }, 502)
-    const arr = await res.json()
-    if (!Array.isArray(arr) || arr.length === 0) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
+    if (!res.ok) return json({ error: `Geocodificação respondeu ${res.status}` }, 502)
+    const data = await res.json()
+    const features = (data?.features || []) as Array<{
+      geometry: { coordinates: [number, number] }
+      properties: Record<string, string>
+    }>
+    if (features.length === 0) {
       return json({ error: "Endereço não encontrado. Tente ser mais específico (rua, cidade, estado)." }, 404)
     }
-    const r = arr[0]
+    // Prioriza resultado no Brasil, se houver mais de um candidato.
+    const best = features.find(f => f.properties?.countrycode === "BR") || features[0]
+    const p = best.properties || {}
+    const displayName = [p.name, p.city || p.town || p.village, p.state, p.country]
+      .filter(Boolean).join(", ")
     return json({
-      lat: parseFloat(r.lat),
-      lon: parseFloat(r.lon),
-      displayName: r.display_name as string,
+      lat: best.geometry.coordinates[1],
+      lon: best.geometry.coordinates[0],
+      displayName: displayName || query,
     })
   } catch (e) {
     return json({ error: `Erro ao geocodificar: ${String(e)}` }, 502)
