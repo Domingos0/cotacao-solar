@@ -10,6 +10,7 @@ import ProductDetail from './components/ProductDetail'
 import AdminPage from './pages/AdminPage'
 import KitBuilder from './pages/KitBuilder'
 import BatteryDimensioningPage from './pages/BatteryDimensioningPage'
+import SolarSimulationPage from './pages/SolarSimulationPage'
 import MinhasCotacoesPage from './pages/MinhasCotacoesPage'
 import LoginPage from './pages/LoginPage'
 import CadastroPage from './pages/CadastroPage'
@@ -284,6 +285,7 @@ function AuthenticatedApp() {
             onUseInKit={(quoteData) => handleLoadQuote({ quoteData, savedId: undefined })}
           />
         )}
+        {page === 'simulacao-solar' && isAdmin && <SolarSimulationPage />}
         {page === 'admin' && <AdminPage />}
       </main>
 
