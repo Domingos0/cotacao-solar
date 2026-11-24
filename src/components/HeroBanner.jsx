@@ -1,15 +1,19 @@
 import { Sun, Zap, Battery, Droplets } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
-
-const stats = [
-  { icon: Sun, label: 'Módulos Fotovoltaicos', value: '6 modelos', color: 'text-amber-400' },
-  { icon: Zap, label: 'Inversores On-Grid', value: '30+ modelos', color: 'text-blue-300' },
-  { icon: Droplets, label: 'Inversores de Bombeamento', value: '30+ modelos', color: 'text-cyan-300' },
-  { icon: Battery, label: 'Baterias e Armazenamento', value: '4 modelos', color: 'text-green-300' },
-]
+import { CATEGORIES } from '../data/products'
 
 export default function HeroBanner() {
-  const { tableInfo } = useProducts()
+  const { tableInfo, catalogProducts } = useProducts()
+  // Antes esses números eram texto fixo ("6 modelos", "30+ modelos") —
+  // nunca refletiam o catálogo real, então ficavam errados assim que
+  // qualquer import mudava a quantidade de produtos de uma categoria.
+  const countOf = (...cats) => catalogProducts.filter(p => cats.includes(p.categoria)).length
+  const stats = [
+    { icon: Sun,      label: 'Módulos Fotovoltaicos',        value: `${countOf(CATEGORIES.MODULOS)} modelos`, color: 'text-amber-400' },
+    { icon: Zap,      label: 'Inversores On-Grid',           value: `${countOf(CATEGORIES.INVERSORES_MONO, CATEGORIES.INVERSORES_TRI, CATEGORIES.MICROINVERSORES)} modelos`, color: 'text-blue-300' },
+    { icon: Droplets, label: 'Inversores de Bombeamento',    value: `${countOf(CATEGORIES.INVERSORES_BOMBEAMENTO)} modelos`, color: 'text-cyan-300' },
+    { icon: Battery,  label: 'Baterias e Armazenamento',     value: `${countOf(CATEGORIES.BATERIAS)} modelos`, color: 'text-green-300' },
+  ]
   return (
     <section className="bg-gradient-to-r from-weg-blue via-weg-blue-mid to-weg-blue-light text-white">
       <div className="max-w-7xl mx-auto px-4 py-6 md:py-12">
