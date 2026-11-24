@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-import { products as defaultProducts, assignKitRole } from '../data/products'
+import { products as defaultProducts, assignKitRole, fixedProducts } from '../data/products'
 import { supabase } from '../lib/supabase'
 
 const ProductsContext = createContext()
@@ -182,10 +182,16 @@ export function ProductsProvider({ children }) {
     }
   }, [checkCatalogVersion])
 
+  // fixedProducts (Smart Home, estruturas Solo, acessórios de micro) nunca
+  // vêm do import do xlsx — a lista ativa (activeListCodes) é montada só com
+  // os códigos importados, então esses produtos fixos sempre ficavam de fora
+  // do filtro do catálogo assim que qualquer lista era publicada. Mantém
+  // esses sempre visíveis, independente do que estiver na lista ativa.
+  const fixedProductIds = React.useMemo(() => new Set(fixedProducts.map(p => p.id)), [])
   const catalogProducts = React.useMemo(() => {
     if (!activeListCodes || activeListCodes.size === 0) return products
-    return products.filter(p => activeListCodes.has(p.codigo))
-  }, [products, activeListCodes])
+    return products.filter(p => activeListCodes.has(p.codigo) || fixedProductIds.has(p.id))
+  }, [products, activeListCodes, fixedProductIds])
 
   // Cada save* abaixo: grava local (otimista) na hora, e devolve uma promise
   // que só resolve de verdade depois da escrita no servidor ter confirmado.
@@ -249,23 +255,56 @@ export function ProductsProvider({ children }) {
     }).catch(e => reportCatalogSaveError('lista ativa', e))
   }, [ensureDraftVersion, reportCatalogSaveError])
 
+  // Publica a versão de rascunho em edição, tornando-a a versão oficial
+  // vista por todos os clientes (via current_catalog_version()).
+  const publishCatalog = useCallback(async () => {
+    if (IS_DEV) return { ok: false, error: 'Publicação indisponível em desenvolvimento.' }
+    const draftId = draftVersionIdRef.current || await ensureDraftVersion()
+    if (!draftId) return { ok: false, error: 'Não foi possível preparar a versão para publicação.' }
+    try {
+      const { error } = await supabase.rpc('publish_price_catalog', { p_version_id: draftId })
+      if (error) throw error
+      draftVersionIdRef.current = null
+      lastSeenVersionIdRef.current = draftId
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Erro ao publicar.' }
+    }
+  }, [ensureDraftVersion])
+
+  // Edições individuais de produto (toggle de estoque, editar um campo,
+  // excluir) só gravavam no rascunho e nunca publicavam — a tela do admin
+  // mostrava a mudança na hora (estado local otimista), mas um F5/logout
+  // puxava de novo a versão PUBLICADA antiga, revertendo a edição (ex:
+  // estoque "Esgotado" voltando pra "Disponível" sozinho). Publica
+  // automaticamente depois de cada uma dessas ações discretas — nenhum
+  // call site destas três funções é por tecla digitada, sempre um clique
+  // único, então publicar a cada chamada é seguro e não gera spam de RPC.
+  const publishAfter = useCallback(async (savePromise) => {
+    try {
+      await savePromise
+      const res = await publishCatalog()
+      if (!res.ok) reportCatalogSaveError('publicar alteração', new Error(res.error))
+    } catch { /* saveProducts já reportou o próprio erro de gravação */ }
+  }, [publishCatalog, reportCatalogSaveError])
+
   const addProduct = useCallback((product) => {
     const newId = Math.max(...products.map(p => p.id), 0) + 1
     const newProduct = normalizeProduct({ ...product, id: newId })
     const updated = [...products, newProduct]
-    saveProducts(updated)
+    publishAfter(saveProducts(updated))
     return newProduct
-  }, [products, saveProducts])
+  }, [products, saveProducts, publishAfter])
 
   const updateProduct = useCallback((id, updates) => {
     const updated = products.map(p => p.id === id ? { ...p, ...updates } : p)
-    saveProducts(updated)
-  }, [products, saveProducts])
+    publishAfter(saveProducts(updated))
+  }, [products, saveProducts, publishAfter])
 
   const deleteProduct = useCallback((id) => {
     const updated = products.filter(p => p.id !== id)
-    saveProducts(updated)
-  }, [products, saveProducts])
+    publishAfter(saveProducts(updated))
+  }, [products, saveProducts, publishAfter])
 
   const resetToDefaults = useCallback(() => {
     return saveProducts(defaultProducts)
@@ -291,33 +330,37 @@ export function ProductsProvider({ children }) {
     const v = Math.min(100, Math.max(0, Number(val) || 0))
     setDesconto(v)
     if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
-      if (!draftId) return
+    publishAfter(ensureDraftVersion().then(draftId => {
+      if (!draftId) throw new DraftUnavailableError('rascunho indisponível')
       return supabase.from('discount_defaults').upsert({ version_id: draftId, desconto: v })
-    }).catch(e => reportCatalogSaveError('desconto padrão', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+        .then(({ error }) => { if (error) throw error })
+    }).catch(e => { if (!(e instanceof DraftUnavailableError)) reportCatalogSaveError('desconto padrão', e); throw e }))
+  }, [ensureDraftVersion, reportCatalogSaveError, publishAfter])
 
   const saveCondicoes = useCallback((texto) => {
     const v = typeof texto === 'string' ? texto : DEFAULT_CONDICOES
     setCondicoes(v)
     if (IS_DEV) return
-    ensureDraftVersion().then(draftId => {
-      if (!draftId) return
+    publishAfter(ensureDraftVersion().then(draftId => {
+      if (!draftId) throw new DraftUnavailableError('rascunho indisponível')
       return supabase.from('price_catalog_versions').update({ condicoes: v }).eq('id', draftId)
-    }).catch(e => reportCatalogSaveError('condições comerciais', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+        .then(({ error }) => { if (error) throw error })
+    }).catch(e => { if (!(e instanceof DraftUnavailableError)) reportCatalogSaveError('condições comerciais', e); throw e }))
+  }, [ensureDraftVersion, reportCatalogSaveError, publishAfter])
 
   const saveFrete = useCallback((opcoes) => {
     setFreteOpcoes(opcoes)
     if (IS_DEV) return
-    ensureDraftVersion().then(async (draftId) => {
-      if (!draftId) return
-      await supabase.from('freight_options').delete().eq('version_id', draftId)
+    publishAfter(ensureDraftVersion().then(async (draftId) => {
+      if (!draftId) throw new DraftUnavailableError('rascunho indisponível')
+      const del = await supabase.from('freight_options').delete().eq('version_id', draftId)
+      if (del.error) throw del.error
       if (opcoes.length) {
-        await supabase.from('freight_options').insert(opcoes.map(o => ({ version_id: draftId, nome: o.nome, acrescimo: o.acrescimo })))
+        const ins = await supabase.from('freight_options').insert(opcoes.map(o => ({ version_id: draftId, nome: o.nome, acrescimo: o.acrescimo })))
+        if (ins.error) throw ins.error
       }
-    }).catch(e => reportCatalogSaveError('opções de frete', e))
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    }).catch(e => { if (!(e instanceof DraftUnavailableError)) reportCatalogSaveError('opções de frete', e); throw e }))
+  }, [ensureDraftVersion, reportCatalogSaveError, publishAfter])
 
   const addFreteOpcao = useCallback((opcao) => {
     const nextId = Math.max(...freteOpcoes.map(f => f.id), 0) + 1
@@ -335,23 +378,6 @@ export function ProductsProvider({ children }) {
   const resetFrete = useCallback(() => {
     saveFrete(DEFAULT_FRETE)
   }, [saveFrete])
-
-  // Publica a versão de rascunho em edição, tornando-a a versão oficial
-  // vista por todos os clientes (via current_catalog_version()).
-  const publishCatalog = useCallback(async () => {
-    if (IS_DEV) return { ok: false, error: 'Publicação indisponível em desenvolvimento.' }
-    const draftId = draftVersionIdRef.current || await ensureDraftVersion()
-    if (!draftId) return { ok: false, error: 'Não foi possível preparar a versão para publicação.' }
-    try {
-      const { error } = await supabase.rpc('publish_price_catalog', { p_version_id: draftId })
-      if (error) throw error
-      draftVersionIdRef.current = null
-      lastSeenVersionIdRef.current = draftId
-      return { ok: true }
-    } catch (e) {
-      return { ok: false, error: e?.message || 'Erro ao publicar.' }
-    }
-  }, [ensureDraftVersion])
 
   return (
     <ProductsContext.Provider value={{

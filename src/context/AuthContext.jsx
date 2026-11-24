@@ -64,11 +64,18 @@ export function AuthProvider({ children }) {
     return () => { supabase.removeChannel(channel); channelRef.current = null }
   }, [session?.user?.id])
 
+  // NUNCA ler role/status de user_metadata para decidir privilégio — é um
+  // campo que o próprio usuário consegue escrever no navegador (via
+  // supabase.auth.updateUser({ data: {...} })), diferente de app_metadata.
+  // Antes, isso deixava qualquer um virar "admin" na própria tela (as
+  // policies/triggers no banco já bloqueavam a escrita real em profiles.role,
+  // mas a UI inteira do Admin renderizava mesmo assim). A única fonte de
+  // verdade pra role/status é a linha de public.profiles.
   const metaToProfile = (userId, meta = {}) => ({
     id: userId,
     nome: meta.nome || meta.email || userId,
-    role: meta.role || 'cliente',
-    status: meta.role === 'admin' ? 'ativo' : 'pendente',
+    role: 'cliente',
+    status: 'pendente',
   })
 
   const fetchProfile = async (userId, userMeta) => {
@@ -79,19 +86,10 @@ export function AuthProvider({ children }) {
         .eq('id', userId)
         .maybeSingle()
 
-      if (data) {
-        const meta = userMeta || {}
-        if (meta.role === 'admin' && data.role !== 'admin') {
-          setProfile({ ...data, role: 'admin', status: 'ativo' })
-        } else {
-          setProfile(data)
-        }
-        return
-      }
+      if (data) { setProfile(data); return }
     } catch (_) {}
 
-    const meta = userMeta || {}
-    setProfile(metaToProfile(userId, meta))
+    setProfile(metaToProfile(userId, userMeta || {}))
   }
 
   const signIn = async (email, password) => {
@@ -142,8 +140,9 @@ export function AuthProvider({ children }) {
   // loading enquanto: sessão ainda não foi lida OU sessão existe mas perfil ainda não chegou
   const loading = session === undefined || (session !== null && profile === null)
 
-  const metaRole = session?.user?.user_metadata?.role
-  const isAdmin = profile?.role === 'admin' || metaRole === 'admin'
+  // Única fonte de verdade: public.profiles.role (nunca user_metadata, que o
+  // próprio usuário controla no navegador).
+  const isAdmin = profile?.role === 'admin'
   const isAtivo = profile?.status === 'ativo' || isAdmin
 
   return (
