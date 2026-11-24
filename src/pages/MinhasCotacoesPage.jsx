@@ -6,6 +6,7 @@ import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
+import { isNordestePanel } from '../lib/regiao'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -126,10 +127,8 @@ const ISOPLETA_OPTIONS = [30, 35, 40, 45, 50]
 const round2 = v => Math.round(v * 100) / 100
 
 // ─── Stock helpers ────────────────────────────────────────────────────────────
-function isNordestePanel(panel) {
-  if (!panel?.nome) return false
-  return /(nordeste|cd\s*ne\b)/i.test(panel.nome)
-}
+// isNordestePanel agora vem de src/lib/regiao.js (era uma cópia local
+// idêntica à de KitBuilder.jsx — consolidado pra não divergir no futuro).
 
 function getPanelStock(panel, catalogProducts) {
   if (!panel || !catalogProducts?.length) return null

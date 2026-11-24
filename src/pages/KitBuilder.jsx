@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { normalizeSearch } from '../lib/text'
+import { regiaoFromUF, detectUF, isNordestePanel } from '../lib/regiao'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -1339,36 +1340,8 @@ function Step1({ data, onChange }) {
   )
 }
 
-// ─── Mapeamento UF → Região ──────────────────────────────────────────────────
-const UF_REGIAO = {
-  AC:'norte', AM:'norte', AP:'norte', PA:'norte', RO:'norte', RR:'norte', TO:'norte',
-  AL:'nordeste', BA:'nordeste', CE:'nordeste', MA:'nordeste', PB:'nordeste',
-  PE:'nordeste', PI:'nordeste', RN:'nordeste', SE:'nordeste',
-  DF:'centro_oeste', GO:'centro_oeste', MS:'centro_oeste', MT:'centro_oeste',
-  ES:'sudeste', MG:'sudeste', RJ:'sudeste', SP:'sudeste',
-  PR:'sul', RS:'sul', SC:'sul',
-}
-
-// Extrai a sigla de UF de strings como "Manaus / AM", "São Paulo - SP", "PA"
-function detectUF(local) {
-  if (!local) return null
-  const m = local.trim().match(/\b([A-Za-z]{2})\s*$/)
-  if (m) {
-    const uf = m[1].toUpperCase()
-    if (UF_REGIAO[uf]) return uf
-  }
-  return null
-}
-
-function regiaoFromUF(uf) {
-  return uf ? (UF_REGIAO[uf] || null) : null
-}
-
-// Detecta painel de CD Nordeste pelo nome
-function isNordestePanel(panel) {
-  if (!panel?.nome) return false
-  return /(nordeste|cd\s*ne\b)/i.test(panel.nome)
-}
+// UF_REGIAO / detectUF / regiaoFromUF / isNordestePanel — ver src/lib/regiao.js
+// (extraído de lá pra consolidar com a cópia que existia em MinhasCotacoesPage.jsx)
 
 // ─── Step 2: Módulos ─────────────────────────────────────────────────────────
 function Step2({ data, onChange, products, targetKwp }) {
