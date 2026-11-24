@@ -43,9 +43,17 @@ export default function ProductDetail({ product, onClose }) {
   const invSpec  = getInverterSpecs(product)
   const emoji    = getCategoryEmoji(product.categoria)
 
-  // Merge: specs from product data + enriched specs from portfolio
+  // Merge: specs enriquecidos do portfólio (família toda) + a potência
+  // ESPECÍFICA deste modelo por cima. Os specs do portfólio são por família
+  // (ex: "3 – 10,5 kW" pra toda a linha SIW200G) — sem isso, um modelo
+  // pontual de 7,5 kW mostrava essa faixa genérica em vez do próprio valor,
+  // contradizendo o badge de potência exibido ao lado no catálogo.
   const specsToShow = invSpec?.specs
-    ?? (product.specs && Object.keys(product.specs).length > 0 ? product.specs : null)
+    ? {
+        ...invSpec.specs,
+        ...(product.potencia ? { 'Potência CA': `${product.potencia} ${product.unidadePotencia || 'kW'}` } : {}),
+      }
+    : (product.specs && Object.keys(product.specs).length > 0 ? product.specs : null)
 
   return (
     <div

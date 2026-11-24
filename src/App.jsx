@@ -13,6 +13,7 @@ import BatteryDimensioningPage from './pages/BatteryDimensioningPage'
 import SolarSimulationPage from './pages/SolarSimulationPage'
 import MinhasCotacoesPage from './pages/MinhasCotacoesPage'
 import LoginPage from './pages/LoginPage'
+import { normalizeSearch } from './lib/text'
 import CadastroPage from './pages/CadastroPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import { CATEGORIES } from './data/products'
@@ -42,14 +43,14 @@ function CatalogPage({ searchQuery, setSearchQuery }) {
     let list = products
     if (selectedCategory) list = list.filter(p => p.categoria === selectedCategory)
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
+      const q = normalizeSearch(searchQuery)
       list = list.filter(p =>
-        p.nome.toLowerCase().includes(q) ||
-        p.codigo.toLowerCase().includes(q) ||
-        (p.modelo || '').toLowerCase().includes(q) ||
-        p.categoria.toLowerCase().includes(q) ||
-        p.tipo.toLowerCase().includes(q) ||
-        (p.descricao || '').toLowerCase().includes(q)
+        normalizeSearch(p.nome).includes(q) ||
+        normalizeSearch(p.codigo).includes(q) ||
+        normalizeSearch(p.modelo).includes(q) ||
+        normalizeSearch(p.categoria).includes(q) ||
+        normalizeSearch(p.tipo).includes(q) ||
+        normalizeSearch(p.descricao).includes(q)
       )
     }
     switch (sortBy) {

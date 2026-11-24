@@ -4,6 +4,7 @@ import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
+import { normalizeSearch } from '../lib/text'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -1177,8 +1178,8 @@ function Step1({ data, onChange }) {
 
   const cidadesFiltradas = useMemo(() => {
     if (!cidadeBusca || cidades.includes(cidadeBusca)) return cidades
-    const q = cidadeBusca.toLowerCase()
-    return cidades.filter(c => c.toLowerCase().includes(q))
+    const q = normalizeSearch(cidadeBusca)
+    return cidades.filter(c => normalizeSearch(c).includes(q))
   }, [cidades, cidadeBusca])
 
   const handleEstadoChange = (uf) => {
