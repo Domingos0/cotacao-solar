@@ -2422,7 +2422,7 @@ function Step3({ data, onChange, products, realKwp }) {
           )}
           <span>Sistema: <span className="font-bold text-weg-blue">{realKwp.toFixed(2)} kWp</span></span>
           {usePowerFilter && suggested.length > 0 && !showAll && (
-            <span className="text-green-600">— {suggested.length} compatível{suggested.length !== 1 ? 'is' : ''}</span>
+            <span className="text-green-600">— {suggested.length} {suggested.length === 1 ? 'compatível' : 'compatíveis'}</span>
           )}
         </p>
         {/* Overload do inversor selecionado */}
@@ -4278,7 +4278,7 @@ function StructureSection({ data, onChange, panelCount }) {
         <div>
           <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
             {roofType === 'Solo'
-              ? `Estrutura Solo — ${availableKits.length} opção${availableKits.length !== 1 ? 'ões' : ''}`
+              ? `Estrutura Solo — ${availableKits.length} ${availableKits.length === 1 ? 'opção' : 'opções'}`
               : `Selecionar kit (${availableKits.length} opções)`}
           </p>
           {roofType === 'Solo' && (

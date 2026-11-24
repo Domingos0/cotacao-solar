@@ -2067,7 +2067,7 @@ function DashboardPanel({ onGoToTab }) {
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-400 mt-4 text-right">{stats.total} cotação{stats.total !== 1 ? 'ões' : ''} no total</p>
+          <p className="text-xs text-gray-400 mt-4 text-right">{stats.total} {stats.total === 1 ? 'cotação' : 'cotações'} no total</p>
         </div>
 
         {/* Recent quotes */}

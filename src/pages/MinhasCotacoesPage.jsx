@@ -261,6 +261,10 @@ function calcAccDefaults(isTri, entradas, totalInv) {
 // roundTo: cabo solar é vendido em rolo em múltiplos de 5m — qualquer valor
 // digitado fora do múltiplo é arredondado pra cima automaticamente (mesma
 // regra do CableRow em KitBuilder.jsx, pra "Revisar cotação" não divergir).
+// Preço é sempre por UMA unidade de venda — "pares" no plural fica errado
+// aqui ("R$ 5,00/pares"), já que o preço é por par, não por "pares".
+const perUnitLabel = (unit) => unit === 'pares' ? 'par' : unit
+
 function AccRow({ label, included, onToggle, qty, onQtyChange, unit = 'un', product, roundTo }) {
   const [adjustedMsg, setAdjustedMsg] = useState(false)
   const step = roundTo || 1
@@ -289,7 +293,7 @@ function AccRow({ label, included, onToggle, qty, onQtyChange, unit = 'un', prod
       </button>
       <span className="flex-1 text-gray-700 truncate">{label}</span>
       {product?.preco && included && (
-        <span className="text-gray-400 shrink-0">{fmt(product.preco)}/{unit}</span>
+        <span className="text-gray-400 shrink-0">{fmt(product.preco)}/{perUnitLabel(unit)}</span>
       )}
       {included && (
         <div className="flex flex-col items-end gap-0.5 shrink-0">
