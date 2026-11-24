@@ -31,6 +31,21 @@ export const CATEGORIES = {
   CAPACITORES:            'Banco de Capacitores',
 }
 
+// Status de estoque "efetivo" de um produto — trata "Previsão" com uma
+// data já vencida como se estivesse "Disponível" de novo. Antes, cada tela
+// (Kit Builder, Minhas Cotações, Admin) só olhava estoque === 'Previsão' e
+// mostrava a data crua, pra sempre — se o admin esquecesse de atualizar o
+// status manualmente depois que a previsão passou, o cliente continuava
+// vendo (e sendo bloqueado por) uma data de entrega já vencida.
+export function effectiveEstoque(p) {
+  const estoque = p?.estoque || 'Disponível'
+  if (estoque === 'Previsão' && p?.estoque_previsao) {
+    const hoje = new Date().toISOString().slice(0, 10)
+    if (p.estoque_previsao < hoje) return 'Disponível'
+  }
+  return estoque
+}
+
 // Auto-assign kitRole based on produto tipo/nome/categoria
 export function assignKitRole(p) {
   const nome = (p.nome || '').toLowerCase()

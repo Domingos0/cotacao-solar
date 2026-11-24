@@ -26,6 +26,34 @@ import {
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
 
+// Única fonte de verdade pro rótulo de status de cotação — usado tanto na
+// lista principal (Cotações) quanto no feed "Atividade recente" do
+// Dashboard. Antes, o Dashboard tinha sua própria versão truncada (só 4 dos
+// 11 status possíveis), com "Recusada" como fallback silencioso pra
+// QUALQUER outro status — uma cotação "Kit Fechado"/"Implantado"/"Faturado"
+// aparecia errada como "Recusada" no feed do Dashboard, enquanto a lista de
+// Cotações mostrava o status certo. Mesmo bug noutra tela = a mesma
+// cotação parecendo ter dois status diferentes dependendo de onde se olha.
+const QUOTE_STATUS_LABEL = {
+  rascunho: 'Rascunho', enviada: 'Em análise', em_analise: 'Em análise',
+  aguardando_desconto: 'Aguardando desconto',
+  aprovada: 'Aprovada', recusada: 'Recusada',
+  fechado: 'Kit Fechado', implantado: 'Pedido Implantando',
+  faturado: 'Pedido Faturado', em_transporte: 'Em Transporte', perdida: 'Perdida',
+}
+const QUOTE_STATUS_CLS = {
+  rascunho: 'bg-gray-100 text-gray-500',
+  enviada: 'bg-blue-100 text-blue-700', em_analise: 'bg-blue-100 text-blue-700',
+  aguardando_desconto: 'bg-yellow-100 text-yellow-700',
+  aprovada: 'bg-green-100 text-green-700',
+  recusada: 'bg-red-100 text-red-600',
+  fechado: 'bg-orange-100 text-orange-700',
+  implantado: 'bg-indigo-100 text-indigo-700',
+  faturado: 'bg-sky-100 text-sky-700',
+  em_transporte: 'bg-emerald-100 text-emerald-700',
+  perdida: 'bg-red-100 text-red-600',
+}
+
 const EMPTY_PRODUCT = {
   nome: '', codigo: '', modelo: '', categoria: CATEGORIES.MODULOS,
   tipo: '', fabricante: 'WEG', potencia: '', unidadePotencia: 'kW',
@@ -1972,6 +2000,11 @@ function DashboardPanel({ onGoToTab }) {
     aprovada:            { label: 'Desconto aprovado',      cls: 'bg-green-500',   text: 'text-green-700',  count: stats.aprovada },
     recusada:            { label: 'Recusado',               cls: 'bg-red-400',     text: 'text-red-600',    count: stats.recusada },
     fechado:             { label: 'Kits fechados',          cls: 'bg-orange-400',  text: 'text-orange-600', count: stats.fechado },
+    // faturado/em_transporte faltavam aqui — já entravam na soma do card
+    // "Kits Fechados" acima, mas sumiam desse detalhamento por status (as
+    // barras nunca somavam o total real mostrado).
+    faturado:            { label: 'Faturados',               cls: 'bg-sky-400',     text: 'text-sky-700',    count: stats.faturado },
+    em_transporte:       { label: 'Em transporte',           cls: 'bg-violet-400',  text: 'text-violet-700', count: stats.em_transporte },
     implantado:          { label: 'Implantados',            cls: 'bg-emerald-500', text: 'text-emerald-700',count: stats.implantado },
     perdida:             { label: 'Propostas perdidas',     cls: 'bg-red-300',     text: 'text-red-500',    count: stats.perdida },
   }
@@ -2049,12 +2082,7 @@ function DashboardPanel({ onGoToTab }) {
             )}
             {recentQuotes.map(q => {
               const kitData = q.data || {}
-              const statusCls = {
-                rascunho: 'bg-gray-100 text-gray-500',
-                aguardando_desconto: 'bg-yellow-100 text-yellow-700',
-                aprovada: 'bg-green-100 text-green-700',
-                recusada: 'bg-red-100 text-red-600',
-              }[q.status] || 'bg-gray-100 text-gray-500'
+              const statusCls = QUOTE_STATUS_CLS[q.status] || 'bg-gray-100 text-gray-500'
 
               return (
                 <div key={q.id} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
@@ -2077,7 +2105,7 @@ function DashboardPanel({ onGoToTab }) {
                   <div className="text-right shrink-0">
                     <p className="text-xs font-bold text-gray-700">{fmt(q.total_final)}</p>
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${statusCls}`}>
-                      {q.status === 'aguardando_desconto' ? 'Aguardando' : q.status === 'rascunho' ? 'Rascunho' : q.status === 'aprovada' ? 'Aprovada' : 'Recusada'}
+                      {QUOTE_STATUS_LABEL[q.status] || q.status}
                     </span>
                   </div>
                 </div>
@@ -2485,13 +2513,9 @@ function QuoteManagement() {
     implantado:           'bg-emerald-100 text-emerald-700',
     perdida:              'bg-red-100 text-red-600',
   }
-  const STATUS_LABEL = {
-    rascunho: 'Rascunho', enviada: 'Em análise', em_analise: 'Em análise',
-    aguardando_desconto: 'Aguardando desconto',
-    aprovada: 'Aprovada', recusada: 'Recusada',
-    fechado: 'Kit Fechado', implantado: 'Pedido Implantando',
-    faturado: 'Pedido Faturado', em_transporte: 'Em Transporte', perdida: 'Perdida',
-  }
+  // Mesmo mapa usado no feed "Atividade recente" do Dashboard (QUOTE_STATUS_LABEL,
+  // no topo do arquivo) — evita as duas telas divergirem de novo.
+  const STATUS_LABEL = QUOTE_STATUS_LABEL
 
   const [confirmingImplantId, setConfirmingImplantId] = useState(null)
   const handleConfirmImplantacao = async (quoteId, newStatus = 'implantado') => {

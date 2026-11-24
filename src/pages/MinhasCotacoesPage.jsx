@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
-import { KIT_ROLE, CATEGORIES } from '../data/products'
+import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -134,7 +134,7 @@ function isNordestePanel(panel) {
 function getPanelStock(panel, catalogProducts) {
   if (!panel || !catalogProducts?.length) return null
   const cur = catalogProducts.find(p => p.id === panel.id || (panel.codigo && p.codigo === panel.codigo))
-  return cur ? (cur.estoque || 'Disponível') : null
+  return cur ? effectiveEstoque(cur) : null
 }
 
 function findAlternativePanel(panel, freteNome, catalogProducts) {
@@ -1100,8 +1100,8 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     : null
   // Estoque atual do panel pelo catálogo (para print)
   const catalogPanel     = catalogProducts?.find(p => panelInQuote && (p.id === panelInQuote.id || (panelInQuote.codigo && p.codigo === panelInQuote.codigo)))
-  const panelEstoqueAtual  = catalogPanel?.estoque || panelInQuote?.estoque || 'Disponível'
-  const panelPrevisaoAtual = catalogPanel?.estoque_previsao || panelInQuote?.estoque_previsao || null
+  const panelEstoqueAtual  = catalogPanel ? effectiveEstoque(catalogPanel) : effectiveEstoque(panelInQuote)
+  const panelPrevisaoAtual = panelEstoqueAtual === 'Previsão' ? (catalogPanel?.estoque_previsao || panelInQuote?.estoque_previsao || null) : null
 
   // Build structure composition (mirrors KitBuilder logic)
   const structureComposition = useMemo(() => {
@@ -2591,10 +2591,10 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
           {/* Aviso de disponibilidade do módulo */}
           {(() => {
             const cp = catalogProducts?.find(p => pkd.panel && (p.id === pkd.panel.id || (pkd.panel.codigo && p.codigo === pkd.panel.codigo)))
-            const est = cp?.estoque || pkd.panel?.estoque || 'Disponível'
+            const est = cp ? effectiveEstoque(cp) : effectiveEstoque(pkd.panel)
             if (est === 'Disponível') return null
             const isEsgotado = est === 'Esgotado' || est === 'Sem estoque'
-            const prev = cp?.estoque_previsao || pkd.panel?.estoque_previsao || null
+            const prev = est === 'Previsão' ? (cp?.estoque_previsao || pkd.panel?.estoque_previsao || null) : null
             const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
             return (
               <div className={`mx-8 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>

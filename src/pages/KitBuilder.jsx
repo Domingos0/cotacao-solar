@@ -4,7 +4,7 @@ import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
-import { KIT_ROLE, CATEGORIES } from '../data/products'
+import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
 import kitCompositions from '../data/kitCompositions.json'
@@ -887,7 +887,7 @@ function BombDimStep({ data, onChange, products }) {
                   {m.potencia} Wp · <span className="font-bold text-cyan-700">{pal}×{seriesPorString}</span> = {n} un · {p} kWp · {fmt(m.preco)}/un
                 </div>
                 {(() => {
-                  const s = m.estoque || 'Disponível'
+                  const s = effectiveEstoque(m)
                   if (s === 'Esgotado' || s === 'Sem estoque') return (
                     <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600 mt-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" /> Esgotado
@@ -1456,9 +1456,9 @@ function Step2({ data, onChange, products, targetKwp }) {
 
       {/* Modal de alerta: módulo com estoque restrito */}
       {stockAlert && (() => {
-        const s = stockAlert.panel.estoque || 'Disponível'
+        const s = effectiveEstoque(stockAlert.panel)
         const isEsgotado = s === 'Esgotado' || s === 'Sem estoque'
-        const prev = stockAlert.panel.estoque_previsao
+        const prev = s === 'Previsão' ? stockAlert.panel.estoque_previsao : null
         const prevFmt = prev
           ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})
           : null
@@ -1543,7 +1543,7 @@ function Step2({ data, onChange, products, targetKwp }) {
           const qty     = Math.ceil((targetKwp * 1000) / panel.potencia)
           const realKwp = (qty * panel.potencia / 1000).toFixed(2)
           const selected = data.panel?.id === panel.id
-          const estoque  = panel.estoque || 'Disponível'
+          const estoque  = effectiveEstoque(panel)
           const isEsg    = estoque === 'Esgotado' || estoque === 'Sem estoque'
           const isPrev   = estoque === 'Previsão'
           const prev     = isPrev ? panel.estoque_previsao : null
@@ -2667,7 +2667,7 @@ function Step3({ data, onChange, products, realKwp }) {
           // Divider before the first non-suggested inverter in the list
           const firstNotSugg = usePowerFilter && showAll && listIdx === sortedSuggested.length && notSuggested.length > 0
           // Availability
-          const invEstoque  = inv.estoque || 'Disponível'
+          const invEstoque  = effectiveEstoque(inv)
           const invIsEsg    = invEstoque === 'Esgotado' || invEstoque === 'Sem estoque'
           const invIsPrev   = invEstoque === 'Previsão'
           const invPrev     = invIsPrev ? inv.estoque_previsao : null
@@ -5441,11 +5441,11 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         {(() => {
           const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
           const problemas = kitItems.filter(it => {
-            const s = it.product?.estoque || 'Disponível'
+            const s = effectiveEstoque(it.product)
             return s === 'Esgotado' || s === 'Sem estoque' || s === 'Previsão'
           })
           if (problemas.length === 0) return null
-          const temEsg = problemas.some(it => { const s = it.product.estoque; return s === 'Esgotado' || s === 'Sem estoque' })
+          const temEsg = problemas.some(it => { const s = effectiveEstoque(it.product); return s === 'Esgotado' || s === 'Sem estoque' })
           return (
             <div className={`mx-6 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${
               temEsg ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'
@@ -5453,7 +5453,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               <AlertTriangle size={15} className={`shrink-0 mt-1 ${temEsg ? 'text-red-500' : 'text-yellow-600'}`} />
               <div className="space-y-1">
                 {problemas.map((it, i) => {
-                  const s = it.product.estoque
+                  const s = effectiveEstoque(it.product)
                   const isEsg = s === 'Esgotado' || s === 'Sem estoque'
                   const prev = it.product.estoque_previsao
                   const prevFmt = fmtDate(prev)
@@ -5488,7 +5488,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
             </thead>
             <tbody>
               {kitItems.map((item, idx) => {
-                const itemEstoque = item.product?.estoque || 'Disponível'
+                const itemEstoque = effectiveEstoque(item.product)
                 const itemIsEsg   = itemEstoque === 'Esgotado' || itemEstoque === 'Sem estoque'
                 const itemIsPrev  = itemEstoque === 'Previsão'
                 const itemPrev    = itemIsPrev ? item.product?.estoque_previsao : null
