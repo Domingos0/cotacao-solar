@@ -287,7 +287,7 @@ function AuthenticatedApp() {
           />
         )}
         {page === 'simulacao-solar' && isAdmin && <SolarSimulationPage />}
-        {page === 'admin' && <AdminPage />}
+        {page === 'admin' && isAdmin && <AdminPage />}
       </main>
 
       <Footer />
