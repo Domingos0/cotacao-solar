@@ -73,9 +73,12 @@ const EMPTY_PRODUCT = {
 function mapSectionToCategory(name) {
   if (!name) return ''
   const n = name.toLowerCase()
+  // Checa categorias específicas ANTES do catch-all de "acessório" — esse
+  // termo é genérico o bastante pra aparecer em títulos de seção de outras
+  // categorias (ex: "Proteção e Acessórios"), e como estava antes, qualquer
+  // uma dessas caía no bucket de inversor antes de chegar na checagem certa.
   if (n.includes('módulo') || n.includes('modulo'))    return CATEGORIES.MODULOS
   if (n.includes('bombeamento'))                        return CATEGORIES.INVERSORES_BOMBEAMENTO
-  if (n.includes('inversor') || n.includes('acessório') || n.includes('acessorio')) return '__INV__'
   if (n.includes('smart home'))                         return CATEGORIES.SMART_HOME
   if (n.includes('bater'))                              return CATEGORIES.BATERIAS
   if (n.includes('recarga') || n.includes('elétrico'))  return CATEGORIES.ESTACOES_RECARGA
@@ -86,6 +89,7 @@ function mapSectionToCategory(name) {
   if (n.includes('monitor'))                            return CATEGORIES.MONITORAMENTO
   if (n.includes('otimizador'))                         return CATEGORIES.OTIMIZADOR
   if (n.includes('capacitor') || n.includes('banco'))   return CATEGORIES.CAPACITORES
+  if (n.includes('inversor') || n.includes('acessório') || n.includes('acessorio')) return '__INV__'
   return name
 }
 
