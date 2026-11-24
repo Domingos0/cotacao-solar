@@ -644,7 +644,7 @@ function ProductRow({ product, onUpdate, onDelete }) {
       </td>
       <td className="px-3 py-2.5 text-sm font-bold text-gray-800">
         {product.preco
-          ? product.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          ? <>{product.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}{product.unidadeVenda ? `/${product.unidadeVenda}` : ''}</>
           : <span className="text-gray-400 font-normal text-xs">Sob consulta</span>}
       </td>
       <td className="px-3 py-2.5">
