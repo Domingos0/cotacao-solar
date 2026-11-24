@@ -3311,11 +3311,23 @@ function Step4({ data, onChange, products }) {
 
   const d = key => data[key] !== undefined ? data[key] : defaults[key]
 
-  // Salva defaults no data (sem loop infinito)
-  const pendingDefaults = Object.entries(defaults).filter(([k]) => data[k] === undefined)
-  if (pendingDefaults.length > 0) {
-    setTimeout(() => onChange({ ...data, ...Object.fromEntries(pendingDefaults) }), 0)
-  }
+  // Salva defaults no data — precisa ser useEffect (não setTimeout solto no
+  // corpo do render): um setTimeout(fn, 0) aqui dispara de novo a CADA
+  // render enquanto sobrar default pendente, e cada chamada carrega seu
+  // próprio closure (antigo) de `data`/`defaults`. Com múltiplos renders
+  // antes do primeiro onChange ser processado, vários desses timeouts
+  // ficam concorrendo — o último a disparar "vence" e pode regravar uma
+  // quantidade de acessório com um valor diferente do que estava sendo
+  // mostrado na tela (ex: mc4Qty recalculado com um `entradas` desatualizado
+  // de um render anterior). useEffect roda depois do commit, sempre com o
+  // `data`/`defaults` da renderização mais recente.
+  const missingDefaultKeys = Object.keys(defaults).filter(k => data[k] === undefined).join(',')
+  useEffect(() => {
+    if (!missingDefaultKeys) return
+    const pending = Object.fromEntries(missingDefaultKeys.split(',').map(k => [k, defaults[k]]))
+    onChange({ ...data, ...pending })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingDefaultKeys])
 
   const estruturaSep = (
     <div className="relative my-2">
