@@ -1,7 +1,7 @@
 import { X, Package, Tag, Zap, Phone, CheckCircle, Copy, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { getProductImage } from '../data/productImages'
-import { getInverterSpecs } from '../data/inverterSpecs'
+import { getInverterSpecs, extractModelPowerKw, buildPowerSubtitle } from '../data/inverterSpecs'
 
 function formatPrice(preco, unidadeVenda) {
   if (!preco) return 'Sob consulta'
@@ -106,19 +106,31 @@ export default function ProductDetail({ product, onClose }) {
               <h2 className="text-xl font-bold leading-snug">{product.nome}</h2>
               {invSpec?.subtitulo
                 ? (() => {
+                    // Potência do modelo específico (ex: M080 → 8 kW) sobrescreve
+                    // a faixa genérica da linha inteira ("3–10 kW") que o
+                    // portfólio descreve — a faixa continua visível, só menor.
+                    const modelPowerKw = extractModelPowerKw(product.nome || product.modelo)
                     const linhaMatch = invSpec.subtitulo.match(/^(STANDARD|LINHA PREMIUM)\s*—\s*(.+)$/)
                     if (linhaMatch) {
                       const isStandard = linhaMatch[1] === 'STANDARD'
+                      const { main, line } = buildPowerSubtitle(linhaMatch[2], modelPowerKw)
                       return (
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide ${isStandard ? 'bg-sky-400/30 text-sky-100' : 'bg-amber-400/30 text-amber-100'}`}>
                             {linhaMatch[1]}
                           </span>
-                          <p className="text-white/70 text-sm">{linhaMatch[2]}</p>
+                          <p className="text-white/70 text-sm">{main}</p>
+                          {line && <p className="text-white/40 text-[10px]">({line})</p>}
                         </div>
                       )
                     }
-                    return <p className="text-white/70 text-sm mt-0.5">{invSpec.subtitulo}</p>
+                    const { main, line } = buildPowerSubtitle(invSpec.subtitulo, modelPowerKw)
+                    return (
+                      <>
+                        <p className="text-white/70 text-sm mt-0.5">{main}</p>
+                        {line && <p className="text-white/40 text-[10px]">{line}</p>}
+                      </>
+                    )
                   })()
                 : product.tipo && <p className="text-white/70 text-sm mt-0.5">{product.tipo}</p>
               }

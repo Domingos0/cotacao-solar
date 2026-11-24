@@ -185,6 +185,32 @@ const SPECS = {
   },
 }
 
+// Extrai a potência (kW) a partir do código do modelo WEG (ex: "SIW300H
+// M080 W00" → 8 kW). Convenção: os 3 dígitos depois do "M" são a potência
+// em passos de 0,1 kW (M080=8kW, M050=5kW, M100=10kW). Sem isso, o modal
+// de detalhes mostrava a faixa de potência da LINHA inteira (ex:
+// "Inversor Monofásico 3–10 kW") até pra um modelo específico de 8 kW.
+export function extractModelPowerKw(nome) {
+  if (!nome) return null
+  const m = nome.match(/\bM(\d{3})\b/)
+  if (!m) return null
+  return Number(m[1]) / 10
+}
+
+// Troca a faixa de potência da linha ("Inversor Monofásico 3–10 kW") pela
+// potência específica do modelo ("Inversor Monofásico 8 kW"), guardando a
+// faixa original como texto secundário menor ("linha de 3 a 10 kW").
+// Sem potência de modelo detectável, devolve o texto da linha sem alterar.
+export function buildPowerSubtitle(lineText, modelPowerKw) {
+  if (!lineText) return { main: lineText, line: null }
+  const rangeMatch = lineText.match(/(\d+(?:[.,]\d+)?)\s*[–-]\s*(\d+(?:[.,]\d+)?)\s*kW/i)
+  if (!rangeMatch || modelPowerKw == null) return { main: lineText, line: null }
+  const [full, min, max] = rangeMatch
+  const main = lineText.replace(full, `${modelPowerKw} kW`)
+  const line = `linha de ${min} a ${max} kW`
+  return { main, line }
+}
+
 /** Returns spec block for a product, or null if not found */
 export function getInverterSpecs(product) {
   const nome = (product.nome || '').toLowerCase()
