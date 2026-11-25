@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { normalizeSearch } from '../lib/text'
 import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
+import { distributeTotal } from '../lib/money'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -4983,6 +4984,17 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   // Fator único (ajustes + desconto + frete) pra refletir o preço final também por linha
   const priceRatio  = subtotal ? totalFinal / subtotal : 1
 
+  // Total de cada linha já com o priceRatio aplicado, mas com o resíduo de
+  // arredondamento jogado na ÚLTIMA linha com preço (distributeTotal) — sem
+  // isso, cada linha era arredondada separadamente e a soma delas podia
+  // ficar 1-2 centavos diferente do Total Final exibido logo abaixo
+  // (quanto mais itens no kit, maior a chance de aparecer essa diferença).
+  const itemTotaisDistribuidos = distributeTotal(
+    kitItems.map(it => it.product.preco ? it.product.preco * it.qty * priceRatio : null),
+    totalFinal
+  )
+  const kitItemsComTotal = kitItems.map((item, idx) => ({ ...item, itemTotal: itemTotaisDistribuidos[idx] }))
+
   // ── Monta payload base da cotação ──
   const buildQuotePayload = (extraStatus = 'rascunho', extraFields = {}) => ({
     user_id:      session?.user?.id,
@@ -5472,7 +5484,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               </tr>
             </thead>
             <tbody>
-              {kitItems.map((item, idx) => {
+              {kitItemsComTotal.map((item, idx) => {
                 const itemEstoque = effectiveEstoque(item.product)
                 const itemIsEsg   = itemEstoque === 'Esgotado' || itemEstoque === 'Sem estoque'
                 const itemIsPrev  = itemEstoque === 'Previsão'
@@ -5511,7 +5523,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                     {item.product.preco ? fmt(item.product.preco * priceRatio) : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">
-                    {item.product.preco ? fmt(moneyMul(item.product.preco, item.qty) * priceRatio) : '—'}
+                    {item.itemTotal != null ? fmt(item.itemTotal) : '—'}
                   </td>
                   <td className="px-4 py-3 print:hidden">
                     {item.avulso && (

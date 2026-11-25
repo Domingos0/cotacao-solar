@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
+import { distributeTotal } from '../lib/money'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -1272,6 +1273,13 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   // Fator único (ajustes + desconto + frete) pra distribuir o preço final por item,
   // já que o preço de tabela por item não reflete o desconto sozinho.
   const priceRatio = quote.subtotal ? (quote.total_final || 0) / quote.subtotal : 1
+  // Total de cada linha com o resíduo de arredondamento jogado na última —
+  // sem isso, a soma das linhas (cada uma arredondada separadamente) podia
+  // ficar 1-2 centavos diferente do "Total do Kit" exibido logo abaixo.
+  const itemTotaisDistribuidos = distributeTotal(
+    items.map(it => it.total ? it.total * priceRatio : null),
+    quote.total_final || 0
+  )
 
   const isClosed = ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'].includes(quote.status)
   const [motivoPerda, setMotivoPerda] = useState('')
@@ -1690,7 +1698,9 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                     </td>
                     <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
                     <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt((item.preco_unit || 0) * priceRatio)}</td>
-                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt((item.total || 0) * priceRatio)}</td>
+                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">
+                      {itemTotaisDistribuidos[i] != null ? fmt(itemTotaisDistribuidos[i]) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2579,6 +2589,10 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
       // dos itens vs. o total_final já ajustado dessa revisão.
       const revSubtotal = (r.items || []).reduce((s, it) => s + (it.total || 0), 0)
       const revPriceRatio = revSubtotal ? (r.total_final || 0) / revSubtotal : 1
+      const revItemTotais = distributeTotal(
+        (r.items || []).map(it => it.total ? it.total * revPriceRatio : null),
+        r.total_final || 0
+      )
       return (
         <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
           <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
@@ -2662,7 +2676,9 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                       </td>
                       <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
                       <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt((item.preco_unit || 0) * revPriceRatio)}</td>
-                      <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt((item.total || 0) * revPriceRatio)}</td>
+                      <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">
+                        {revItemTotais[i] != null ? fmt(revItemTotais[i]) : '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
