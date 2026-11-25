@@ -6,7 +6,7 @@ import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
-import { isNordestePanel } from '../lib/regiao'
+import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -427,11 +427,29 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
   const initFrete = freteOpcoes.find(f => Math.abs(f.acrescimo - (quote.frete_pct || 1)) < 0.001) || freteOpcoes[0] || null
   const [selFrete, setSelFrete] = useState(initFrete)
 
-  // Nordeste detection (CD Nordeste panels only ship to Northeast)
-  const isNordeste = useMemo(() => {
-    const nome = ((selPanel || kitData.panel)?.modelo || (selPanel || kitData.panel)?.nome || '').toLowerCase()
-    return nome.includes('nordeste')
-  }, [selPanel, kitData.panel])
+  // Nordeste detection (CD Nordeste panels only ship to Northeast) — usa a
+  // mesma função do Kit Builder (isNordestePanel), que a versão local daqui
+  // não reconhecia (ex: abreviação "CD NE" no nome do painel).
+  const isNordeste = useMemo(
+    () => isNordestePanel(selPanel || kitData.panel),
+    [selPanel, kitData.panel]
+  )
+
+  // Fretes permitidos quando o painel é CD Nordeste — o Kit Builder já
+  // restringia isso (freteOpcoesVisiveis), mas aqui, ao editar uma
+  // cotação, o <select> de frete mostrava todas as opções sem filtro.
+  const freteOpcoesVisiveis = isNordeste
+    ? freteOpcoes.filter(fretePermitidoNordeste)
+    : freteOpcoes
+
+  // Corrige a seleção se o frete atual não é permitido pro painel CD Nordeste
+  useEffect(() => {
+    if (!isNordeste) return
+    if (selFrete && !fretePermitidoNordeste(selFrete)) {
+      const primeiro = freteOpcoes.find(fretePermitidoNordeste)
+      if (primeiro) setSelFrete(primeiro)
+    }
+  }, [isNordeste, selFrete, freteOpcoes])
 
   // ── Product lookups ──
   const bySAP  = (sap) => catalogProducts.find(p => p.codigo === sap && p.preco)
@@ -1045,7 +1063,7 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
           onChange={e => setSelFrete(freteOpcoes.find(f => f.id === Number(e.target.value)) || null)}
           className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-weg-blue text-gray-700"
         >
-          {freteOpcoes.map(f => (
+          {freteOpcoesVisiveis.map(f => (
             <option key={f.id} value={f.id}>{f.nome}</option>
           ))}
         </select>
@@ -1056,7 +1074,7 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
             <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-500" />
             <p>
               <strong>Atenção:</strong> o módulo selecionado é de distribuição <strong>CD Nordeste</strong>.
-              A condição de frete será considerada apenas para entregas na <strong>Região Nordeste</strong>.
+              Frete restrito a <strong>Nordeste</strong>, <strong>Norte</strong> ou <strong>FOB no CD</strong>.
             </p>
           </div>
         )}

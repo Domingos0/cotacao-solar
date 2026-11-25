@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { normalizeSearch } from '../lib/text'
-import { regiaoFromUF, detectUF, isNordestePanel } from '../lib/regiao'
+import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -4646,7 +4646,6 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
   // Fretes permitidos para módulos CD Nordeste
   const isNordeste = isNordestePanel(data.panel)
-  const fretePermitidoNordeste = (f) => /(norte|nordeste|fob)/i.test(f.nome)
   const freteOpcoesVisiveis = isNordeste
     ? freteOpcoes.filter(fretePermitidoNordeste)
     : freteOpcoes

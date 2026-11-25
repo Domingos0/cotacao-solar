@@ -36,3 +36,11 @@ export function isNordestePanel(panel) {
   if (!panel?.nome) return false
   return /(nordeste|cd\s*ne\b)/i.test(panel.nome)
 }
+
+// Módulos CD Nordeste só podem ser entregues via frete Norte, Nordeste ou
+// FOB no CD — extraído do Kit Builder (tinha essa regra, mas Minhas
+// Cotações deixava escolher qualquer frete ao editar uma cotação com
+// painel CD Nordeste, sem aplicar a mesma restrição).
+export function fretePermitidoNordeste(frete) {
+  return /(norte|nordeste|fob)/i.test(frete?.nome || '')
+}
