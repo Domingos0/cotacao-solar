@@ -119,10 +119,14 @@ const CATEGORIA_STYLE = {
 }
 const CATEGORIAS_EQUIP = Object.keys(CATEGORIA_STYLE)
 
-const EQUIP_PRESETS = [
+export const EQUIP_PRESETS = [
   // Cozinha
-  { nome: 'Geladeira',          emoji: '🧊', categoria: 'Cozinha',  tipo: 'indutiva',   watts: 250,  inicio: 0,  duracao: 24 },
-  { nome: 'Freezer',            emoji: '🧊', categoria: 'Cozinha',  tipo: 'indutiva',   watts: 200,  inicio: 0,  duracao: 24 },
+  // kwhDia: consumo médio real do compressor (ciclo liga/desliga), não watts×24h —
+  // geladeira/freezer não ficam com o compressor ligado o dia inteiro, então
+  // potência×24h superestimava MUITO a energia diária (6 kWh/dia só de geladeira).
+  // watts continua sendo a potência de PARTIDA (pico simultâneo do compressor).
+  { nome: 'Geladeira',          emoji: '🧊', categoria: 'Cozinha',  tipo: 'indutiva',   watts: 250,  inicio: 0,  duracao: 24, kwhDia: 1.3 },
+  { nome: 'Freezer',            emoji: '🧊', categoria: 'Cozinha',  tipo: 'indutiva',   watts: 200,  inicio: 0,  duracao: 24, kwhDia: 1.2 },
   { nome: 'Micro-ondas',        emoji: '🍲', categoria: 'Cozinha',  tipo: 'indutiva',   watts: 1000, inicio: 12, duracao: 1 },
   { nome: 'Forno elétrico',     emoji: '🔥', categoria: 'Cozinha',  tipo: 'resistiva',  watts: 1500, inicio: 18, duracao: 1 },
   { nome: 'Fogão por indução',  emoji: '🍳', categoria: 'Cozinha',  tipo: 'resistiva',  watts: 2000, inicio: 18, duracao: 0.5 },
@@ -166,7 +170,7 @@ const EQUIP_PRESETS = [
 // Kits padrão — estimativas aproximadas por porte de residência/comércio.
 // Além do consumo mensal típico, já vêm com uma lista pronta de cargas
 // críticas comuns pra esse porte (editável depois, como qualquer item).
-const KITS_PADRAO = [
+export const KITS_PADRAO = [
   {
     nome: 'Casa pequena', desc: '1-2 pessoas', kwh: 250,
     itens: [
@@ -208,7 +212,6 @@ const KITS_PADRAO = [
       { nome: 'Máquina de lavar', qty: 1 },
       { nome: 'Chuveiro elétrico', qty: 1 },
       { nome: 'Ferro de passar', qty: 1 },
-      { nome: 'Torneira elétrica', qty: 1 },
       { nome: 'Ventilador', qty: 2 },
     ],
   },
@@ -261,7 +264,7 @@ const formatHorasMin = h => {
 }
 let nextId = 1
 
-function newItem(preset) {
+export function newItem(preset) {
   const inicio = preset?.inicio ?? 8
   const duracao = preset?.duracao ?? 4
   return {
@@ -273,8 +276,20 @@ function newItem(preset) {
     qty: preset?.qty || 1,
     inicio, duracao,
     horas: makeHoras(inicio, duracao),
+    // Consumo diário médio real (compressor etc.) — quando presente, substitui
+    // o cálculo watts×horas só pra energia diária (não pro pico simultâneo).
+    kwhDia: preset?.kwhDia ?? null,
     gradeAberta: false,
   }
+}
+
+// Energia diária de UM item: usa o consumo médio real (kwhDia) quando
+// definido (ex: geladeira/freezer, cujo compressor não fica ligado o dia
+// inteiro); senão, potência × horas ativas como antes.
+export function itemEnergiaDiaria(it) {
+  if (it.kwhDia != null) return it.kwhDia * (it.qty || 1)
+  const horasAtivas = (it.horas || []).filter(Boolean).length
+  return (it.watts / 1000) * (it.qty || 1) * horasAtivas
 }
 
 export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
@@ -333,12 +348,13 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
 
   // ── Energia diária crítica (kWh/dia) — soma direta de W × horas/dia, sem
   // multiplicador de tipo (o multiplicador só vale pra potência instantânea) ──
-  const energiaCriticaDiaria = round2(items.reduce((s, it) => {
-    const horasAtivas = it.horas.filter(Boolean).length
-    return s + (it.watts / 1000) * it.qty * horasAtivas
-  }, 0))
+  const energiaCriticaDiaria = round2(items.reduce((s, it) => s + itemEnergiaDiaria(it), 0))
   const energiaDiariaTotal = round2((consumoMensal || 0) / 30)
   const energiaNormalDiaria = Math.max(0, round2(energiaDiariaTotal - energiaCriticaDiaria))
+  // Antes o Math.max(0, ...) acima simplesmente escondia o problema quando as
+  // cargas críticas somavam mais energia do que o consumo diário informado
+  // (fisicamente impossível) — nenhum aviso, só um "0" silencioso ali.
+  const energiaCriticaExcedeConsumo = energiaCriticaDiaria > energiaDiariaTotal
 
   // ── Simultaneidade: soma por hora (0-23) a potência "vista" pelo inversor
   // (nominal e de partida), aplicando o multiplicador do tipo de carga ──
@@ -413,17 +429,6 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
     return viaveis[0]?.p || invCandidatesFiltradas[invCandidatesFiltradas.length - 1] || null
   }, [isCBEco, invCandidatesFiltradas, maxNominal, maxPartida])
 
-  // Inversor escolhido manualmente na tabela de compatibilidade, se houver —
-  // senão cai na sugestão automática.
-  const invChosen = invCandidatesFiltradas.find(p => p.id === invSelectedId) || invSuggested
-  const invChosenParalelo = invChosen && !(maxNominal <= invChosen.eps?.nom && maxPartida <= invChosen.eps?.max)
-    ? paraleloInfoFor(invChosen, maxNominal, maxPartida)
-    : null
-  const invChosenQty = invChosenParalelo?.viavel ? invChosenParalelo.unidades : 1
-  // Se nem com o paralelismo máximo permitido (4 unidades) o pico couber,
-  // o sistema está além do que essa linha de inversor suporta.
-  const invAlemDoLimite = !!invChosenParalelo && !invChosenParalelo.viavel
-
   // Melhor custo-benefício entre os modelos viáveis (direto ou em paralelo
   // dentro do limite) — menor custo total (preço × unidades necessárias).
   const invMelhorId = useMemo(() => {
@@ -440,6 +445,23 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
       .sort((a, b) => a.custoTotal - b.custoTotal)
     return viaveis[0]?.p.id ?? null
   }, [isCBEco, invCandidatesFiltradas, maxNominal, maxPartida])
+
+  // Inversor escolhido manualmente na tabela de compatibilidade, se houver —
+  // senão cai no de melhor custo-benefício (o mesmo que o selo verde
+  // destaca), e só na falta dele no primeiro que couber. Antes caía direto
+  // em invSuggested (primeiro que cabe, não o mais barato) sempre que o
+  // usuário não escolhia manualmente — o selo apontava um inversor e o
+  // total/kit somava outro.
+  const invChosen = invCandidatesFiltradas.find(p => p.id === invSelectedId)
+    || invCandidatesFiltradas.find(p => p.id === invMelhorId)
+    || invSuggested
+  const invChosenParalelo = invChosen && !(maxNominal <= invChosen.eps?.nom && maxPartida <= invChosen.eps?.max)
+    ? paraleloInfoFor(invChosen, maxNominal, maxPartida)
+    : null
+  const invChosenQty = invChosenParalelo?.viavel ? invChosenParalelo.unidades : 1
+  // Se nem com o paralelismo máximo permitido (4 unidades) o pico couber,
+  // o sistema está além do que essa linha de inversor suporta.
+  const invAlemDoLimite = !!invChosenParalelo && !invChosenParalelo.viavel
 
   // Com N inversores em paralelo, o limite de baterias escala junto — cada
   // unidade aceita o mesmo máximo de baterias (ficha técnica WEG), então N
@@ -909,6 +931,17 @@ export default function BatteryDimensioningPage({ onUseInKit, initialState }) {
                 <p className="text-[9px] text-gray-400 uppercase font-semibold">Normais (não backup)</p>
                 <p className="text-sm font-bold text-gray-700">{energiaNormalDiaria.toFixed(2)} kWh</p>
               </div>
+            </div>
+          )}
+
+          {energiaCriticaExcedeConsumo && (
+            <div className="mt-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span>
+                As cargas críticas somam <strong>{energiaCriticaDiaria.toFixed(2)} kWh/dia</strong>, mais do que o
+                consumo diário informado (<strong>{energiaDiariaTotal.toFixed(2)} kWh/dia</strong>). Confira a potência/horário
+                dos itens cadastrados ou o consumo mensal — esses dois números não podem se contradizer.
+              </span>
             </div>
           )}
 
