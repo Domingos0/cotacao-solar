@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado } from '../lib/notify'
 import { normalizeSearch } from '../lib/text'
 import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
-import { distributeTotal } from '../lib/money'
+import { round2, distributeTotal } from '../lib/money'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -180,11 +180,8 @@ function calcSurgeACQty(inverters, defaultTri) {
   }, 0)
 }
 
-// Round to 2 decimal places — uses exponential notation to avoid JS float drift
-// e.g. Math.round(1.005 * 100)/100 = 1.00 (wrong); this returns 1.01 (correct)
-function round2(v) {
-  return Number(Math.round(Number(String(+v) + 'e2')) + 'e-2')
-}
+// round2 vem de ../lib/money (item 25 - separar arquivos grandes: extrai
+// helpers puros sem estado/JSX pra fora dos componentes gigantes).
 
 // Money multiplication for display only — round2 applied to final product
 function moneyMul(preco, qty) { return round2((preco || 0) * (qty || 0)) }

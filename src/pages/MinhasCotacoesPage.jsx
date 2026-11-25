@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
-import { distributeTotal } from '../lib/money'
+import { round2, distributeTotal } from '../lib/money'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -125,7 +125,10 @@ const METALICO_PERFIS = [
 
 const ISOPLETA_OPTIONS = [30, 35, 40, 45, 50]
 
-const round2 = v => Math.round(v * 100) / 100
+// round2 vem de ../lib/money agora (era Math.round(v*100)/100 aqui, que sofre
+// do erro clássico de ponto flutuante: Math.round(1.005*100)/100 dá 1.00 em
+// vez de 1.01 — a versão de lib/money.js, usada pelo Kit Builder, já evitava
+// isso; item 25 - separar arquivos grandes).
 
 // ─── Stock helpers ────────────────────────────────────────────────────────────
 // isNordestePanel agora vem de src/lib/regiao.js (era uma cópia local
