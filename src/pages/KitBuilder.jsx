@@ -7,6 +7,7 @@ import { notifyDescontoSolicitado } from '../lib/notify'
 import { normalizeSearch } from '../lib/text'
 import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
+import { markOnboardingStep } from '../lib/tour'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -198,7 +199,7 @@ function fmtInt(v) {
 
 function StepIndicator({ current, onNavigate, steps = STEPS_BASE }) {
   return (
-    <div className="flex items-center justify-center gap-0 mb-8 overflow-x-auto pb-2">
+    <div className="flex items-center justify-center gap-0 mb-8 overflow-x-auto pb-2" data-tour="kit-steps">
       {steps.map((step, idx) => {
         const Icon = step.icon
         const done = current > step.id
@@ -5109,6 +5110,10 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         setSaveStatus('ok')
         setTimeout(() => setSaveStatus(null), 3000)
       }
+      // Checklist "Primeiros passos" (item 26) — só avança de verdade quando
+      // a cotação é salva com sucesso no banco, não a cada clique em Salvar.
+      markOnboardingStep(session?.user?.id, 'kit_montado')
+      markOnboardingStep(session?.user?.id, 'cotacao_salva')
       return quoteId
     } catch (err) {
       console.error('[saveQuote]', err)
@@ -5226,6 +5231,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     // Notifica admin sobre solicitação de desconto e confirma envio ao cliente (silencioso)
     notifyDescontoSolicitado({ quoteId: savedId })
     setDiscountStatus('sent')
+    markOnboardingStep(session?.user?.id, 'desconto_pedido')
   }
 
   // Build structure composition rows: expand each selected kit into its components × kit qty
@@ -6003,6 +6009,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       <div className="flex flex-wrap gap-3 justify-center print:hidden">
         {session && (
           <button
+            data-tour="kit-save"
             onClick={async () => {
               const qid = await saveQuote()
               if (qid) setShowPrintedScreen(true)

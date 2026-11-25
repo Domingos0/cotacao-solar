@@ -2,6 +2,9 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { ProductsProvider, useProducts } from './context/ProductsContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
+import GuidedTour from './components/GuidedTour'
+import OnboardingChecklist from './components/OnboardingChecklist'
+import { TOURS, isTourSeen, markTourSeen } from './lib/tour'
 import Footer from './components/Footer'
 import HeroBanner from './components/HeroBanner'
 import FilterSidebar from './components/FilterSidebar'
@@ -29,6 +32,7 @@ const SORT_OPTIONS = [
 
 function CatalogPage({ searchQuery, setSearchQuery }) {
   const { catalogProducts: products } = useProducts()
+  const { session, isAdmin } = useAuth()
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [sortBy, setSortBy] = useState('default')
@@ -86,6 +90,7 @@ function CatalogPage({ searchQuery, setSearchQuery }) {
           />
 
           <div className="flex-1 min-w-0">
+            {!isAdmin && <OnboardingChecklist userId={session?.user?.id} />}
             {/* Toolbar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
               <div>
@@ -244,6 +249,25 @@ function AuthenticatedApp() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loadedQuote, setLoadedQuote] = useState(null)
   const [estudoInicial, setEstudoInicial] = useState(null)
+  const [activeTour, setActiveTour] = useState(null)
+
+  const startTour = (tourId) => { if (TOURS[tourId]) setActiveTour(tourId) }
+  const finishTour = () => {
+    if (activeTour) markTourSeen(session?.user?.id, activeTour)
+    setActiveTour(null)
+  }
+
+  // Tour guiado automático no primeiro login (item 26) — um pra cliente
+  // (Catálogo) e um pra admin (Painel), cada um marcado como visto só
+  // depois de concluído ou fechado, pra não reaparecer sozinho depois.
+  useEffect(() => {
+    const firstTourId = isAdmin ? 'admin' : 'catalog'
+    if (!isTourSeen(session?.user?.id, firstTourId)) {
+      const t = setTimeout(() => setActiveTour(firstTourId), 600)
+      return () => clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleLoadQuote = ({ quoteData, savedId }) => {
     setLoadedQuote({ quoteData, savedId })
@@ -272,6 +296,7 @@ function AuthenticatedApp() {
         searchQuery={searchQuery}
         page={page}
         onPageChange={handlePageChange}
+        onStartTour={startTour}
       />
 
       <main className="flex-1">
@@ -297,6 +322,10 @@ function AuthenticatedApp() {
       </main>
 
       <Footer />
+
+      {activeTour && TOURS[activeTour] && (
+        <GuidedTour steps={TOURS[activeTour]} onFinish={finishTour} />
+      )}
     </div>
   )
 }

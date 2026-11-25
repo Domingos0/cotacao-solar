@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil, Calculator, Sun } from 'lucide-react'
+import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil, Calculator, Sun, HelpCircle } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
+import { TOURS } from '../lib/tour'
 
-export default function Header({ onSearch, searchQuery, page, onPageChange }) {
+export default function Header({ onSearch, searchQuery, page, onPageChange, onStartTour }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [editingNum, setEditingNum] = useState(false)
@@ -55,6 +56,7 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
     return (
       <button
         key={item.id}
+        data-tour={`nav-${item.id}`}
         onClick={() => { onPageChange(item.id); setMenuOpen(false) }}
         className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
           active
@@ -67,6 +69,8 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
       </button>
     )
   }
+
+  const currentTourId = TOURS[page] ? page : null
 
   return (
     <header className="bg-weg-blue text-white shadow-lg sticky top-0 z-50">
@@ -91,7 +95,7 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
 
           {/* Search (catalog only) */}
           {page === 'catalog' && (
-            <div className="flex-1 max-w-[160px] sm:max-w-xs md:max-w-md">
+            <div className="flex-1 max-w-[160px] sm:max-w-xs md:max-w-md" data-tour="search">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={15} />
                 <input type="text" placeholder="Buscar por modelo, código SAP..."
@@ -105,6 +109,18 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1 ml-auto">
             {NAV_ITEMS.map(navBtn)}
+
+            {/* Botão de ajuda — repete o tour guiado desta tela */}
+            {currentTourId && onStartTour && (
+              <button
+                data-tour="help-button"
+                onClick={() => onStartTour(currentTourId)}
+                title="Rever tour desta tela"
+                className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <HelpCircle size={17} />
+              </button>
+            )}
 
             {/* User + logout */}
             {profile && (
@@ -212,6 +228,14 @@ export default function Header({ onSearch, searchQuery, page, onPageChange }) {
                 </button>
               )
             })}
+            {currentTourId && onStartTour && (
+              <button
+                onClick={() => { onStartTour(currentTourId); setMenuOpen(false) }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-white/75 hover:text-white hover:bg-white/10"
+              >
+                <HelpCircle size={16} /> Rever tour desta tela
+              </button>
+            )}
             {profile && (
               <button onClick={signOut}
                 className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/10">
