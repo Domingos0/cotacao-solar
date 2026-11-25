@@ -8,3 +8,10 @@ export function normalizeSearch(s) {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
 }
+
+// Igual a normalizeSearch, mas também remove espaços — usado pra comparar
+// códigos de modelo, onde "siw 300h" precisa achar "SIW300H" mesmo com
+// espaço(s) extra em qualquer um dos dois lados.
+export function normalizeSearchCompact(s) {
+  return normalizeSearch(s).replace(/\s+/g, '')
+}

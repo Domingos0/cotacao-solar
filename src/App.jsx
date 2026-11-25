@@ -13,7 +13,7 @@ import BatteryDimensioningPage from './pages/BatteryDimensioningPage'
 import SolarSimulationPage from './pages/SolarSimulationPage'
 import MinhasCotacoesPage from './pages/MinhasCotacoesPage'
 import LoginPage from './pages/LoginPage'
-import { normalizeSearch } from './lib/text'
+import { normalizeSearch, normalizeSearchCompact } from './lib/text'
 import CadastroPage from './pages/CadastroPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import { CATEGORIES } from './data/products'
@@ -44,13 +44,19 @@ function CatalogPage({ searchQuery, setSearchQuery }) {
     if (selectedCategory) list = list.filter(p => p.categoria === selectedCategory)
     if (searchQuery.trim()) {
       const q = normalizeSearch(searchQuery)
+      const qCompact = normalizeSearchCompact(searchQuery)
       list = list.filter(p =>
         normalizeSearch(p.nome).includes(q) ||
         normalizeSearch(p.codigo).includes(q) ||
         normalizeSearch(p.modelo).includes(q) ||
         normalizeSearch(p.categoria).includes(q) ||
         normalizeSearch(p.tipo).includes(q) ||
-        normalizeSearch(p.descricao).includes(q)
+        normalizeSearch(p.descricao).includes(q) ||
+        // Comparação sem espaços, pra achar código de modelo mesmo com
+        // espaço extra de qualquer lado (ex: "siw 300h" → "SIW300H").
+        normalizeSearchCompact(p.nome).includes(qCompact) ||
+        normalizeSearchCompact(p.codigo).includes(qCompact) ||
+        normalizeSearchCompact(p.modelo).includes(qCompact)
       )
     }
     switch (sortBy) {
