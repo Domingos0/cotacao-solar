@@ -398,6 +398,29 @@ async function handlePrecoTravado(req: Request, payload: { quoteId?: string }) {
   return json({ ok: true })
 }
 
+async function handleFeedbackResolvido(req: Request, payload: { feedbackId?: string }) {
+  if (!(await requireAdmin(req))) return json({ error: "somente admin" }, 403)
+  if (!payload.feedbackId) return json({ error: "feedbackId obrigatório" }, 400)
+
+  const { data: f } = await admin.from("feedbacks")
+    .select("user_id, tipo, mensagem, resposta_admin")
+    .eq("id", payload.feedbackId).maybeSingle()
+  if (!f || !f.user_id) return json({ error: "feedback inválido" }, 400)
+
+  const { data: profile } = await admin.from("profiles").select("nome, telefone, email").eq("id", f.user_id).maybeSingle()
+  const { data: authUser } = await admin.auth.admin.getUserById(f.user_id)
+  const waKey = authUser?.user?.user_metadata?.whatsapp_apikey || ""
+  const clienteNome = profile?.nome || "Cliente"
+  const tipoLabel = f.tipo === "problema" ? "problema reportado" : "sugestão"
+
+  const msg = `✅ *Feedback resolvido — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSeu ${tipoLabel} já foi resolvido${f.resposta_admin ? `:\n"${f.resposta_admin}"` : "."}\n\nObrigado por ajudar a melhorar o sistema! 🙌`
+  await dispatch({
+    event: "feedbackResolvido", userId: f.user_id, feedbackId: payload.feedbackId, clienteNome,
+    adminMsg: null, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
+  return json({ ok: true })
+}
+
 // Disparado pelo job agendado (pg_cron), sem sessão de usuário — por isso
 // não passa por requireAdmin (não existe um "chamador" aqui, só o próprio banco).
 async function handleCotacaoVencida(payload: { quoteId?: string }) {
@@ -485,6 +508,7 @@ Deno.serve(async (req) => {
       case "descontoRecusado": return await handleDescontoRecusado(req, payload || {})
       case "kitStatusChanged": return await handleKitStatusChanged(req, payload || {})
       case "precoTravado": return await handlePrecoTravado(req, payload || {})
+      case "feedbackResolvido": return await handleFeedbackResolvido(req, payload || {})
       case "cotacaoVencida": return await handleCotacaoVencida(payload || {})
       case "testWaAkg": return await handleTestWaAkg(req, payload || {})
       default: return json({ error: "evento desconhecido" }, 400)

@@ -3,6 +3,7 @@ import { ProductsProvider, useProducts } from './context/ProductsContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
 import GuidedTour from './components/GuidedTour'
+import FeedbackButton from './components/FeedbackButton'
 import OnboardingChecklist from './components/OnboardingChecklist'
 import { TOURS, isTourSeen, markTourSeen } from './lib/tour'
 import Footer from './components/Footer'
@@ -322,6 +323,8 @@ function AuthenticatedApp() {
       </main>
 
       <Footer />
+
+      <FeedbackButton page={page} />
 
       {activeTour && TOURS[activeTour] && (
         <GuidedTour steps={TOURS[activeTour]} onFinish={finishTour} />

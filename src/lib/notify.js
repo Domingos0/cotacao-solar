@@ -107,3 +107,8 @@ export async function notifyKitStatusChanged({ quoteId, status }) {
 export async function notifyPrecoTravado({ quoteId }) {
   await sendEvent('precoTravado', { quoteId })
 }
+
+// 8. Admin marcou feedback (sugestão/problema) como resolvido → notifica cliente
+export async function notifyFeedbackResolvido({ feedbackId }) {
+  await sendEvent('feedbackResolvido', { feedbackId })
+}

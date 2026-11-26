@@ -9,6 +9,8 @@ import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from 
 import { round2, distributeTotal } from '../lib/money'
 import { markOnboardingStep } from '../lib/tour'
 import InfoTip from '../components/InfoTip'
+import RatingPrompt from '../components/RatingPrompt'
+import { canShowRatingPrompt } from '../lib/feedback'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -4664,6 +4666,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
   // ── Salvar cotação ──
   const [saveStatus, setSaveStatus] = useState(null) // null | 'saving' | 'ok' | 'error'
+  const [showRatingPrompt, setShowRatingPrompt] = useState(false)
   const [saveError,  setSaveError]  = useState(null)
   const [savedId, setSavedId] = useState(initialSavedId || null)
 
@@ -5117,6 +5120,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       // a cotação é salva com sucesso no banco, não a cada clique em Salvar.
       markOnboardingStep(session?.user?.id, 'kit_montado')
       markOnboardingStep(session?.user?.id, 'cotacao_salva')
+      // Avaliação 1-5 (item 28) — no máximo uma vez por mês, e só numa
+      // gravação de verdade (não em saves silenciosos em segundo plano).
+      if (!silent && canShowRatingPrompt(session?.user?.id)) setShowRatingPrompt(true)
       return quoteId
     } catch (err) {
       console.error('[saveQuote]', err)
@@ -6212,6 +6218,10 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
 
       {/* Steps */}
       <StepIndicator current={step} onNavigate={setStep} steps={STEPS} />
+
+      {showRatingPrompt && (
+        <RatingPrompt userId={session?.user?.id} page="kit" onClose={() => setShowRatingPrompt(false)} />
+      )}
 
       {/* Step content */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">

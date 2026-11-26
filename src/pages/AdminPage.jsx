@@ -12,8 +12,9 @@ import { InlineEditor } from './MinhasCotacoesPage'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado, notifyKitStatusChanged,
-  notifyPrecoTravado,
+  notifyPrecoTravado, notifyFeedbackResolvido,
 } from '../lib/notify'
+import { listFeedbacks, resolveFeedback } from '../lib/feedback'
 import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
   Printer, Search, ChevronDown, ChevronUp, AlertTriangle, Save,
@@ -22,6 +23,7 @@ import {
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
   UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
+  MessageSquare, Star,
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
@@ -4104,6 +4106,174 @@ function NotificationLogPanel() {
   )
 }
 
+// ─── Feedbacks (item 28) ──────────────────────────────────────────────────────
+const FEEDBACK_TIPO_LABEL = { sugestao: 'Sugestão', problema: 'Problema', avaliacao: 'Avaliação' }
+const FEEDBACK_TIPO_CLS   = { sugestao: 'bg-blue-50 text-blue-700', problema: 'bg-red-50 text-red-700', avaliacao: 'bg-amber-50 text-amber-700' }
+
+function FeedbackManagement({ onBadgeChange }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [tab, setTab] = useState('pendente') // 'pendente' | 'resolvido' | 'avaliacao'
+  const [resolving, setResolving] = useState(null) // id em andamento
+  const [respostas, setRespostas] = useState({}) // id -> texto da resposta
+  const [screenshotModal, setScreenshotModal] = useState(null)
+
+  const fetchRows = async () => {
+    setLoading(true)
+    setError('')
+    const { data, error: err } = await listFeedbacks()
+    setLoading(false)
+    if (err) {
+      console.error('[FeedbackManagement]', err)
+      setError('Erro ao carregar feedbacks: ' + (err.message || 'erro desconhecido'))
+      return
+    }
+    setRows(data)
+    onBadgeChange?.(data.filter(f => f.status === 'pendente' && f.tipo !== 'avaliacao').length)
+  }
+
+  useEffect(() => { fetchRows() }, [])
+
+  const filtered = useMemo(() => {
+    if (tab === 'avaliacao') return rows.filter(f => f.tipo === 'avaliacao')
+    return rows.filter(f => f.tipo !== 'avaliacao' && f.status === tab)
+  }, [rows, tab])
+
+  const mediaNotas = useMemo(() => {
+    const notas = rows.filter(f => f.tipo === 'avaliacao' && f.nota).map(f => f.nota)
+    return notas.length ? (notas.reduce((s, n) => s + n, 0) / notas.length) : null
+  }, [rows])
+
+  const fmtDt = d => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  const marcarResolvido = async (id) => {
+    setResolving(id)
+    const { error: err } = await resolveFeedback(id, respostas[id] || '')
+    if (!err) await notifyFeedbackResolvido({ feedbackId: id })
+    setResolving(null)
+    if (err) {
+      console.error('[FeedbackManagement.resolve]', err)
+      setError('Erro ao marcar como resolvido: ' + (err.message || 'erro desconhecido'))
+      return
+    }
+    fetchRows()
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+            <MessageSquare size={18} className="text-weg-blue" /> Feedbacks
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Sugestões, problemas reportados e avaliações dos clientes.
+            {mediaNotas != null && <span className="ml-1">Nota média: <strong className="text-amber-600">{mediaNotas.toFixed(1)} ★</strong></span>}
+          </p>
+        </div>
+        <button onClick={fetchRows} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue px-3 py-1.5 rounded-lg hover:bg-gray-100">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar
+        </button>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        {[
+          { key: 'pendente', label: 'Pendentes' },
+          { key: 'resolvido', label: 'Resolvidos' },
+          { key: 'avaliacao', label: 'Avaliações' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+              tab === t.key ? 'bg-weg-blue text-white border-weg-blue' : 'border-gray-200 text-gray-500 hover:border-weg-blue'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700 flex items-center gap-2">
+          <AlertTriangle size={14} className="shrink-0" /> {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-6 h-6 border-4 border-weg-blue border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-center text-gray-400 text-sm py-10">Nada por aqui.</p>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(f => (
+            <div key={f.id} className="border border-gray-100 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${FEEDBACK_TIPO_CLS[f.tipo]}`}>
+                    {FEEDBACK_TIPO_LABEL[f.tipo]}
+                  </span>
+                  <p className="font-semibold text-sm text-gray-900">{f.profiles?.nome || 'Cliente'}</p>
+                  {f.profiles?.empresa && <span className="text-xs text-gray-400">{f.profiles.empresa}</span>}
+                  {f.pagina && <span className="text-xs text-gray-400">· tela: {f.pagina}</span>}
+                </div>
+                <span className="text-xs text-gray-400 whitespace-nowrap">{fmtDt(f.created_at)}</span>
+              </div>
+
+              {f.tipo === 'avaliacao' ? (
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map(n => (
+                    <Star key={n} size={16} className={f.nota >= n ? 'fill-amber-400 text-amber-400' : 'text-gray-200'} />
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-700 mb-2 whitespace-pre-wrap">{f.mensagem}</p>
+                  {f.screenshot && (
+                    <button onClick={() => setScreenshotModal(f.screenshot)} className="mb-2">
+                      <img src={f.screenshot} alt="Print anexado" className="h-20 rounded-lg border border-gray-200 hover:opacity-80" />
+                    </button>
+                  )}
+                  {f.status === 'resolvido' ? (
+                    <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 inline-block">
+                      ✓ Resolvido{f.resposta_admin ? `: ${f.resposta_admin}` : ''}
+                    </p>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        value={respostas[f.id] || ''}
+                        onChange={e => setRespostas(r => ({ ...r, [f.id]: e.target.value }))}
+                        placeholder="Resposta opcional pro cliente (vai na notificação)..."
+                        className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-weg-blue"
+                      />
+                      <button
+                        onClick={() => marcarResolvido(f.id)}
+                        disabled={resolving === f.id}
+                        className="text-xs font-semibold text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg disabled:opacity-60 whitespace-nowrap"
+                      >
+                        {resolving === f.id ? 'Marcando…' : '✓ Marcar resolvido'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {screenshotModal && (
+        <div className="fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4" onClick={() => setScreenshotModal(null)}>
+          <img src={screenshotModal} alt="Print em tamanho maior" className="max-w-full max-h-full rounded-lg" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Kits Fechados Panel ──────────────────────────────────────────────────────
 function KitsFechadosPanel({ onBadgeChange }) {
   const [quotes, setQuotes] = useState([])
@@ -4719,6 +4889,7 @@ function AdminDashboard() {
   const [pendingDiscounts, setPendingDiscounts] = useState(0)
   const [pendingImplants, setPendingImplants]   = useState(0)
   const [pendingUsers, setPendingUsers]         = useState(0)
+  const [pendingFeedbacks, setPendingFeedbacks] = useState(0)
 
   // Carrega e atualiza badges de notificação
   const refreshBadges = () => {
@@ -4731,6 +4902,10 @@ function AdminDashboard() {
     supabase.from('profiles').select('id', { count: 'exact', head: true })
       .eq('status', 'pendente')
       .then(({ count }) => setPendingUsers(count || 0))
+    // "avaliacao" não conta como pendência acionável — só sugestão/problema
+    supabase.from('feedbacks').select('id', { count: 'exact', head: true })
+      .eq('status', 'pendente').in('tipo', ['sugestao', 'problema'])
+      .then(({ count }) => setPendingFeedbacks(count || 0))
   }
   useEffect(() => {
     refreshBadges()
@@ -4747,6 +4922,7 @@ function AdminDashboard() {
     { key: 'cotacoes',       icon: LayoutList, label: 'Cotações',       badge: pendingDiscounts },
     { key: 'kits_fechados',  icon: CheckCircle2, label: 'Kits Fechados', badge: pendingImplants },
     { key: 'notificacoes',   icon: Bell,       label: 'Notificações',   badge: 0 },
+    { key: 'feedbacks',      icon: MessageSquare, label: 'Feedbacks',   badge: pendingFeedbacks },
   ]
 
   return (
@@ -4799,6 +4975,9 @@ function AdminDashboard() {
 
       {/* Tab: Notificações */}
       {activeTab === 'notificacoes' && <><NotificationSettings /><NotificationLogPanel /></>}
+
+      {/* Tab: Feedbacks */}
+      {activeTab === 'feedbacks' && <FeedbackManagement onBadgeChange={setPendingFeedbacks} />}
 
       {/* Tab: Produtos */}
       {activeTab === 'produtos' && <>
