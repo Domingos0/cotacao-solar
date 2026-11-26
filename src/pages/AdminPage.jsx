@@ -4191,6 +4191,140 @@ function NotificationLogPanel() {
   )
 }
 
+// ─── Status da sincronização com o CRM (item 40) ───────────────────────────────
+const CRM_STATUS_STYLE = {
+  ok:      { label: 'Sincronizado', cls: 'text-green-700 bg-green-50', icon: CheckCircle2 },
+  skipped: { label: 'Pulado',       cls: 'text-gray-500 bg-gray-100',  icon: Info },
+  error:   { label: 'Falhou',       cls: 'text-red-700 bg-red-50',     icon: XCircle },
+}
+
+function CrmSyncLogPanel() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [onlyFailed, setOnlyFailed] = useState(false)
+
+  const fetchLog = async () => {
+    setLoading(true)
+    setError('')
+    const { data, error: err } = await supabase
+      .from('crm_sync_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    setLoading(false)
+    if (err) {
+      console.error('[CrmSyncLogPanel]', err)
+      setError('Erro ao carregar o histórico de sincronização: ' + (err.message || 'erro desconhecido'))
+      return
+    }
+    setRows(data || [])
+  }
+
+  useEffect(() => { fetchLog() }, [])
+
+  const filtered = useMemo(() => {
+    let list = rows
+    if (onlyFailed) list = list.filter(r => r.status === 'error')
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(r =>
+        (r.cliente_nome || '').toLowerCase().includes(q) ||
+        (r.numero_cotacao || '').toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [rows, search, onlyFailed])
+
+  const fmtDt = d => new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mt-6">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+            <RefreshCw size={18} className="text-weg-blue" /> Sincronização com o CRM
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">Últimas {rows.length} tentativas de envio ao CRM — por cotação, se deu certo, foi pulada ou falhou.</p>
+        </div>
+        <button onClick={fetchLog} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-weg-blue px-3 py-1.5 rounded-lg hover:bg-gray-100">
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar cliente ou número da cotação..."
+            className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
+          />
+        </div>
+        <button
+          onClick={() => setOnlyFailed(v => !v)}
+          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+            onlyFailed ? 'bg-red-50 border-red-300 text-red-700' : 'border-gray-200 text-gray-500 hover:border-red-200'
+          }`}
+        >
+          <XCircle size={13} /> Só falhas
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm text-red-700 flex items-center gap-2">
+          <AlertTriangle size={14} className="shrink-0" /> {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-6 h-6 border-4 border-weg-blue border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-center text-gray-400 text-sm py-10">Nenhuma sincronização registrada ainda.</p>
+      ) : (
+        <div className="overflow-x-auto -mx-5 px-5">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-xs text-gray-400 uppercase tracking-wide">
+                <th className="py-2 pr-3 font-semibold">Quando</th>
+                <th className="py-2 pr-3 font-semibold">Cotação</th>
+                <th className="py-2 pr-3 font-semibold">Cliente</th>
+                <th className="py-2 pr-3 font-semibold">Status</th>
+                <th className="py-2 pr-3 font-semibold">Detalhe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(r => {
+                const st = CRM_STATUS_STYLE[r.status] || CRM_STATUS_STYLE.error
+                const Icon = st.icon
+                return (
+                  <tr key={r.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60">
+                    <td className="py-2 pr-3 text-gray-500 whitespace-nowrap">{fmtDt(r.created_at)}</td>
+                    <td className="py-2 pr-3 font-mono text-xs text-gray-700">{r.numero_cotacao || '—'}</td>
+                    <td className="py-2 pr-3 text-gray-700">{r.cliente_nome || '—'}</td>
+                    <td className="py-2 pr-3">
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>
+                        <Icon size={12} /> {st.label}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-gray-400 max-w-xs truncate" title={r.reason || ''}>
+                      {r.reason || (r.crm_status_code ? `HTTP ${r.crm_status_code}` : '—')}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Feedbacks (item 28) ──────────────────────────────────────────────────────
 const FEEDBACK_TIPO_LABEL = { sugestao: 'Sugestão', problema: 'Problema', avaliacao: 'Avaliação' }
 const FEEDBACK_TIPO_CLS   = { sugestao: 'bg-blue-50 text-blue-700', problema: 'bg-red-50 text-red-700', avaliacao: 'bg-amber-50 text-amber-700' }
@@ -5480,7 +5614,7 @@ function AdminDashboard({ onLoadQuote }) {
       {activeTab === 'kits_fechados' && <KitsFechadosPanel onBadgeChange={setPendingImplants} />}
 
       {/* Tab: Notificações */}
-      {activeTab === 'notificacoes' && <><NotificationSettings /><NotificationLogPanel /></>}
+      {activeTab === 'notificacoes' && <><NotificationSettings /><NotificationLogPanel /><CrmSyncLogPanel /></>}
 
       {/* Tab: Feedbacks */}
       {activeTab === 'feedbacks' && <FeedbackManagement onBadgeChange={setPendingFeedbacks} />}
