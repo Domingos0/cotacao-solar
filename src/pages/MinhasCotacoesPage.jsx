@@ -8,6 +8,7 @@ import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
+import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -16,7 +17,7 @@ import {
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
-  BadgePercent, Tag, Lock,
+  BadgePercent, Tag, Lock, MessageCircle,
 } from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
@@ -2072,6 +2073,23 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 hover:border-gray-300 bg-white px-4 py-2 rounded-xl font-semibold"
             >
               <Printer size={15} /> Imprimir / PDF
+            </button>
+
+            {/* WhatsApp — abre o chat com a mensagem pronta; o PDF (botão acima) é anexado manualmente */}
+            <button
+              onClick={() => {
+                const msg = buildProposalMessage({
+                  clienteNome: ownerProfile?.nome,
+                  kitNome: quote.nome_projeto || `Kit ${Number(quote.kwp || 0).toFixed(2)} kWp`,
+                  totalFinal: quote.total_final,
+                  numeroOrcamento: kitData.numero_orcamento,
+                })
+                window.open(buildWaLink(ownerProfile?.telefone, msg), '_blank')
+              }}
+              title="Abre o WhatsApp com a mensagem pronta — anexe o PDF (gerado pelo botão Imprimir/PDF) manualmente na conversa"
+              className="flex items-center gap-1.5 text-sm text-green-700 border border-green-300 hover:border-green-400 bg-green-50 px-4 py-2 rounded-xl font-semibold"
+            >
+              <MessageCircle size={15} /> Enviar por WhatsApp
             </button>
 
             {/* Solicitar desconto — só para cliente, cotação ativa sem desconto já pendente/aprovado */}

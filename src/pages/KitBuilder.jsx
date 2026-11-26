@@ -11,6 +11,7 @@ import { markOnboardingStep } from '../lib/tour'
 import InfoTip from '../components/InfoTip'
 import RatingPrompt from '../components/RatingPrompt'
 import { canShowRatingPrompt } from '../lib/feedback'
+import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -20,7 +21,7 @@ import {
   Sun, Zap, Link2, Shield, Cable, ToggleLeft, ChevronRight, ChevronLeft,
   Printer, Plus, Minus, Check, Info, AlertTriangle, Calculator, RefreshCw,
   Package, User, FileText, Home, ChevronDown, Search, Save, BadgePercent,
-  CheckCircle2, XCircle, Clock, X, Battery, Cpu
+  CheckCircle2, XCircle, Clock, X, Battery, Cpu, MessageCircle
 } from 'lucide-react'
 
 function ProductImg({ src, alt, fallback, className }) {
@@ -5295,6 +5296,21 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
         >
           <Printer size={18} /> Imprimir cotação
+        </button>
+        <button
+          onClick={() => {
+            const msg = buildProposalMessage({
+              clienteNome: data.clienteNome,
+              kitNome: data.numero_orcamento ? `${data.numero_orcamento}` : `Kit ${realKwp.toFixed(2)} kWp`,
+              totalFinal: totalFinal,
+              numeroOrcamento: data.numero_orcamento,
+            })
+            window.open(buildWaLink(null, msg), '_blank')
+          }}
+          title="Abre o WhatsApp com a mensagem pronta — anexe o PDF (botão Imprimir cotação) manualmente na conversa"
+          className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+        >
+          <MessageCircle size={18} /> Enviar por WhatsApp
         </button>
         <button
           onClick={() => setShowPrintedScreen(false)}
