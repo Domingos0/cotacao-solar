@@ -12,6 +12,7 @@ import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import { buildUnifiedProposal } from '../lib/unifyQuotes'
 import { createTemplateFromQuote } from '../lib/kitTemplates'
 import { calcPainelIntegrador } from '../lib/integradorPainel'
+import { pathForPage } from '../lib/routing'
 import PaymentOptions from '../components/PaymentOptions'
 import RevisionCompareModal from '../components/RevisionCompareModal'
 import QuotesCompareModal from '../components/QuotesCompareModal'
@@ -1177,6 +1178,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const [processing, setProcessing]       = useState(false)
   const [done, setDone]                   = useState(null)  // 'fechar' | 'rejeitar'
   const [showRevHistory, setShowRevHistory] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false) // item 44
   // Salvar como modelo (item 41)
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [templateNome, setTemplateNome]         = useState('')
@@ -2180,6 +2182,24 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </button>
             )}
 
+            {/* Copiar link direto desta cotação (item 44) */}
+            <button
+              onClick={async () => {
+                const url = `${window.location.origin}${pathForPage('cotacoes', quote.id)}`
+                try {
+                  await navigator.clipboard.writeText(url)
+                } catch {
+                  window.prompt('Copie o link da cotação:', url)
+                }
+                setLinkCopied(true)
+                setTimeout(() => setLinkCopied(false), 2500)
+              }}
+              title="Copia um link direto pra esta cotação"
+              className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-300 hover:border-gray-400 bg-gray-50 px-4 py-2 rounded-xl font-semibold"
+            >
+              {linkCopied ? <><Check size={15} className="text-green-600" /> Link copiado!</> : <><Link2 size={15} /> Copiar link</>}
+            </button>
+
             {/* Salvar como modelo (item 41) — vira um atalho reutilizável em
                 "Modelos prontos" no Monte seu Kit, sanitizado (sem dado
                 pessoal deste cliente). Modelo de admin fica visível pra
@@ -2774,12 +2794,37 @@ function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
 // ─── Main page ─────────────────────────────────────────────────────────────────
 const CLOSED_STATUSES = ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida']
 
-export default function MinhasCotacoesPage({ onLoadQuote }) {
+export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuoteUrlChange }) {
   const { session, profile, isAdmin } = useAuth()
   const { catalogProducts, condicoes, tableInfo: rootTableInfo } = useProducts()
   const [quotes, setQuotes]           = useState([])
   const [loading, setLoading]         = useState(true)
   const [selectedQuote, setSelectedQuote] = useState(null)
+  // Item 44: sincroniza o detalhe aberto com a URL nos dois sentidos.
+  // "De fora pra dentro": um link direto, ou Voltar/Avançar do navegador,
+  // muda `initialQuoteId` (reflete a URL atual, controlado pelo App.jsx) —
+  // esse efeito abre ou fecha o detalhe certo aqui. Se a cotação do link não
+  // existir nesta lista (não é dona/admin, ou foi apagada), só não abre nada
+  // — RLS já garante que `quotes` só traz o que esse usuário pode ver mesmo.
+  useEffect(() => {
+    if (loading) return
+    if ((selectedQuote?.id || null) === (initialQuoteId || null)) return
+    if (initialQuoteId) {
+      const match = quotes.find(q => q.id === initialQuoteId)
+      if (match) setSelectedQuote(match)
+    } else {
+      setSelectedQuote(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuoteId, loading])
+
+  // "De dentro pra fora": abrir/fechar uma cotação aqui (clique numa linha,
+  // botão Fechar do modal etc.) avisa o App.jsx pra atualizar a URL — vira
+  // um link compartilhável (item 44) e mantém Voltar/Avançar funcionando.
+  useEffect(() => {
+    onQuoteUrlChange?.(selectedQuote?.id || null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedQuote?.id])
   const [expandedId, setExpandedId]   = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deletingId, setDeletingId]   = useState(null)

@@ -22,6 +22,7 @@ import { normalizeSearch, normalizeSearchCompact } from './lib/text'
 import CadastroPage from './pages/CadastroPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import { CATEGORIES } from './data/products'
+import { pathForPage, pageFromPath } from './lib/routing'
 import { Search, Clock } from 'lucide-react'
 
 const SORT_OPTIONS = [
@@ -247,7 +248,12 @@ function AppContent() {
 
 function AuthenticatedApp() {
   const { session, isAdmin, signOut } = useAuth()
-  const [page, setPage] = useState('catalog')
+  // Item 44: cada tela (e cada cotação) tem o próprio endereço — o estado
+  // inicial já vem da URL atual (refresh/link direto preserva onde o
+  // usuário estava), não sempre do catálogo.
+  const initialRoute = useRef(pageFromPath(window.location.pathname)).current
+  const [page, setPage] = useState(initialRoute.page)
+  const [openQuoteId, setOpenQuoteId] = useState(initialRoute.quoteId)
   const [searchQuery, setSearchQuery] = useState('')
   const [loadedQuote, setLoadedQuote] = useState(null)
   const [estudoInicial, setEstudoInicial] = useState(null)
@@ -288,6 +294,8 @@ function AuthenticatedApp() {
     if (!savedId) loadCounterRef.current += 1
     setLoadedQuote({ quoteData, savedId, loadId: savedId ? null : loadCounterRef.current })
     setPage('kit')
+    setOpenQuoteId(null)
+    history.pushState(null, '', pathForPage('kit'))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -321,7 +329,44 @@ function AuthenticatedApp() {
   const handlePageChange = (p) => {
     if (p === 'kit') setLoadedQuote(null) // novo kit sempre começa do zero via nav
     setPage(p)
+    setOpenQuoteId(null)
+    history.pushState(null, '', pathForPage(p))
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Item 44: um link direto (ou aba antiga) pra uma tela só de admin, aberto
+  // por quem não é admin, cai no catálogo em vez de ficar com o <main>
+  // em branco (as telas admin-only já só renderizam com isAdmin, mas antes
+  // disso o `page` inicial vinha sempre de 'catalog', nunca de um link).
+  const ADMIN_ONLY_PAGES = ['admin', 'dimensionamento', 'simulacao-solar']
+  useEffect(() => {
+    if (ADMIN_ONLY_PAGES.includes(page) && !isAdmin) {
+      setPage('catalog')
+      history.replaceState(null, '', pathForPage('catalog'))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, isAdmin])
+
+  // Item 44: Voltar/Avançar do navegador — a URL já é a fonte da verdade
+  // (handlePageChange e syncQuoteUrl escrevem nela), então só precisa reler
+  // e aplicar no estado, sem empurrar uma entrada nova no histórico.
+  useEffect(() => {
+    const onPopState = () => {
+      const { page: p, quoteId } = pageFromPath(window.location.pathname)
+      setPage(p)
+      setOpenQuoteId(quoteId)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  // Mantém a URL em dia quando o usuário abre/fecha uma cotação específica
+  // em Minhas Cotações, pra ela virar um link compartilhável (item 44) sem
+  // precisar tocar em cada botão que já abre uma cotação naquela tela.
+  const syncQuoteUrl = (quoteId) => {
+    setOpenQuoteId(quoteId)
+    const path = pathForPage('cotacoes', quoteId)
+    if (window.location.pathname !== path) history.pushState(null, '', path)
   }
 
   // Voltar do Monte seu Kit pra página de Estudo, restaurando o que foi
@@ -329,6 +374,7 @@ function AuthenticatedApp() {
   const handleBackToEstudo = (estudoRaw) => {
     setEstudoInicial(estudoRaw || null)
     setPage('dimensionamento')
+    history.pushState(null, '', pathForPage('dimensionamento'))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -354,7 +400,13 @@ function AuthenticatedApp() {
             tourTrigger={kitTourTrigger}
           />
         )}
-        {page === 'cotacoes' && <MinhasCotacoesPage onLoadQuote={handleLoadQuote} />}
+        {page === 'cotacoes' && (
+          <MinhasCotacoesPage
+            onLoadQuote={handleLoadQuote}
+            initialQuoteId={openQuoteId}
+            onQuoteUrlChange={syncQuoteUrl}
+          />
+        )}
         {page === 'promocoes' && <PromoKitsPage onRequestPromo={handleRequestPromo} />}
         {page === 'dimensionamento' && isAdmin && (
           <BatteryDimensioningPage
