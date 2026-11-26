@@ -70,7 +70,10 @@ export default function Header({ onSearch, searchQuery, page, onPageChange, onSt
     )
   }
 
-  const currentTourId = TOURS[page] ? page : null
+  // 'kit' não vive em TOURS — cada etapa do Monte seu Kit tem o seu próprio
+  // tour (ver src/lib/tour.js, KIT_STEP_TOURS), então sempre há algo pra
+  // mostrar enquanto a página atual for 'kit'.
+  const currentTourId = page === 'kit' ? 'kit' : (TOURS[page] ? page : null)
 
   return (
     <header className="bg-weg-blue text-white shadow-lg sticky top-0 z-50">

@@ -7,8 +7,9 @@ import { notifyDescontoSolicitado } from '../lib/notify'
 import { normalizeSearch } from '../lib/text'
 import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
-import { markOnboardingStep } from '../lib/tour'
+import { markOnboardingStep, KIT_STEP_TOURS, getKitTourId, isTourSeen, markTourSeen } from '../lib/tour'
 import InfoTip from '../components/InfoTip'
+import GuidedTour from '../components/GuidedTour'
 import RatingPrompt from '../components/RatingPrompt'
 import { canShowRatingPrompt } from '../lib/feedback'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
@@ -5552,6 +5553,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                       const dsUrl = resolveDatasheetUrl(item.product, datasheetsByLinha)
                       return dsUrl && (
                         <a
+                          data-tour="kit-resumo-datasheet"
                           href={dsUrl}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -5639,7 +5641,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         </div>
 
         {/* Forma de pagamento (item 33) — editável na tela, só leitura no PDF */}
-        <div className="print:hidden">
+        <div data-tour="kit-resumo-pagamento" className="print:hidden">
           <PaymentOptions
             total={totalFinal}
             formaPagamento={data.formaPagamento}
@@ -6098,6 +6100,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
         {session && !isAdmin && savedId && (
           <button
+            data-tour="kit-resumo-desconto"
             onClick={() => setShowDiscountModal(true)}
             disabled={quoteInfo?.status === 'aguardando_desconto'}
             className="flex items-center gap-2 px-5 py-3 rounded-lg border-2 border-amber-500 text-amber-600 font-semibold hover:bg-amber-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -6190,9 +6193,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 }
 
 // ─── Main KitBuilder ─────────────────────────────────────────────────────────
-export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, onBackToEstudo } = {}) {
+export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, onBackToEstudo, tourTrigger } = {}) {
   const { catalogProducts: products, tableInfo } = useProducts()
-  const { isAdmin: isAdminTop } = useAuth()
+  const { isAdmin: isAdminTop, session: sessionTop } = useAuth()
   // Se carregado a partir de uma cotação salva, começa no step resumo; se
   // veio da página de Estudo (dimensionamento de bateria — só admin) e quem
   // está vendo agora também é admin, começa direto em Acessórios (os passos
@@ -6218,6 +6221,29 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
   const isHybrid     = isHybridInv(selectedInv)
   const STEPS        = isHybrid ? STEPS_HYBRID : STEPS_BASE
   const maxStep      = STEPS.length
+
+  // Tutorial completo (item 46): cada etapa da wizard mostra o próprio tour
+  // na primeira vez que o usuário chega nela, e o botão "?" do cabeçalho
+  // (via tourTrigger, incrementado em App.jsx) reexibe o tour DA ETAPA ATUAL
+  // a qualquer momento — não um tour fixo pro Monte seu Kit inteiro.
+  const [localTour, setLocalTour] = useState(null)
+  const kitTourId = getKitTourId(step, data, isHybrid)
+  useEffect(() => {
+    if (!kitTourId || !KIT_STEP_TOURS[kitTourId]) return
+    if (isTourSeen(sessionTop?.user?.id, kitTourId)) return
+    const t = setTimeout(() => setLocalTour(KIT_STEP_TOURS[kitTourId]), 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
+  useEffect(() => {
+    if (!tourTrigger) return
+    if (kitTourId && KIT_STEP_TOURS[kitTourId]) setLocalTour(KIT_STEP_TOURS[kitTourId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourTrigger])
+  const finishLocalTour = () => {
+    if (kitTourId) markTourSeen(sessionTop?.user?.id, kitTourId)
+    setLocalTour(null)
+  }
 
   // Clamp step when switching from hybrid to non-hybrid
   useEffect(() => {
@@ -6275,7 +6301,7 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
       <StepIndicator current={step} onNavigate={setStep} steps={STEPS} />
 
       {/* Step content */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
+      <div data-tour="kit-step-content" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
         {step === 1 && <StepKitType data={data} onChange={setData} />}
         {step === 2 && data.kitType === 'bombeamento' && <BombDimStep data={data} onChange={setData} products={products} />}
         {step === 2 && data.kitType !== 'bombeamento' && <Step1 data={data} onChange={setData} />}
@@ -6325,6 +6351,8 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
           </button>
         )}
       </div>
+
+      {localTour && <GuidedTour steps={localTour} onFinish={finishLocalTour} />}
     </div>
   )
 }

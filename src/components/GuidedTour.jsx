@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
 import { X } from 'lucide-react'
 
 // Motor genérico de tour guiado: recebe uma lista de steps (cada um aponta
@@ -9,6 +9,11 @@ import { X } from 'lucide-react'
 export default function GuidedTour({ steps, onFinish }) {
   const [stepIdx, setStepIdx] = useState(0)
   const [rect, setRect] = useState(null)
+  const tooltipRef = useRef(null)
+  // Tamanho REAL do balão (não um chute) — sem isso, um body de texto mais
+  // longo podia empurrar o balão (ou seus botões Próximo/Voltar) pra fora da
+  // tela, porque o cálculo de posição usava uma altura fixa estimada.
+  const [tooltipSize, setTooltipSize] = useState({ w: 320, h: 180 })
 
   const step = steps[stepIdx]
 
@@ -31,6 +36,15 @@ export default function GuidedTour({ steps, onFinish }) {
     return () => { clearTimeout(t); window.removeEventListener('resize', measure) }
   }, [measure])
 
+  // Remede o balão sempre que o conteúdo (título/texto) muda de tamanho,
+  // pra reposicionar com a altura real em vez da estimativa.
+  useLayoutEffect(() => {
+    if (tooltipRef.current) {
+      const r = tooltipRef.current.getBoundingClientRect()
+      setTooltipSize({ w: r.width, h: r.height })
+    }
+  }, [stepIdx, rect])
+
   useEffect(() => {
     // Trava o scroll do body enquanto o tour está ativo, igual a um modal
     const prev = document.body.style.overflow
@@ -47,16 +61,24 @@ export default function GuidedTour({ steps, onFinish }) {
     width: rect.width + pad * 2, height: rect.height + pad * 2,
   } : null
 
-  const tooltipW = 320
-  const tooltipMaxH = 180
-  const tooltipTop = spot
-    ? (spot.top + spot.height + 12 + tooltipMaxH > window.innerHeight
-        ? Math.max(12, spot.top - tooltipMaxH - 12)
-        : spot.top + spot.height + 12)
-    : window.innerHeight / 2 - 90
-  const tooltipLeft = spot
-    ? Math.min(Math.max(12, spot.left), window.innerWidth - tooltipW - 12)
-    : window.innerWidth / 2 - tooltipW / 2
+  const margin = 12
+  // Nunca deixa o balão mais largo que a tela (telas estreitas/mobile) —
+  // sem isso, "innerWidth - tooltipW - margin" podia dar negativo e jogar
+  // o balão pra fora da tela à esquerda, tornando Próximo/Voltar inalcançáveis.
+  const tooltipW = Math.min(tooltipSize.w || 320, window.innerWidth - margin * 2)
+  const tooltipH = tooltipSize.h || 180
+
+  const rawTop = spot
+    ? (spot.top + spot.height + margin + tooltipH > window.innerHeight
+        ? spot.top - tooltipH - margin
+        : spot.top + spot.height + margin)
+    : window.innerHeight / 2 - tooltipH / 2
+  const rawLeft = spot ? spot.left : window.innerWidth / 2 - tooltipW / 2
+
+  // Clamp final nos dois eixos — garante que o balão (e seus botões) sempre
+  // caibam inteiros na tela, não importa onde o alvo esteja.
+  const tooltipTop = Math.min(Math.max(margin, rawTop), Math.max(margin, window.innerHeight - tooltipH - margin))
+  const tooltipLeft = Math.min(Math.max(margin, rawLeft), Math.max(margin, window.innerWidth - tooltipW - margin))
 
   return (
     <div className="fixed inset-0 z-[9998]" role="dialog" aria-label="Tour guiado" aria-live="polite">
@@ -75,8 +97,9 @@ export default function GuidedTour({ steps, onFinish }) {
 
       {/* Balão de texto */}
       <div
+        ref={tooltipRef}
         className="fixed bg-white rounded-2xl shadow-2xl p-4 transition-all duration-300"
-        style={{ top: tooltipTop, left: tooltipLeft, width: tooltipW }}
+        style={{ top: tooltipTop, left: tooltipLeft, width: tooltipW, maxWidth: `calc(100vw - ${margin * 2}px)` }}
       >
         <div className="flex items-start justify-between gap-2 mb-1.5">
           <p className="text-xs font-bold text-weg-blue uppercase tracking-wide">{step.title}</p>

@@ -251,8 +251,16 @@ function AuthenticatedApp() {
   const [loadedQuote, setLoadedQuote] = useState(null)
   const [estudoInicial, setEstudoInicial] = useState(null)
   const [activeTour, setActiveTour] = useState(null)
+  // O tour do Monte seu Kit não é um array fixo em TOURS — cada etapa da
+  // wizard tem o seu próprio (ver src/lib/tour.js, KIT_STEP_TOURS), e quem
+  // sabe qual é a etapa atual é o próprio KitBuilder. Esse contador só avisa
+  // "o usuário pediu pra rever o tour agora", e o KitBuilder decide qual.
+  const [kitTourTrigger, setKitTourTrigger] = useState(0)
 
-  const startTour = (tourId) => { if (TOURS[tourId]) setActiveTour(tourId) }
+  const startTour = (tourId) => {
+    if (tourId === 'kit') { setKitTourTrigger(n => n + 1); return }
+    if (TOURS[tourId]) setActiveTour(tourId)
+  }
   const finishTour = () => {
     if (activeTour) markTourSeen(session?.user?.id, activeTour)
     setActiveTour(null)
@@ -315,6 +323,7 @@ function AuthenticatedApp() {
             initialSavedId={loadedQuote?.savedId}
             onGoToQuotes={() => handlePageChange('cotacoes')}
             onBackToEstudo={handleBackToEstudo}
+            tourTrigger={kitTourTrigger}
           />
         )}
         {page === 'cotacoes' && <MinhasCotacoesPage onLoadQuote={handleLoadQuote} />}
