@@ -8,6 +8,7 @@ import { normalizeSearch } from '../lib/text'
 import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
 import { markOnboardingStep } from '../lib/tour'
+import InfoTip from '../components/InfoTip'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -1007,7 +1008,7 @@ function BombDimStep({ data, onChange, products }) {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <h3 className="font-bold text-gray-800 mb-3">⚡ Estimativa de produção de energia</h3>
           <div className="flex items-center gap-2 mb-3">
-            <label className="text-xs font-semibold text-gray-600 whitespace-nowrap">HSP (h/dia):</label>
+            <label className="text-xs font-semibold text-gray-600 whitespace-nowrap flex items-center gap-1">HSP (h/dia): <InfoTip term="hsp" /></label>
             <input type="number" min="1" max="8" step="0.1" value={form.hsp}
               onChange={e => sf('hsp', e.target.value)}
               className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-cyan-400" />
@@ -2452,6 +2453,7 @@ function Step3({ data, onChange, products, realKwp }) {
               <Zap size={12} />
               <span>{invName}:</span>
               <span>{label}</span>
+              <InfoTip term={sub ? 'superdim' : 'overload'} />
             </div>
           )
         })()}
@@ -4102,8 +4104,8 @@ function StructureSection({ data, onChange, panelCount }) {
       {/* Solo — seletor de região */}
       {roofType === 'Solo' && (
         <div>
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-            Região do projeto (vento)
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            Região do projeto (vento) <InfoTip term="regiaoVento" />
           </p>
           <div className="flex gap-2 flex-wrap">
             {SOLO_REGIOES.map(r => (
@@ -4281,8 +4283,9 @@ function StructureSection({ data, onChange, panelCount }) {
               : `Selecionar kit (${availableKits.length} opções)`}
           </p>
           {roofType === 'Solo' && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 font-medium mb-2">
-              Mesa dupla — estrutura projetada para número par de módulos. Quantidade ímpar é permitida mas pode requerer adaptação.
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 font-medium mb-2 flex items-center gap-1.5">
+              <span>Mesa dupla — estrutura projetada para número par de módulos. Quantidade ímpar é permitida mas pode requerer adaptação.</span>
+              <InfoTip term="mesaDupla" />
             </div>
           )}
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
