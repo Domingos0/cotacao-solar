@@ -15,6 +15,8 @@ import {
   notifyPrecoTravado, notifyFeedbackResolvido,
 } from '../lib/notify'
 import { listFeedbacks, resolveFeedback } from '../lib/feedback'
+import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
+import RevisionCompareModal from '../components/RevisionCompareModal'
 import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
   Printer, Search, ChevronDown, ChevronUp, AlertTriangle, Save,
@@ -23,7 +25,7 @@ import {
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
   UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
-  MessageSquare, Star,
+  MessageSquare, Star, Copy, GitCompare,
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
@@ -2224,7 +2226,7 @@ const FUNIL_COLUMNS = [
   { key: 'em_transporte', label: 'Em Transporte',      color: '#10b981', keys: ['em_transporte'] },
 ]
 
-function QuoteManagement() {
+function QuoteManagement({ onLoadQuote }) {
   const { tableInfo } = useProducts()
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2244,6 +2246,7 @@ function QuoteManagement() {
   const [rejectSending, setRejectSending] = useState(false)
   const [printingQuote, setPrintingQuote] = useState(null)
   const [revisingQuote, setRevisingQuote] = useState(null)
+  const [compareRevs, setCompareRevs] = useState(null) // { a, b } — item 34
   const [revisingSaving, setRevisingSaving] = useState(false)
   const [revisingError, setRevisingError]   = useState('')
   const [actionError, setActionError] = useState('')
@@ -2387,7 +2390,7 @@ function QuoteManagement() {
 
   // Revisão de cotações internas (feitas pelo admin pra cliente sem cadastro)
   // — mesma lógica de handleApplyEdit do InlineEditor em Minhas Cotações.
-  const handleApplyRevisao = async (updatedData, selFrete, newTotal, dbItems) => {
+  const handleApplyRevisao = async (updatedData, selFrete, newTotal, dbItems, motivo) => {
     const quote = revisingQuote
     const kitData = quote.data || {}
     setRevisingSaving(true)
@@ -2416,6 +2419,7 @@ function QuoteManagement() {
       total_final: newTotal ?? quote.total_final ?? 0,
       frete:       freteNome,
       items:       dbItems || [],
+      motivo:      motivo?.trim() || null,
     }
     const newData = {
       ...updatedData,
@@ -2978,6 +2982,9 @@ function QuoteManagement() {
       </div>,
       document.body
     )}
+    {compareRevs && (
+      <RevisionCompareModal revA={compareRevs.a} revB={compareRevs.b} onClose={() => setCompareRevs(null)} />
+    )}
     {revisingQuote && !revisingSuccessData && createPortal(
       <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4 overflow-y-auto" onClick={() => !revisingSaving && setRevisingQuote(null)}>
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
@@ -3425,7 +3432,65 @@ function QuoteManagement() {
                           <Edit3 size={11} /> Revisar cotação
                         </button>
                       )}
+                      {/* Enviar por WhatsApp (item 29) */}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          const msg = buildProposalMessage({
+                            clienteNome: q.profiles?.nome || kd.clienteNome,
+                            kitNome: q.nome_projeto || `Kit ${Number(q.kwp || 0).toFixed(2)} kWp`,
+                            totalFinal: q.total_final,
+                            numeroOrcamento: kd.numero_orcamento,
+                          })
+                          window.open(buildWaLink(q.profiles?.telefone, msg), '_blank')
+                        }}
+                        className="text-green-700 hover:underline font-semibold flex items-center gap-1"
+                      >
+                        <MessageCircle size={11} /> WhatsApp
+                      </button>
+                      {/* Duplicar cotação (item 30) */}
+                      {onLoadQuote && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            onLoadQuote({
+                              quoteData: { ...kd, numero_orcamento: undefined, revisao: 0, revisoes: [], clienteNome: '', clienteCidade: '', clienteUF: '' },
+                              savedId: undefined,
+                            })
+                          }}
+                          className="text-weg-blue hover:underline font-semibold flex items-center gap-1"
+                        >
+                          <Copy size={11} /> Duplicar
+                        </button>
+                      )}
                     </div>
+
+                    {/* Histórico de revisões + comparar (item 34) */}
+                    {(kd.revisoes || []).length > 0 && (
+                      <div className="px-5 py-2.5 bg-gray-50/40 border-t border-gray-100 space-y-1" onClick={e => e.stopPropagation()}>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Histórico de revisões</p>
+                        {kd.revisoes.map((r, ri) => (
+                          <div key={ri} className="flex items-center justify-between text-xs text-gray-500">
+                            <span>
+                              <strong className="text-purple-600">Rev. {r.revisao}</strong> — {fmtDt(r.data)}
+                              {r.frete && <span className="text-gray-300"> · {r.frete}</span>}
+                            </span>
+                            <span className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-700">{fmt(r.total_final)}</span>
+                              {ri > 0 && (
+                                <button
+                                  onClick={() => setCompareRevs({ a: kd.revisoes[ri - 1], b: r })}
+                                  title="Comparar com a revisão anterior"
+                                  className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+                                >
+                                  <GitCompare size={12} />
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {associatingId === q.id && (
                       <div className="px-5 py-3 bg-blue-50/50 border-t border-blue-100 space-y-2" onClick={e => e.stopPropagation()}>
@@ -4688,7 +4753,7 @@ function KitsFechadosPanel({ onBadgeChange }) {
 }
 
 // ─── Admin Dashboard (rendered only when authenticated) ───────────────────────
-function AdminDashboard() {
+function AdminDashboard({ onLoadQuote }) {
   const { products, catalogLoading, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices, publishCatalog } = useProducts()
   const { profile, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -4968,7 +5033,7 @@ function AdminDashboard() {
       {activeTab === 'usuarios' && <UserManagement />}
 
       {/* Tab: Cotações */}
-      {activeTab === 'cotacoes' && <QuoteManagement />}
+      {activeTab === 'cotacoes' && <QuoteManagement onLoadQuote={onLoadQuote} />}
 
       {/* Tab: Kits Fechados */}
       {activeTab === 'kits_fechados' && <KitsFechadosPanel onBadgeChange={setPendingImplants} />}
@@ -5256,6 +5321,6 @@ function AdminDashboard() {
 }
 
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
-export default function AdminPage() {
-  return <AdminDashboard />
+export default function AdminPage({ onLoadQuote }) {
+  return <AdminDashboard onLoadQuote={onLoadQuote} />
 }

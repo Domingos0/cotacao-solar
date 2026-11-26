@@ -10,6 +10,7 @@ import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import PaymentOptions from '../components/PaymentOptions'
+import RevisionCompareModal from '../components/RevisionCompareModal'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -18,7 +19,7 @@ import {
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
-  BadgePercent, Tag, Lock, MessageCircle, Copy,
+  BadgePercent, Tag, Lock, MessageCircle, Copy, GitCompare,
 } from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
@@ -337,6 +338,8 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
   const [clienteNome, setClienteNome]     = useState(kitData.clienteNome || '')
   const [clienteUF, setClienteUF]         = useState(kitData.clienteUF || '')
   const [clienteCidade, setClienteCidade] = useState(kitData.clienteCidade || '')
+  // Motivo da revisão (item 34) — opcional, fica registrado no histórico
+  const [motivo, setMotivo] = useState('')
 
   // ── Panel state ──
   const [tab, setTab]           = useState('modulos')
@@ -654,7 +657,7 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
       total:      round2((i.product.preco || 0) * i.qty),
     }))
 
-    onApply(updatedData, selFrete, newTotal, dbItems)
+    onApply(updatedData, selFrete, newTotal, dbItems, motivo)
   }
 
   return (
@@ -1086,6 +1089,20 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
         )}
       </div>
 
+      {/* Motivo da revisão (item 34) — opcional */}
+      <div className="border-t border-gray-100 pt-3">
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+          Motivo da revisão (opcional)
+        </label>
+        <input
+          type="text"
+          value={motivo}
+          onChange={e => setMotivo(e.target.value)}
+          placeholder="Ex: cliente pediu mais módulos, troca de módulo por falta de estoque..."
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-weg-blue"
+        />
+      </div>
+
       {/* Erro ao salvar */}
       {error && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5 text-xs text-red-800">
@@ -1209,7 +1226,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   // Salva a edição via RPC server-side (save_quote_with_items): o servidor
   // recalcula subtotal/total_final/preco_unit a partir do catálogo de preços
   // publicado, em vez de confiar no total calculado no navegador.
-  const handleApplyEdit = async (updatedData, selFrete, newTotal, dbItems) => {
+  const handleApplyEdit = async (updatedData, selFrete, newTotal, dbItems, motivo) => {
     setEditSaving(true)
     setEditError('')
     const novaRevisao = (kitData.revisao || 0) + 1
@@ -1236,6 +1253,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
       total_final: newTotal ?? quote.total_final ?? 0,
       frete:       freteNome,
       items:       dbItems || [],
+      motivo:      motivo?.trim() || null,
     }
     const newData = {
       ...updatedData,
@@ -2514,6 +2532,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [adminStatusFilter, setAdminStatusFilter] = useState('todas')
   const [adminViewMode, setAdminViewMode]       = useState('cards') // 'cards' | 'table'
   const [adminExpandedId, setAdminExpandedId]   = useState(null)
+  const [compareRevs, setCompareRevs]           = useState(null) // { a, b } — item 34
 
   const handlePrintRevision = (quote, r) => {
     flushSync(() => setPrintRevisionData({ quote, r }))
@@ -2659,6 +2678,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
 
   return (
     <>
+    {/* Comparar revisões (item 34) */}
+    {compareRevs && (
+      <RevisionCompareModal revA={compareRevs.a} revB={compareRevs.b} onClose={() => setCompareRevs(null)} />
+    )}
+
     {/* Revision print overlay (table rows) — layout unificado */}
     {printRevisionData && (() => {
       const { quote: pq, r } = printRevisionData
@@ -3522,6 +3546,15 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                             <div className="flex items-center gap-2 shrink-0">
                               {r.total_final != null && (
                                 <span className="font-bold text-gray-700 whitespace-nowrap">{fmt(r.total_final)}</span>
+                              )}
+                              {ri > 0 && (
+                                <button
+                                  onClick={() => setCompareRevs({ a: revisoes[ri - 1], b: r })}
+                                  title="Comparar com a revisão anterior"
+                                  className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+                                >
+                                  <GitCompare size={12} />
+                                </button>
                               )}
                               <button
                                 onClick={() => handlePrintRevision(q, r)}

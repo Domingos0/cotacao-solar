@@ -325,7 +325,7 @@ function AuthenticatedApp() {
           />
         )}
         {page === 'simulacao-solar' && isAdmin && <SolarSimulationPage />}
-        {page === 'admin' && isAdmin && <AdminPage />}
+        {page === 'admin' && isAdmin && <AdminPage onLoadQuote={handleLoadQuote} />}
       </main>
 
       <Footer />
