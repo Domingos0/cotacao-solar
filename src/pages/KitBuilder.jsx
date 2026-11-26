@@ -14,6 +14,7 @@ import RatingPrompt from '../components/RatingPrompt'
 import { canShowRatingPrompt } from '../lib/feedback'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import PaymentOptions from '../components/PaymentOptions'
+import EconomiaPayback from '../components/EconomiaPayback'
 import { resolveDatasheetUrl } from '../lib/datasheets'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -5654,6 +5655,27 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
             total={totalFinal}
             formaPagamento={data.formaPagamento}
             parcelas={data.parcelasCartao}
+            readOnly
+            printMode
+          />
+        </div>
+
+        {/* Economia e payback (item 38) — editável na tela, só leitura no PDF */}
+        <div className="print:hidden">
+          <EconomiaPayback
+            kwp={realKwp}
+            hsp={data.hsp || SUN_HOURS}
+            totalFinal={totalFinal}
+            tarifa={data.tarifaEnergia}
+            onChange={(patch) => onChange({ ...data, ...patch })}
+          />
+        </div>
+        <div className="hidden print:block px-4 py-3">
+          <EconomiaPayback
+            kwp={realKwp}
+            hsp={data.hsp || SUN_HOURS}
+            totalFinal={totalFinal}
+            tarifa={data.tarifaEnergia}
             readOnly
             printMode
           />
