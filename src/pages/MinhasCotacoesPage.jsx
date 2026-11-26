@@ -11,6 +11,7 @@ import { round2, distributeTotal } from '../lib/money'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import { buildUnifiedProposal } from '../lib/unifyQuotes'
 import { createTemplateFromQuote } from '../lib/kitTemplates'
+import { calcPainelIntegrador } from '../lib/integradorPainel'
 import PaymentOptions from '../components/PaymentOptions'
 import RevisionCompareModal from '../components/RevisionCompareModal'
 import QuotesCompareModal from '../components/QuotesCompareModal'
@@ -23,7 +24,7 @@ import {
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
   BadgePercent, Tag, Lock, MessageCircle, Copy, GitCompare,
-  Layers, CheckSquare, Square, Star,
+  Layers, CheckSquare, Square, Star, TrendingUp, Sun, Zap,
 } from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
@@ -3158,6 +3159,18 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
             </span>
           )}
         </button>
+        {!isAdmin && (
+          <button
+            onClick={() => setActiveTab('painel')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors shrink-0 ${
+              activeTab === 'painel'
+                ? 'bg-green-600 text-white border-green-600'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-green-400'
+            }`}
+          >
+            <TrendingUp size={15} /> Meu Painel
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('fechados')}
           className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold text-sm border-2 transition-colors shrink-0 ${
@@ -3210,6 +3223,43 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
       </div>
 
       {/* ── KITS FECHADOS TAB ── */}
+      {/* ── MEU PAINEL (item 42) ── */}
+      {activeTab === 'painel' && (() => {
+        const painel = calcPainelIntegrador(quotes)
+        const mesLabel = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+        return (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500 -mt-2 capitalize">Resumo de {mesLabel}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white rounded-2xl border border-blue-100 shadow-sm p-5">
+                <div className="flex items-center gap-2 mb-2 text-weg-blue">
+                  <Zap size={18} /> <span className="text-xs font-semibold uppercase tracking-wide">kWp cotado</span>
+                </div>
+                <p className="text-3xl font-extrabold text-gray-900">{painel.kwpCotado.toLocaleString('pt-BR')} <span className="text-base font-semibold text-gray-400">kWp</span></p>
+                <p className="text-xs text-gray-400 mt-1">{painel.qtdCotadas} cotaç{painel.qtdCotadas === 1 ? 'ão' : 'ões'} · {fmt(painel.totalCotado)}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-5">
+                <div className="flex items-center gap-2 mb-2 text-orange-600">
+                  <Package size={18} /> <span className="text-xs font-semibold uppercase tracking-wide">kWp fechado</span>
+                </div>
+                <p className="text-3xl font-extrabold text-gray-900">{painel.kwpFechado.toLocaleString('pt-BR')} <span className="text-base font-semibold text-gray-400">kWp</span></p>
+                <p className="text-xs text-gray-400 mt-1">{painel.qtdFechadas} kit{painel.qtdFechadas === 1 ? '' : 's'} · {fmt(painel.totalFechado)}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5">
+                <div className="flex items-center gap-2 mb-2 text-green-700">
+                  <Sun size={18} /> <span className="text-xs font-semibold uppercase tracking-wide">Economia gerada</span>
+                </div>
+                <p className="text-3xl font-extrabold text-gray-900">{fmt(painel.economiaGerada)}</p>
+                <p className="text-xs text-gray-400 mt-1">por mês, pros clientes dos kits fechados</p>
+              </div>
+            </div>
+            {painel.qtdCotadas === 0 && (
+              <p className="text-center text-gray-400 text-sm py-6">Nenhuma cotação criada este mês ainda.</p>
+            )}
+          </div>
+        )
+      })()}
+
       {activeTab === 'fechados' && (
         closedQuotes.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm py-20 text-center">
