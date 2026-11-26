@@ -4525,6 +4525,7 @@ function RevisionHistory({ revisoes, numeroOrcamento }) {
       </button>
       {open && (
         <div className="mt-2 bg-white rounded-xl border border-weg-blue/20 overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
@@ -4551,6 +4552,7 @@ function RevisionHistory({ revisoes, numeroOrcamento }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
@@ -4582,6 +4584,7 @@ function EstudoPrintContent({ resumo, tableInfo }) {
       <div className="border border-gray-200 border-t-0 rounded-b-xl p-6 space-y-5">
         <section>
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Cargas críticas levantadas</p>
+          <div className="overflow-x-auto print:overflow-visible">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-200 text-gray-400">
@@ -4604,6 +4607,7 @@ function EstudoPrintContent({ resumo, tableInfo }) {
               ))}
             </tbody>
           </table>
+          </div>
         </section>
 
         <section className="grid grid-cols-2 gap-3">
@@ -5913,6 +5917,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               </p>
             </div>
 
+            <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
@@ -5939,6 +5944,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -6462,21 +6468,24 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
         {step === (isHybrid ? 7 : 6) && <Step5 data={data} onChange={setData} products={products} tableInfo={tableInfo} realKwp={realKwp} initialSavedId={initialSavedId} onGoToQuotes={onGoToQuotes} />}
       </div>
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between">
+      {/* Navigation — item 43: padding/gap menores no celular (3 colunas
+          disputando espaço com texto variável, ex: "Voltar ao Estudo", em
+          375px de largura) e os pontinhos de progresso (redundantes com o
+          StepIndicator lá em cima) somem em telas bem estreitas. */}
+      <div className="flex items-center justify-between gap-2">
         <button
           onClick={() => {
             if (step === 1 && data.origemEstudo && isAdminTop) { onBackToEstudo?.(data.estudoSnapshot?.raw); return }
             setStep(s => s - 1)
           }}
           disabled={step === 1 && !(data.origemEstudo && isAdminTop)}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:border-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:border-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all shrink-0 text-sm sm:text-base"
         >
           <ChevronLeft size={18} /> {step === 1 && data.origemEstudo && isAdminTop ? 'Voltar ao Estudo' : 'Voltar'}
         </button>
 
         {/* Progress dots */}
-        <div className="flex gap-1.5">
+        <div className="hidden sm:flex gap-1.5">
           {STEPS.map(s => (
             <div key={s.id} className={`rounded-full transition-all ${
               s.id === step ? 'w-6 h-2.5 bg-weg-blue' : s.id < step ? 'w-2.5 h-2.5 bg-green-400' : 'w-2.5 h-2.5 bg-gray-200'
@@ -6488,14 +6497,14 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
           <button
             onClick={() => setStep(s => s + 1)}
             disabled={!canNext}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-weg-blue text-white font-semibold hover:bg-weg-blue-mid disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl bg-weg-blue text-white font-semibold hover:bg-weg-blue-mid disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0 text-sm sm:text-base"
           >
             Próximo <ChevronRight size={18} />
           </button>
         ) : (
           <button
             onClick={reset}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-weg-orange text-white font-semibold hover:bg-weg-orange-dark transition-all"
+            className="flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-xl bg-weg-orange text-white font-semibold hover:bg-weg-orange-dark transition-all shrink-0 text-sm sm:text-base"
           >
             <RefreshCw size={16} /> Novo kit
           </button>
