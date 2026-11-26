@@ -9,6 +9,7 @@ import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
+import { buildUnifiedProposal } from '../lib/unifyQuotes'
 import PaymentOptions from '../components/PaymentOptions'
 import RevisionCompareModal from '../components/RevisionCompareModal'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
@@ -20,6 +21,7 @@ import {
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
   BadgePercent, Tag, Lock, MessageCircle, Copy, GitCompare,
+  Layers, CheckSquare, Square,
 } from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
@@ -2502,6 +2504,181 @@ function RevisionDetailModal({ quote, revision, onClose }) {
   )
 }
 
+// ─── Proposta unificada (item 35) ──────────────────────────────────────────────
+// Consolida várias cotações do mesmo cliente numa única proposta: total geral
+// (com desconto opcional de pacote), kWp somado, lista de materiais por SAP
+// (quantidades somadas entre os kits) e validade = a da cotação que vence
+// primeiro (nunca estende o prazo além do que já foi prometido em alguma delas).
+function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
+  const [desconto, setDesconto] = useState(0)
+  const [isPrinting, setIsPrinting] = useState(false)
+  const unified = useMemo(() => buildUnifiedProposal(quotes, desconto), [quotes, desconto])
+
+  const handlePrint = () => {
+    flushSync(() => setIsPrinting(true))
+    execPrint(() => setIsPrinting(false))
+  }
+
+  if (isPrinting) {
+    return (
+      <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
+        <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
+          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
+            onError={e => { e.target.style.display = 'none' }} />
+          <div className="text-right">
+            <p className="text-white/70 text-xs">{new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+            <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
+          </div>
+        </div>
+        <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{ background: '#f8f9fa' }}>
+          <div>
+            <p className="text-base font-extrabold text-[#003087]">Proposta Unificada — {quotes.length} kits</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {quotes.map(q => (q.data?.numero_orcamento || q.id.slice(0, 8).toUpperCase())).join(' · ')}
+            </p>
+            {unified.validadeMinima && (
+              <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">
+                Validade: {new Date(unified.validadeMinima).toLocaleDateString('pt-BR')}
+              </p>
+            )}
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-3xl font-extrabold text-[#003087]">{unified.totalKwp} kWp</p>
+          </div>
+        </div>
+        <div className="px-8 pt-5 pb-3">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b-2 border-gray-200">
+                <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
+                <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
+                <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
+                <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unified.materiais.map((item, i) => (
+                <tr key={i} className="border-b border-gray-100">
+                  <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
+                  <td className="py-2.5">
+                    <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
+                    <p className="text-xs text-gray-500">{item.produto}</p>
+                    <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
+                  </td>
+                  <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
+                  <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              {unified.descontoPct > 0 && (
+                <>
+                  <tr className="border-t border-gray-200">
+                    <td colSpan="3" className="py-2 text-right text-sm text-gray-500 pr-4">Subtotal</td>
+                    <td className="py-2 text-right text-sm text-gray-500 whitespace-nowrap">{fmt(unified.totalBruto)}</td>
+                  </tr>
+                  <tr>
+                    <td colSpan="3" className="py-2 text-right text-sm text-green-600 pr-4">Desconto do pacote ({unified.descontoPct}%)</td>
+                    <td className="py-2 text-right text-sm text-green-600 whitespace-nowrap">−{fmt(unified.totalBruto - unified.totalComDesconto)}</td>
+                  </tr>
+                </>
+              )}
+              <tr style={{ background: '#003087', color: 'white' }}>
+                <td colSpan="3" style={{ padding: '14px 8px', textAlign: 'right', fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Geral</td>
+                <td style={{ padding: '14px 8px', textAlign: 'right', fontSize: 18, fontWeight: 900, whiteSpace: 'nowrap' }}>{fmt(unified.totalComDesconto)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
+          <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
+          <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
+        </div>
+        <div className="flex items-center justify-between px-8 py-2 mt-2" style={{ background: '#1B3A8A' }}>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.7)' }}>{tableInfo?.nome}</span>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.7)' }}>94 9209-0380 · vendas@ernaniff.com.br</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="bg-weg-blue text-white px-6 py-4 rounded-t-2xl flex items-center justify-between sticky top-0">
+          <h3 className="font-bold flex items-center gap-2"><Layers size={18} /> Unificar {quotes.length} cotações</h3>
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/20"><X size={18} /></button>
+        </div>
+        <div className="p-6 space-y-5">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Total geral (kWp)</p>
+              <p className="text-2xl font-extrabold text-weg-blue">{unified.totalKwp} kWp</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Validade</p>
+              <p className="text-base font-bold text-gray-800">
+                {unified.validadeMinima ? new Date(unified.validadeMinima).toLocaleDateString('pt-BR') : 'Sem validade definida'}
+              </p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Vale a data da cotação que vence primeiro</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Desconto do pacote (%)</label>
+            <input
+              type="number" min="0" max="100" step="0.5"
+              value={desconto}
+              onChange={e => setDesconto(e.target.value === '' ? 0 : Number(e.target.value))}
+              className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
+            />
+          </div>
+
+          <div className="border border-gray-100 rounded-xl overflow-hidden">
+            <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
+              Materiais consolidados por SAP ({unified.materiais.length} itens)
+            </div>
+            <div className="max-h-56 overflow-y-auto divide-y divide-gray-50">
+              {unified.materiais.map((item, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-800 truncate">{item.produto || item.label}</p>
+                    <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap || '—'}</p>
+                  </div>
+                  <div className="text-right shrink-0 pl-3">
+                    <p className="font-semibold text-gray-700">{item.qty} {item.unit}</p>
+                    <p className="text-xs text-gray-400">{fmt(item.total)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-weg-blue/5 border border-weg-blue/20 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              {unified.descontoPct > 0 && (
+                <p className="text-xs text-gray-400 line-through">{fmt(unified.totalBruto)}</p>
+              )}
+              <p className="text-xs text-gray-500 uppercase font-semibold">Total geral</p>
+            </div>
+            <p className="text-2xl font-extrabold text-weg-blue">{fmt(unified.totalComDesconto)}</p>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handlePrint}
+              className="flex-1 flex items-center justify-center gap-2 bg-weg-blue hover:bg-weg-blue/90 text-white font-semibold py-3 rounded-xl"
+            >
+              <Printer size={16} /> Gerar PDF único
+            </button>
+            <button onClick={onClose} className="btn-outline px-5 py-3">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────────
 const CLOSED_STATUSES = ['fechado', 'faturado', 'em_transporte', 'implantado', 'perdida']
 
@@ -2533,6 +2710,18 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [adminViewMode, setAdminViewMode]       = useState('cards') // 'cards' | 'table'
   const [adminExpandedId, setAdminExpandedId]   = useState(null)
   const [compareRevs, setCompareRevs]           = useState(null) // { a, b } — item 34
+  // Unificar cotações por cliente (item 35)
+  const [unifyMode, setUnifyMode]         = useState(false)
+  const [unifySelected, setUnifySelected] = useState(() => new Set())
+  const [showUnifyModal, setShowUnifyModal] = useState(false)
+  const toggleUnifySelected = (id) => {
+    setUnifySelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  const exitUnifyMode = () => { setUnifyMode(false); setUnifySelected(new Set()) }
 
   const handlePrintRevision = (quote, r) => {
     flushSync(() => setPrintRevisionData({ quote, r }))
@@ -2681,6 +2870,16 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
     {/* Comparar revisões (item 34) */}
     {compareRevs && (
       <RevisionCompareModal revA={compareRevs.a} revB={compareRevs.b} onClose={() => setCompareRevs(null)} />
+    )}
+
+    {/* Unificar cotações por cliente (item 35) */}
+    {showUnifyModal && (
+      <UnifiedProposalModal
+        quotes={activeQuotes.filter(q => unifySelected.has(q.id))}
+        condicoes={condicoes}
+        tableInfo={rootTableInfo}
+        onClose={() => setShowUnifyModal(false)}
+      />
     )}
 
     {/* Revision print overlay (table rows) — layout unificado */}
@@ -3063,11 +3262,44 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {/* Barra de ação — unificar cotações (item 35) */}
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60 flex-wrap">
+            {unifyMode ? (
+              <>
+                <span className="text-sm text-gray-600">
+                  <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — escolha 2 ou mais pra unificar
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowUnifyModal(true)}
+                    disabled={unifySelected.size < 2}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-white bg-weg-blue hover:bg-weg-blue/90 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Layers size={13} /> Unificar selecionadas
+                  </button>
+                  <button
+                    onClick={exitUnifyMode}
+                    className="text-xs font-semibold text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                onClick={() => setUnifyMode(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg"
+              >
+                <Layers size={13} /> Unificar cotações
+              </button>
+            )}
+          </div>
           {/* Table header */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
+                  {unifyMode && <th className="px-3 py-3 w-10" />}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data de Emissão</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Número da Cotação</th>
                   <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Revisão</th>
@@ -3099,6 +3331,13 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                         key={q.id}
                         className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors"
                       >
+                        {unifyMode && (
+                          <td className="px-3 py-3.5">
+                            <button onClick={() => toggleUnifySelected(q.id)} className="text-weg-blue">
+                              {unifySelected.has(q.id) ? <CheckSquare size={18} /> : <Square size={18} className="text-gray-300" />}
+                            </button>
+                          </td>
+                        )}
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <span className="text-sm text-gray-600">{fmtDate(q.created_at)}</span>
                           <span className="block text-xs text-gray-400">{fmtTime(q.created_at)}</span>
