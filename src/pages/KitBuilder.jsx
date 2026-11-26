@@ -2117,7 +2117,7 @@ function Step3({ data, onChange, products, realKwp }) {
   const kitTypeCat = KIT_TYPE_TO_CAT[data.kitType]
   const kitTypeInfo = KIT_TYPES.find(k => k.key === data.kitType)
 
-  const allInverters = products.filter(p => {
+  const baseInverters = products.filter(p => {
     if (p.kitRole !== KIT_ROLE.INVERTER || !p.preco) return false
     if (kitTypeCat && p.categoria !== kitTypeCat) return false
     if (data.kitType === 'ongrid_tri' && data.tensaoRede) {
@@ -2126,6 +2126,17 @@ function Step3({ data, onChange, products, realKwp }) {
     }
     return true
   })
+  // Item 39: filtro On-Grid × Híbrido — a lista misturava os dois tipos sem
+  // distinção clara (só um badge pequeno no card). Só mostra o filtro quando
+  // a categoria realmente tem os dois tipos (ex: microinversor/bombeamento
+  // não tem variante híbrida, não faz sentido mostrar um filtro vazio).
+  const [tipoFiltro, setTipoFiltro] = useState('todos') // 'todos' | 'ongrid' | 'hibrido'
+  const hasHybridInv = baseInverters.some(isHybridInv)
+  const hasOnGridInv = baseInverters.some(p => !isHybridInv(p))
+  const showTipoFiltro = hasHybridInv && hasOnGridInv
+  const allInverters = showTipoFiltro
+    ? baseInverters.filter(p => tipoFiltro === 'todos' || (tipoFiltro === 'hibrido') === isHybridInv(p))
+    : baseInverters
 
   // Trifásico: mostrar todos os modelos por padrão (com badges de overload visíveis)
   const [showAll, setShowAll] = useState(data.kitType === 'ongrid_tri')
@@ -2493,6 +2504,31 @@ function Step3({ data, onChange, products, realKwp }) {
             >
               <Plus size={14} /> Mesclar inversores
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Filtro On-Grid × Híbrido (item 39) */}
+      {showTipoFiltro && (
+        <div className="flex justify-center">
+          <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 gap-1">
+            {[
+              { key: 'todos', label: 'Todos' },
+              { key: 'ongrid', label: '⚡ On-Grid' },
+              { key: 'hibrido', label: '🔋 Híbrido' },
+            ].map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setTipoFiltro(opt.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  tipoFiltro === opt.key
+                    ? 'bg-white shadow-sm text-weg-blue border border-blue-200'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
       )}
