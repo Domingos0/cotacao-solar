@@ -266,6 +266,11 @@ export function ProductsProvider({ children }) {
       if (error) throw error
       draftVersionIdRef.current = null
       lastSeenVersionIdRef.current = draftId
+      // "Avise-me quando chegar" (item 32) — dispara em segundo plano, sem
+      // bloquear nem falhar a publicação por causa disso.
+      supabase.rpc('check_stock_notifications').then(({ error: e }) => {
+        if (e) console.warn('[check_stock_notifications]', e.message)
+      })
       return { ok: true }
     } catch (e) {
       return { ok: false, error: e?.message || 'Erro ao publicar.' }

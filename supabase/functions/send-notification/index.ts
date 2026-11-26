@@ -471,6 +471,31 @@ async function handleCotacaoVenceAmanha(payload: { quoteId?: string }) {
   return json({ ok: true })
 }
 
+// Disparado pelo próprio app (client-side), logo depois que o admin publica
+// o catálogo (check_stock_notifications via RPC) — sem requireAdmin porque
+// quem chama já é o próprio check_stock_notifications, que é admin-only.
+async function handleProdutoDisponivel(payload: { stockNotificationId?: string }) {
+  if (!payload.stockNotificationId) return json({ error: "stockNotificationId obrigatório" }, 400)
+
+  const { data: sn } = await admin.from("stock_notifications")
+    .select("user_id, codigo_sap, produto_nome")
+    .eq("id", payload.stockNotificationId).maybeSingle()
+  if (!sn) return json({ ok: true })
+
+  const { data: profile } = await admin.from("profiles").select("nome, telefone, email").eq("id", sn.user_id).maybeSingle()
+  const { data: authUser } = await admin.auth.admin.getUserById(sn.user_id)
+  const waKey = authUser?.user?.user_metadata?.whatsapp_apikey || ""
+  const clienteNome = profile?.nome || "Cliente"
+  const produtoNome = sn.produto_nome || `código ${sn.codigo_sap}`
+
+  const msg = `📦 *Chegou! — Ernaniff*\n\nOlá, ${clienteNome}!\n\nO produto que você pediu pra avisar já está disponível: *${produtoNome}*.\n\nCorre que pode acabar de novo! 🌞`
+  await dispatch({
+    event: "produtoDisponivel", userId: sn.user_id, clienteNome,
+    adminMsg: null, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
+  return json({ ok: true })
+}
+
 const KIT_STATUS_TEXT: Record<string, (d: { ovNumero?: string; nfNumero?: string }) => string> = {
   implantado: ({ ovNumero }) => `🔧 Seu pedido entrou em processo de implantação.${ovNumero ? `\nOV: ${ovNumero}` : ""}`,
   faturado: ({ ovNumero, nfNumero }) => `🧾 Seu pedido foi faturado.${ovNumero ? `\nOV: ${ovNumero}` : ""}${nfNumero ? `\nNF: ${nfNumero}` : ""}`,
@@ -536,6 +561,7 @@ Deno.serve(async (req) => {
       case "feedbackResolvido": return await handleFeedbackResolvido(req, payload || {})
       case "cotacaoVencida": return await handleCotacaoVencida(payload || {})
       case "cotacaoVenceAmanha": return await handleCotacaoVenceAmanha(payload || {})
+      case "produtoDisponivel": return await handleProdutoDisponivel(payload || {})
       case "testWaAkg": return await handleTestWaAkg(req, payload || {})
       default: return json({ error: "evento desconhecido" }, 400)
     }

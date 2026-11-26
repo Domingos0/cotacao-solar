@@ -1,7 +1,10 @@
-import { X, Package, Tag, Zap, Phone, CheckCircle, Copy, ShieldCheck } from 'lucide-react'
-import { useState } from 'react'
+import { X, Package, Tag, Zap, Phone, CheckCircle, Copy, ShieldCheck, Bell, BellRing } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { getProductImage } from '../data/productImages'
 import { getInverterSpecs, extractModelPowerKw, buildPowerSubtitle } from '../data/inverterSpecs'
+import { effectiveEstoque } from '../data/products'
+import { useAuth } from '../context/AuthContext'
+import { requestStockAlert, cancelStockAlert, hasStockAlert } from '../lib/stockAlert'
 
 function formatPrice(preco, unidadeVenda) {
   if (!preco) return 'Sob consulta'
@@ -30,6 +33,15 @@ function ProductImg({ src, alt, fallbackEmoji }) {
 
 export default function ProductDetail({ product, onClose }) {
   const [copied, setCopied] = useState(false)
+  const { session } = useAuth()
+  const [alertRequested, setAlertRequested] = useState(false)
+  const [alertLoading, setAlertLoading] = useState(false)
+
+  useEffect(() => {
+    if (!session?.user?.id || !product?.codigo) return
+    hasStockAlert({ userId: session.user.id, codigoSap: product.codigo }).then(setAlertRequested)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, product?.codigo])
 
   if (!product) return null
 
@@ -42,6 +54,8 @@ export default function ProductDetail({ product, onClose }) {
   const imgSrc   = getProductImage(product)
   const invSpec  = getInverterSpecs(product)
   const emoji    = getCategoryEmoji(product.categoria)
+  const estoqueEfetivo = effectiveEstoque(product)
+  const isEsgotado = estoqueEfetivo === 'Esgotado' || estoqueEfetivo === 'Sem estoque'
 
   // Merge: specs enriquecidos do portfólio (família toda) + a potência
   // ESPECÍFICA deste modelo por cima. Os specs do portfólio são por família
@@ -164,10 +178,35 @@ export default function ProductDetail({ product, onClose }) {
               </p>
             </div>
             <div className="text-right">
-              <span className={`badge text-sm px-3 py-1 ${product.estoque === 'Disponível' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${product.estoque === 'Disponível' ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                {product.estoque}
+              <span className={`badge text-sm px-3 py-1 ${estoqueEfetivo === 'Disponível' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${estoqueEfetivo === 'Disponível' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                {estoqueEfetivo}
               </span>
+              {isEsgotado && session && (
+                <button
+                  onClick={async () => {
+                    if (alertLoading) return
+                    setAlertLoading(true)
+                    if (alertRequested) {
+                      await cancelStockAlert({ userId: session.user.id, codigoSap: product.codigo })
+                      setAlertRequested(false)
+                    } else {
+                      await requestStockAlert({ userId: session.user.id, codigoSap: product.codigo, nome: product.nome })
+                      setAlertRequested(true)
+                    }
+                    setAlertLoading(false)
+                  }}
+                  disabled={alertLoading}
+                  className={`mt-2 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full transition-colors disabled:opacity-60 ${
+                    alertRequested
+                      ? 'bg-weg-blue text-white hover:bg-weg-blue/90'
+                      : 'bg-blue-50 text-weg-blue border border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  {alertRequested ? <BellRing size={13} /> : <Bell size={13} />}
+                  {alertRequested ? 'Vamos te avisar ✓' : 'Avise-me quando chegar'}
+                </button>
+              )}
             </div>
           </div>
 
