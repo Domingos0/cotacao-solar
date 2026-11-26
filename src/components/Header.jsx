@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil, Calculator, Sun, HelpCircle } from 'lucide-react'
+import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil, Calculator, Sun, HelpCircle, Flame } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { TOURS } from '../lib/tour'
@@ -44,6 +44,7 @@ export default function Header({ onSearch, searchQuery, page, onPageChange, onSt
   const NAV_ITEMS = [
     { id: 'catalog',   label: 'Catálogo',         icon: LayoutGrid, show: true },
     { id: 'kit',       label: 'Monte seu Kit',     icon: Zap,        show: true },
+    { id: 'promocoes', label: 'Kits da Promoção',  icon: Flame,      show: !!session },
     { id: 'dimensionamento', label: 'Dimensionar Bateria', icon: Calculator, show: isAdmin },
     { id: 'simulacao-solar', label: 'Simulação Solar', icon: Sun, show: isAdmin },
     { id: 'cotacoes',  label: 'Minhas Cotações',   icon: FileText,   show: !!session && !isAdmin },

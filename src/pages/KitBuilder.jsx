@@ -6202,8 +6202,13 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
   // anteriores já vêm pré-preenchidos). Um cliente reabrindo esse mesmo kit
   // não tem acesso à página de Estudo, então sempre cai no Resumo normal.
   const initIsHybrid = initialData ? isHybridInv(initialData.inverter || initialData.inverters?.[0]?.inverter) : false
+  // origemPromo (item 36 — "Solicitar este kit" nos Kits da Promoção) pula
+  // direto pra Acessórios igual origemEstudo+admin, mas pra QUALQUER usuário
+  // (cliente ou admin) — módulo/inversor já vêm definidos pela promoção.
   const initStep = initialData
-    ? (initialData.origemEstudo && isAdminTop ? (initIsHybrid ? 6 : 5) : (initIsHybrid ? 7 : 6))
+    ? ((initialData.origemEstudo && isAdminTop) || initialData.origemPromo
+        ? (initIsHybrid ? 6 : 5)
+        : (initIsHybrid ? 7 : 6))
     : 1
   const [step, setStep] = useState(initStep)
   const [data, setData] = useState(initialData || { mode: 'potencia', hsp: SUN_HOURS })

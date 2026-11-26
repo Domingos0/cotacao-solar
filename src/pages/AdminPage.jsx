@@ -9,6 +9,11 @@ import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage, guessCategoria } from '../data/productImages'
 import { getInverterSpecs } from '../data/inverterSpecs'
 import { upsertDatasheet, importDatasheetsFromRows, uploadDatasheetFile } from '../lib/datasheets'
+import {
+  listPromoKits, upsertPromoKit, deletePromoKit, listPromoRegioes, upsertPromoRegiao,
+  uploadPromoFolder, getPromoStatus, PROMO_STATUS_LABELS, PROMO_REGIOES_KEYS,
+} from '../lib/promoKits'
+import { round2 } from '../lib/money'
 import kitCompositions from '../data/kitCompositions.json'
 import { InlineEditor } from './MinhasCotacoesPage'
 import {
@@ -27,7 +32,7 @@ import {
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
   UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
-  MessageSquare, Star, Copy, GitCompare,
+  MessageSquare, Star, Copy, GitCompare, Flame,
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
@@ -4901,6 +4906,292 @@ function DatasheetsPanel({ products }) {
   )
 }
 
+// ─── Kits da Promoção (item 36) ────────────────────────────────────────────────
+const PROMO_REGIAO_LABELS = {
+  norte: 'Norte', nordeste: 'Nordeste', centro_oeste: 'Centro-Oeste', sudeste: 'Sudeste', sul: 'Sul',
+}
+
+const PROMO_KIT_EMPTY_FORM = {
+  id: null, nome: '', desconto_pct: 5, data_inicio: '', data_fim: '', data_fim_original: null,
+  ativo: true, fob_folder_url: '', moduloCodigo: '', moduloQty: 1, inversorCodigo: '', inversorQty: 1,
+  preco_homologado: '',
+}
+
+function PromoKitsAdminPanel({ products }) {
+  const fmtAdmin = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const [kits, setKits] = useState([])
+  const [regioes, setRegioes] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState(PROMO_KIT_EMPTY_FORM)
+  const [saving, setSaving] = useState(false)
+  const [uploadingFolder, setUploadingFolder] = useState(false)
+  const [uploadingRegiao, setUploadingRegiao] = useState(null)
+  const [msg, setMsg] = useState('')
+
+  const painels = products.filter(p => p.kitRole === KIT_ROLE.PANEL && p.preco)
+  const inversores = products.filter(p => p.kitRole === KIT_ROLE.INVERTER && p.preco)
+
+  const reload = async () => {
+    const [k, r] = await Promise.all([listPromoKits(), listPromoRegioes()])
+    setKits(k.data)
+    setRegioes(r.data)
+    setLoading(false)
+  }
+  useEffect(() => { reload() }, [])
+
+  const modulo = painels.find(p => p.codigo === form.moduloCodigo)
+  const inversor = inversores.find(p => p.codigo === form.inversorCodigo)
+  const kwpCalc = modulo ? round2((modulo.potencia || 0) * (form.moduloQty || 0) / 1000) : 0
+  const precoCalc = modulo && inversor
+    ? round2((modulo.preco || 0) * (form.moduloQty || 0) + (inversor.preco || 0) * (form.inversorQty || 0))
+    : 0
+
+  const startEdit = (kit) => {
+    setForm({
+      id: kit.id, nome: kit.nome, desconto_pct: kit.desconto_pct,
+      data_inicio: kit.data_inicio, data_fim: kit.data_fim, data_fim_original: kit.data_fim_original,
+      ativo: kit.ativo, fob_folder_url: kit.fob_folder_url || '',
+      moduloCodigo: kit.modulo?.codigo || '', moduloQty: kit.modulo?.qty || 1,
+      inversorCodigo: kit.inversor?.codigo || '', inversorQty: kit.inversor?.qty || 1,
+      preco_homologado: kit.preco_homologado,
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const resetForm = () => setForm(PROMO_KIT_EMPTY_FORM)
+
+  const handleUploadFolder = async (file) => {
+    if (!file) return
+    setUploadingFolder(true)
+    const { url, error } = await uploadPromoFolder(file, form.nome || 'promo-kit')
+    setUploadingFolder(false)
+    if (error) { setMsg(`Erro ao subir folder: ${error.message}`); return }
+    setForm(f => ({ ...f, fob_folder_url: url }))
+  }
+
+  const handleSave = async () => {
+    if (!form.nome || !modulo || !inversor || !form.data_inicio || !form.data_fim) {
+      setMsg('Preencha nome, módulo, inversor e as datas antes de salvar.')
+      return
+    }
+    setSaving(true)
+    setMsg('')
+    const payload = {
+      id: form.id || undefined,
+      nome: form.nome,
+      kwp: kwpCalc,
+      modulo: { ...modulo, qty: form.moduloQty },
+      inversor: { ...inversor, qty: form.inversorQty },
+      itens_extra: [],
+      preco_homologado: form.preco_homologado === '' ? precoCalc : Number(form.preco_homologado),
+      desconto_pct: Number(form.desconto_pct) || 0,
+      data_inicio: form.data_inicio,
+      data_fim: form.data_fim,
+      data_fim_original: form.data_fim_original || form.data_fim,
+      fob_folder_url: form.fob_folder_url || null,
+      ativo: form.ativo,
+    }
+    const { error } = await upsertPromoKit(payload)
+    setSaving(false)
+    if (error) { setMsg(`Erro ao salvar: ${error.message}`); return }
+    resetForm()
+    await reload()
+  }
+
+  const handleDelete = async (id) => {
+    const { error } = await deletePromoKit(id)
+    if (error) { setMsg(`Erro ao excluir: ${error.message}`); return }
+    await reload()
+  }
+
+  const handleRegiaoSave = async (regiao, frete_valor, folder_url) => {
+    const { error } = await upsertPromoRegiao(regiao, Number(frete_valor) || 0, folder_url || null)
+    if (error) { setMsg(`Erro ao salvar frete de ${PROMO_REGIAO_LABELS[regiao]}: ${error.message}`); return }
+    await reload()
+  }
+
+  const handleUploadRegiaoFolder = async (regiao, file) => {
+    if (!file) return
+    setUploadingRegiao(regiao)
+    const { url, error } = await uploadPromoFolder(file, `regiao-${regiao}`)
+    if (error) { setUploadingRegiao(null); setMsg(`Erro ao subir folder: ${error.message}`); return }
+    await handleRegiaoSave(regiao, regioes[regiao]?.frete_valor || 0, url)
+    setUploadingRegiao(null)
+  }
+
+  if (loading) return <div className="py-12 text-center text-sm text-gray-400">Carregando…</div>
+
+  return (
+    <div className="space-y-5">
+      {msg && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{msg}</p>}
+
+      {/* Form: novo kit / editar kit */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2 mb-4">
+          <Flame size={18} className="text-orange-500" /> {form.id ? 'Editar kit da promoção' : 'Novo kit da promoção'}
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Nome do kit *</label>
+            <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
+              placeholder="Ex: Kit Premium 5kWp SIW300H"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Módulo *</label>
+            <select value={form.moduloCodigo} onChange={e => setForm(f => ({ ...f, moduloCodigo: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue">
+              <option value="">Selecione...</option>
+              {painels.map(p => <option key={p.codigo} value={p.codigo}>{p.nome} — {fmtAdmin(p.preco)}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Qtd. módulos</label>
+              <input type="number" min="1" value={form.moduloQty}
+                onChange={e => setForm(f => ({ ...f, moduloQty: Number(e.target.value) || 1 }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+            <div className="shrink-0 pt-5 text-xs text-gray-400">{kwpCalc > 0 ? `${kwpCalc} kWp` : ''}</div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Inversor *</label>
+            <select value={form.inversorCodigo} onChange={e => setForm(f => ({ ...f, inversorCodigo: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue">
+              <option value="">Selecione...</option>
+              {inversores.map(p => <option key={p.codigo} value={p.codigo}>{p.nome} — {fmtAdmin(p.preco)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Qtd. inversores</label>
+            <input type="number" min="1" value={form.inversorQty}
+              onChange={e => setForm(f => ({ ...f, inversorQty: Number(e.target.value) || 1 }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Preço homologado (R$)</label>
+            <input type="number" step="0.01" value={form.preco_homologado}
+              onChange={e => setForm(f => ({ ...f, preco_homologado: e.target.value }))}
+              placeholder={precoCalc > 0 ? `Sugerido: ${fmtAdmin(precoCalc)}` : ''}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Desconto (%)</label>
+            <input type="number" step="0.5" value={form.desconto_pct}
+              onChange={e => setForm(f => ({ ...f, desconto_pct: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Data início *</label>
+            <input type="date" value={form.data_inicio}
+              onChange={e => setForm(f => ({ ...f, data_inicio: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Data fim * {form.data_fim_original && form.data_fim > form.data_fim_original && <span className="text-blue-600 font-normal">(prorrogada)</span>}</label>
+            <input type="date" value={form.data_fim}
+              onChange={e => setForm(f => ({ ...f, data_fim: e.target.value }))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+          </div>
+          <div className="flex items-center gap-2 pt-5">
+            <input type="checkbox" id="promo-ativo" checked={form.ativo}
+              onChange={e => setForm(f => ({ ...f, ativo: e.target.checked }))} />
+            <label htmlFor="promo-ativo" className="text-sm text-gray-700">Ativo (visível pros clientes)</label>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Folder FOB (PDF)</label>
+            <div className="flex items-center gap-2">
+              {form.fob_folder_url && (
+                <a href={form.fob_folder_url} target="_blank" rel="noopener noreferrer" className="text-xs text-weg-blue hover:underline flex items-center gap-1">
+                  <FileText size={12} /> Ver folder atual
+                </a>
+              )}
+              <label className="text-xs font-semibold text-gray-600 border border-gray-200 hover:border-weg-blue px-3 py-1.5 rounded-lg cursor-pointer">
+                {uploadingFolder ? 'Enviando…' : form.fob_folder_url ? 'Trocar PDF' : 'Subir PDF'}
+                <input type="file" accept="application/pdf" className="hidden" disabled={uploadingFolder}
+                  onChange={e => { handleUploadFolder(e.target.files?.[0]); e.target.value = '' }} />
+              </label>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-1.5 bg-weg-blue hover:bg-weg-blue/90 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-60">
+            <Save size={14} /> {saving ? 'Salvando…' : form.id ? 'Salvar alterações' : 'Criar kit da promoção'}
+          </button>
+          {form.id && (
+            <button onClick={resetForm} className="text-sm text-gray-500 hover:bg-gray-100 px-4 py-2 rounded-lg">Cancelar edição</button>
+          )}
+        </div>
+      </div>
+
+      {/* Lista de kits */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 font-bold text-gray-900">Kits cadastrados ({kits.length})</div>
+        {kits.length === 0 ? (
+          <p className="text-sm text-gray-400 px-4 py-6 text-center">Nenhum kit da promoção cadastrado ainda.</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {kits.map(kit => {
+              const status = getPromoStatus(kit)
+              return (
+                <div key={kit.id} className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-gray-900">{kit.nome}</p>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{PROMO_STATUS_LABELS[status.principal]}</span>
+                      {status.prorrogada && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Prorrogada</span>}
+                      {!kit.ativo && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">Desativado</span>}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {kit.kwp} kWp · {fmtAdmin(kit.preco_homologado)} −{kit.desconto_pct}% · {kit.data_inicio} a {kit.data_fim}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => startEdit(kit)} className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50"><Edit3 size={14} /></button>
+                    <button onClick={() => handleDelete(kit.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Frete da promoção por região */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <h3 className="font-bold text-gray-900 text-lg mb-1">Frete da promoção por região</h3>
+        <p className="text-xs text-gray-400 mb-3">Somado ao preço com desconto pra formar o preço final mostrado em cada região. Cada região também tem seu próprio folder de conferência.</p>
+        <div className="space-y-2">
+          {PROMO_REGIOES_KEYS.map(regiao => {
+            const r = regioes[regiao]
+            return (
+              <div key={regiao} className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-700 w-28 shrink-0">{PROMO_REGIAO_LABELS[regiao]}</span>
+                <input
+                  type="number" step="0.01"
+                  defaultValue={r?.frete_valor || 0}
+                  onBlur={e => handleRegiaoSave(regiao, e.target.value, r?.folder_url)}
+                  className="w-32 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-weg-blue"
+                />
+                {r?.folder_url && (
+                  <a href={r.folder_url} target="_blank" rel="noopener noreferrer" className="text-xs text-weg-blue hover:underline flex items-center gap-1">
+                    <FileText size={12} /> Folder
+                  </a>
+                )}
+                <label className="text-xs font-semibold text-gray-600 border border-gray-200 hover:border-weg-blue px-3 py-1.5 rounded-lg cursor-pointer shrink-0">
+                  {uploadingRegiao === regiao ? 'Enviando…' : 'Subir folder'}
+                  <input type="file" accept="application/pdf" className="hidden" disabled={uploadingRegiao === regiao}
+                    onChange={e => { handleUploadRegiaoFolder(regiao, e.target.files?.[0]); e.target.value = '' }} />
+                </label>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Admin Dashboard (rendered only when authenticated) ───────────────────────
 function AdminDashboard({ onLoadQuote }) {
   const { products, catalogLoading, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices, publishCatalog } = useProducts()
@@ -5137,6 +5428,7 @@ function AdminDashboard({ onLoadQuote }) {
     { key: 'kits_fechados',  icon: CheckCircle2, label: 'Kits Fechados', badge: pendingImplants },
     { key: 'notificacoes',   icon: Bell,       label: 'Notificações',   badge: 0 },
     { key: 'feedbacks',      icon: MessageSquare, label: 'Feedbacks',   badge: pendingFeedbacks },
+    { key: 'promocoes',      icon: Flame,      label: 'Promoções',      badge: 0 },
   ]
 
   return (
@@ -5192,6 +5484,9 @@ function AdminDashboard({ onLoadQuote }) {
 
       {/* Tab: Feedbacks */}
       {activeTab === 'feedbacks' && <FeedbackManagement onBadgeChange={setPendingFeedbacks} />}
+
+      {/* Tab: Promoções */}
+      {activeTab === 'promocoes' && <PromoKitsAdminPanel products={products} />}
 
       {/* Tab: Produtos */}
       {activeTab === 'produtos' && <>

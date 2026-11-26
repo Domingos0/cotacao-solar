@@ -16,6 +16,7 @@ import KitBuilder from './pages/KitBuilder'
 import BatteryDimensioningPage from './pages/BatteryDimensioningPage'
 import SolarSimulationPage from './pages/SolarSimulationPage'
 import MinhasCotacoesPage from './pages/MinhasCotacoesPage'
+import PromoKitsPage from './pages/PromoKitsPage'
 import LoginPage from './pages/LoginPage'
 import { normalizeSearch, normalizeSearchCompact } from './lib/text'
 import CadastroPage from './pages/CadastroPage'
@@ -290,6 +291,33 @@ function AuthenticatedApp() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  // "Solicitar este kit" na aba Kits da Promoção (item 36) — joga o cliente
+  // direto pro Monte seu Kit já com módulo/inversor da promoção escolhidos e
+  // a preferência de telhado marcada, pulando Tipo de Kit/Dimensionamento/
+  // Módulos/Inversor (já decididos pela própria promoção). origemPromo avisa
+  // o KitBuilder pra abrir direto na etapa de Acessórios.
+  const CAT_TO_KIT_TYPE = {
+    [CATEGORIES.INVERSORES_MONO]:        'ongrid_mono',
+    [CATEGORIES.INVERSORES_TRI]:         'ongrid_tri',
+    [CATEGORIES.MICROINVERSORES]:        'micro',
+    [CATEGORIES.INVERSORES_BOMBEAMENTO]: 'bombeamento',
+  }
+  const handleRequestPromo = (promoKit, uf, roofType) => {
+    const quoteData = {
+      kitType: CAT_TO_KIT_TYPE[promoKit.inversor?.categoria] || 'ongrid_mono',
+      panel: promoKit.modulo,
+      panelQty: promoKit.modulo?.qty || 1,
+      inverter: promoKit.inversor,
+      inverterQty: promoKit.inversor?.qty || 1,
+      clienteUF: uf || undefined,
+      wantsEstrutura: !!roofType,
+      estruturaRoofType: roofType || null,
+      origemPromo: true,
+      promoKitId: promoKit.id,
+    }
+    handleLoadQuote({ quoteData, savedId: undefined })
+  }
+
   const handlePageChange = (p) => {
     if (p === 'kit') setLoadedQuote(null) // novo kit sempre começa do zero via nav
     setPage(p)
@@ -327,6 +355,7 @@ function AuthenticatedApp() {
           />
         )}
         {page === 'cotacoes' && <MinhasCotacoesPage onLoadQuote={handleLoadQuote} />}
+        {page === 'promocoes' && <PromoKitsPage onRequestPromo={handleRequestPromo} />}
         {page === 'dimensionamento' && isAdmin && (
           <BatteryDimensioningPage
             initialState={estudoInicial}
