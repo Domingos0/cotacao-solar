@@ -446,6 +446,31 @@ async function handleCotacaoVencida(payload: { quoteId?: string }) {
   return json({ ok: true })
 }
 
+// Disparado pelo pg_cron (notify_expiring_quotes), um dia ANTES de vencer —
+// mesmo padrão de handleCotacaoVencida, sem requireAdmin pelo mesmo motivo.
+async function handleCotacaoVenceAmanha(payload: { quoteId?: string }) {
+  if (!payload.quoteId) return json({ error: "quoteId obrigatório" }, 400)
+
+  const { data: q } = await admin.from("quotes")
+    .select("user_id, status, nome_projeto, kwp, total_final, valid_until, price_locked")
+    .eq("id", payload.quoteId).maybeSingle()
+  if (!q || q.price_locked) return json({ ok: true }) // travada não vence de verdade, nada a avisar
+
+  const { data: profile } = await admin.from("profiles").select("nome, telefone, email").eq("id", q.user_id).maybeSingle()
+  const { data: authUser } = await admin.auth.admin.getUserById(q.user_id)
+  const waKey = authUser?.user?.user_metadata?.whatsapp_apikey || ""
+  const kitNome = q.nome_projeto || `Kit ${Number(q.kwp || 0).toFixed(2)} kWp`
+  const clienteNome = profile?.nome || "Cliente"
+  const dataVenc = q.valid_until ? new Date(q.valid_until as string).toLocaleDateString("pt-BR") : ""
+
+  const msg = `⏰ *Sua cotação vence amanhã! — Ernaniff*\n\nOlá, ${clienteNome}!\n\nA cotação do kit "${kitNome}" (${fmt(q.total_final)}) vence amanhã, ${dataVenc}.\n\nQuer revalidar e manter esse valor? É só responder aqui ou falar com a gente! 🌞`
+  await dispatch({
+    event: "cotacaoVenceAmanha", userId: q.user_id, quoteId: payload.quoteId, clienteNome,
+    adminMsg: null, clientMsg: msg, clientEmail: profile?.email, clientPhone: profile?.telefone, clientWaKey: waKey,
+  })
+  return json({ ok: true })
+}
+
 const KIT_STATUS_TEXT: Record<string, (d: { ovNumero?: string; nfNumero?: string }) => string> = {
   implantado: ({ ovNumero }) => `🔧 Seu pedido entrou em processo de implantação.${ovNumero ? `\nOV: ${ovNumero}` : ""}`,
   faturado: ({ ovNumero, nfNumero }) => `🧾 Seu pedido foi faturado.${ovNumero ? `\nOV: ${ovNumero}` : ""}${nfNumero ? `\nNF: ${nfNumero}` : ""}`,
@@ -510,6 +535,7 @@ Deno.serve(async (req) => {
       case "precoTravado": return await handlePrecoTravado(req, payload || {})
       case "feedbackResolvido": return await handleFeedbackResolvido(req, payload || {})
       case "cotacaoVencida": return await handleCotacaoVencida(payload || {})
+      case "cotacaoVenceAmanha": return await handleCotacaoVenceAmanha(payload || {})
       case "testWaAkg": return await handleTestWaAkg(req, payload || {})
       default: return json({ error: "evento desconhecido" }, 400)
     }

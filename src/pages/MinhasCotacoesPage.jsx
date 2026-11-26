@@ -1838,6 +1838,25 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             />
           ) : (<>
 
+          {/* Aviso de vencimento proativo (item 31) — avisa 1 dia ANTES de vencer;
+              só o admin revalida (requote_quote é admin-only), então aqui é
+              informativo, convidando o cliente a chamar a Ernaniff. */}
+          {!isClosed && !quote.price_locked && (() => {
+            const amanha = new Date(); amanha.setHours(0, 0, 0, 0); amanha.setDate(amanha.getDate() + 1)
+            const depoisDeAmanha = new Date(amanha); depoisDeAmanha.setDate(depoisDeAmanha.getDate() + 1)
+            const venceAmanha = quote.valid_until && new Date(quote.valid_until) >= amanha && new Date(quote.valid_until) < depoisDeAmanha
+            if (!venceAmanha) return null
+            return (
+              <div className="border rounded-xl p-4 flex items-start gap-2 bg-orange-50 border-orange-200">
+                <Clock size={16} className="shrink-0 mt-0.5 text-orange-500" />
+                <div>
+                  <p className="font-bold text-sm text-orange-800">Sua cotação vence amanhã!</p>
+                  <p className="text-xs mt-0.5 text-orange-700">Quer revalidar? Fale com a gente pelo WhatsApp (botão acima) antes que os preços mudem.</p>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Aviso de cotação vencida — preços serão atualizados pela lista vigente ao salvar */}
           {!isClosed && quote.valid_until && new Date(quote.valid_until) < new Date() && (
             <div className={`border rounded-xl p-4 flex items-start gap-2 ${quote.price_locked ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -3029,6 +3048,12 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                   const isExpanded = expandedId === q.id
                   const qPanelStock = getPanelStock(kitData.panel, catalogProducts)
                   const qPanelEsgotado = qPanelStock === 'Esgotado' || qPanelStock === 'Sem estoque'
+                  // Item 31 — "vence amanhã, quer revalidar?": mesmo cálculo do
+                  // cron (valid_until = amanhã), pra mostrar aviso/ação antes de
+                  // vencer de verdade, não só depois (como o badge "Vencida" já fazia).
+                  const amanha = new Date(); amanha.setHours(0, 0, 0, 0); amanha.setDate(amanha.getDate() + 1)
+                  const depoisDeAmanha = new Date(amanha); depoisDeAmanha.setDate(depoisDeAmanha.getDate() + 1)
+                  const venceAmanha = !!q.valid_until && new Date(q.valid_until) >= amanha && new Date(q.valid_until) < depoisDeAmanha
 
                   return (
                     <>
@@ -3075,6 +3100,14 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                                 <AlertTriangle size={9} /> {q.price_locked ? 'Vencida · travada' : 'Vencida'}
                               </span>
                             )}
+                            {venceAmanha && (
+                              <span
+                                title={`Vence amanhã (${new Date(q.valid_until).toLocaleDateString('pt-BR')}) — quer revalidar?`}
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-orange-100 text-orange-700"
+                              >
+                                <Clock size={9} /> Vence amanhã
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3.5 text-right font-bold text-gray-900 text-sm whitespace-nowrap">
@@ -3082,11 +3115,11 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                         </td>
                         <td className="px-3 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {isAdmin && q.valid_until && new Date(q.valid_until) < new Date() && (
+                            {isAdmin && q.valid_until && (new Date(q.valid_until) < new Date() || venceAmanha) && (
                               <button
                                 onClick={() => handleRequote(q.id, true)}
                                 disabled={requotingId === q.id}
-                                title="Atualizar para o preço vigente e renovar validade"
+                                title={venceAmanha ? 'Revalidar agora (atualiza preço e renova validade antes de vencer)' : 'Atualizar para o preço vigente e renovar validade'}
                                 className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
                               >
                                 <RefreshCw size={14} className={requotingId === q.id ? 'animate-spin' : ''} />
