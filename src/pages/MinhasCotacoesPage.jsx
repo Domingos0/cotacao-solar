@@ -10,6 +10,7 @@ import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import { buildUnifiedProposal } from '../lib/unifyQuotes'
+import { createTemplateFromQuote } from '../lib/kitTemplates'
 import PaymentOptions from '../components/PaymentOptions'
 import RevisionCompareModal from '../components/RevisionCompareModal'
 import QuotesCompareModal from '../components/QuotesCompareModal'
@@ -22,7 +23,7 @@ import {
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
   BadgePercent, Tag, Lock, MessageCircle, Copy, GitCompare,
-  Layers, CheckSquare, Square,
+  Layers, CheckSquare, Square, Star,
 } from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
@@ -1175,6 +1176,12 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const [processing, setProcessing]       = useState(false)
   const [done, setDone]                   = useState(null)  // 'fechar' | 'rejeitar'
   const [showRevHistory, setShowRevHistory] = useState(false)
+  // Salvar como modelo (item 41)
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [templateNome, setTemplateNome]         = useState('')
+  const [savingTemplate, setSavingTemplate]     = useState(false)
+  const [templateError, setTemplateError]       = useState('')
+  const [templateSaved, setTemplateSaved]       = useState(false)
   const [editMode, setEditMode]           = useState(false)
   const [suggestedPanel, setSuggestedPanel] = useState(null)
   const [successData, setSuccessData]     = useState(null)
@@ -2172,6 +2179,18 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               </button>
             )}
 
+            {/* Salvar como modelo (item 41) — vira um atalho reutilizável em
+                "Modelos prontos" no Monte seu Kit, sanitizado (sem dado
+                pessoal deste cliente). Modelo de admin fica visível pra
+                todo mundo; de cliente, só pra ele mesmo. */}
+            <button
+              onClick={() => { setShowSaveTemplate(true); setTemplateNome(''); setTemplateError(''); setTemplateSaved(false) }}
+              title="Salva este kit como modelo reutilizável no Monte seu Kit"
+              className="flex items-center gap-1.5 text-sm text-amber-700 border border-amber-300 hover:border-amber-400 bg-amber-50 px-4 py-2 rounded-xl font-semibold"
+            >
+              <Star size={15} /> Salvar como modelo
+            </button>
+
             {/* Solicitar desconto — só para cliente, cotação ativa sem desconto já pendente/aprovado */}
             {!isAdmin && !isClosed && !['aguardando_desconto', 'aprovada'].includes(quote.status) && (
               <button
@@ -2287,6 +2306,77 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                       >
                         Cancelar
                       </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Salvar como modelo (item 41) */}
+          {showSaveTemplate && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                    <Star size={20} className="text-amber-500" /> Salvar como modelo
+                  </h3>
+                  <button onClick={() => setShowSaveTemplate(false)} className="p-1.5 rounded-full hover:bg-gray-100">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {templateSaved ? (
+                  <div className="text-center py-6">
+                    <CheckCircle2 size={48} className="text-green-500 mx-auto mb-3" />
+                    <h4 className="font-bold text-gray-900 mb-2">Modelo salvo!</h4>
+                    <p className="text-gray-500 text-sm mb-4">
+                      {isAdmin
+                        ? 'Já aparece em "Modelos prontos" pra todos os usuários.'
+                        : 'Já aparece em "Modelos prontos", só pra você.'}
+                    </p>
+                    <button onClick={() => setShowSaveTemplate(false)} className="btn-primary px-6 py-2.5">Fechar</button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-gray-500 mb-4">
+                      Cria um atalho reutilizável com o módulo, inversor e acessórios deste kit (sem o nome/UF do cliente, número de orçamento ou revisões) — aparece em "Modelos prontos" no Monte seu Kit.
+                    </p>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nome do modelo *</label>
+                      <input
+                        value={templateNome}
+                        onChange={e => setTemplateNome(e.target.value)}
+                        placeholder={`Ex: Kit ${kitData.panel ? `${((kitData.panelQty || 1) * (kitData.panel.potencia || 0) / 1000).toFixed(2)} kWp` : 'padrão'}`}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                    {templateError && (
+                      <div className="bg-red-50 border border-red-300 rounded-xl p-3 text-xs text-red-800 flex items-start gap-2 mb-4">
+                        <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-500" />
+                        <p>{templateError}</p>
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={async () => {
+                          if (!templateNome.trim()) { setTemplateError('Dê um nome pro modelo.'); return }
+                          setSavingTemplate(true)
+                          setTemplateError('')
+                          const { error } = await createTemplateFromQuote(templateNome.trim(), kitData, { userId: session?.user?.id, isAdmin })
+                          setSavingTemplate(false)
+                          if (error) { setTemplateError('Erro ao salvar: ' + (error.message || 'erro desconhecido')); return }
+                          setTemplateSaved(true)
+                        }}
+                        disabled={savingTemplate}
+                        className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {savingTemplate
+                          ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          : <Star size={16} />}
+                        Salvar modelo
+                      </button>
+                      <button onClick={() => setShowSaveTemplate(false)} className="btn-outline px-5 py-2.5">Cancelar</button>
                     </div>
                   </>
                 )}

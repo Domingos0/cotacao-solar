@@ -16,6 +16,7 @@ import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import PaymentOptions from '../components/PaymentOptions'
 import EconomiaPayback from '../components/EconomiaPayback'
 import { resolveDatasheetUrl } from '../lib/datasheets'
+import { listKitTemplates, listFavoriteIds, toggleFavorite } from '../lib/kitTemplates'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -25,7 +26,7 @@ import {
   Sun, Zap, Link2, Shield, Cable, ToggleLeft, ChevronRight, ChevronLeft,
   Printer, Plus, Minus, Check, Info, AlertTriangle, Calculator, RefreshCw,
   Package, User, FileText, Home, ChevronDown, Search, Save, BadgePercent,
-  CheckCircle2, XCircle, Clock, X, Battery, Cpu, MessageCircle
+  CheckCircle2, XCircle, Clock, X, Battery, Cpu, MessageCircle, Star
 } from 'lucide-react'
 
 function ProductImg({ src, alt, fallback, className }) {
@@ -239,7 +240,81 @@ function StepIndicator({ current, onNavigate, steps = STEPS_BASE }) {
 }
 
 // ─── Step 1: Tipo de Kit ─────────────────────────────────────────────────────
-function StepKitType({ data, onChange }) {
+// Item 41: modelos prontos — qualquer cotação já montada pode virar um
+// atalho reutilizável (ver "Salvar como modelo" em Minhas Cotações).
+// Favoritos são por usuário, só pra ordenar/destacar — não afetam quem
+// pode ver ou usar o modelo (isso é controlado por `global` na tabela).
+function KitTemplatesSection({ onUseTemplate }) {
+  const { session } = useAuth()
+  const userId = session?.user?.id
+  const [templates, setTemplates] = useState([])
+  const [favorites, setFavorites] = useState(new Set())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    (async () => {
+      const [t, f] = await Promise.all([listKitTemplates(), listFavoriteIds(userId)])
+      setTemplates(t.data)
+      setFavorites(f.data)
+      setLoading(false)
+    })()
+  }, [userId])
+
+  const handleToggleFavorite = async (e, templateId) => {
+    e.stopPropagation()
+    if (!userId) return
+    const isFav = favorites.has(templateId)
+    setFavorites(prev => {
+      const next = new Set(prev)
+      if (isFav) next.delete(templateId); else next.add(templateId)
+      return next
+    })
+    await toggleFavorite(userId, templateId, isFav)
+  }
+
+  const sorted = [...templates].sort((a, b) => {
+    const favA = favorites.has(a.id) ? 0 : 1
+    const favB = favorites.has(b.id) ? 0 : 1
+    return favA - favB || a.nome.localeCompare(b.nome)
+  })
+
+  if (loading || sorted.length === 0) return null
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 text-center">⭐ Modelos prontos</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {sorted.map(t => {
+          const isFav = favorites.has(t.id)
+          return (
+            <button
+              key={t.id}
+              onClick={() => onUseTemplate(t)}
+              className="text-left rounded-xl border-2 border-gray-200 bg-white hover:border-weg-blue/60 hover:shadow-md transition-all p-4 flex items-start justify-between gap-2"
+            >
+              <div className="min-w-0">
+                <p className="font-bold text-gray-900 text-sm truncate">{t.nome}</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {t.kwp ? `${t.kwp} kWp` : ''}{t.kit_data?.panel?.nome ? ` · ${t.kit_data.panel.nome}` : ''}
+                </p>
+                {t.global && <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-weg-blue/10 text-weg-blue">Modelo da equipe</span>}
+              </div>
+              <button
+                onClick={e => handleToggleFavorite(e, t.id)}
+                className={`shrink-0 p-1 rounded-full ${isFav ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'}`}
+                title={isFav ? 'Remover dos favoritos' : 'Favoritar'}
+              >
+                <Star size={16} fill={isFav ? 'currentColor' : 'none'} />
+              </button>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function StepKitType({ data, onChange, onUseTemplate }) {
   const colors = {
     blue:   { border: 'border-blue-500',   bg: 'bg-blue-50',   badge: 'bg-blue-100 text-blue-700',   ring: 'ring-blue-200',   icon: 'bg-blue-500'   },
     indigo: { border: 'border-indigo-500', bg: 'bg-indigo-50', badge: 'bg-indigo-100 text-indigo-700',ring: 'ring-indigo-200', icon: 'bg-indigo-500' },
@@ -253,6 +328,8 @@ function StepKitType({ data, onChange }) {
         <h2 className="text-2xl font-bold text-gray-900 mb-1">Qual kit o cliente deseja montar?</h2>
         <p className="text-gray-500 text-sm">Selecione o tipo de sistema para filtrar os inversores compatíveis</p>
       </div>
+
+      <KitTemplatesSection onUseTemplate={onUseTemplate} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
         {KIT_TYPES.map(kt => {
@@ -6285,6 +6362,16 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
   const STEPS        = isHybrid ? STEPS_HYBRID : STEPS_BASE
   const maxStep      = STEPS.length
 
+  // Item 41 — "usar este modelo": aplica o kit_data sanitizado do modelo e
+  // pula direto pra Acessórios, igual origemPromo (item 36) — módulo e
+  // inversor já vêm definidos pelo modelo escolhido.
+  const handleUseTemplate = (template) => {
+    const kd = template.kit_data || {}
+    const kdHybrid = isHybridInv(kd.inverter || kd.inverters?.[0]?.inverter)
+    setData({ ...kd, templateId: template.id })
+    setStep(kdHybrid ? 6 : 5)
+  }
+
   // Tutorial completo (item 46): cada etapa da wizard mostra o próprio tour
   // na primeira vez que o usuário chega nela, e o botão "?" do cabeçalho
   // (via tourTrigger, incrementado em App.jsx) reexibe o tour DA ETAPA ATUAL
@@ -6365,7 +6452,7 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
 
       {/* Step content */}
       <div data-tour="kit-step-content" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
-        {step === 1 && <StepKitType data={data} onChange={setData} />}
+        {step === 1 && <StepKitType data={data} onChange={setData} onUseTemplate={handleUseTemplate} />}
         {step === 2 && data.kitType === 'bombeamento' && <BombDimStep data={data} onChange={setData} products={products} />}
         {step === 2 && data.kitType !== 'bombeamento' && <Step1 data={data} onChange={setData} />}
         {step === 3 && <Step2 data={data} onChange={setData} products={products} targetKwp={targetKwp} />}
