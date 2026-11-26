@@ -12,6 +12,7 @@ import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import { buildUnifiedProposal } from '../lib/unifyQuotes'
 import PaymentOptions from '../components/PaymentOptions'
 import RevisionCompareModal from '../components/RevisionCompareModal'
+import QuotesCompareModal from '../components/QuotesCompareModal'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -2714,6 +2715,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
   const [unifyMode, setUnifyMode]         = useState(false)
   const [unifySelected, setUnifySelected] = useState(() => new Set())
   const [showUnifyModal, setShowUnifyModal] = useState(false)
+  const [showCompareModal, setShowCompareModal] = useState(false) // item 37
   const toggleUnifySelected = (id) => {
     setUnifySelected(prev => {
       const next = new Set(prev)
@@ -2879,6 +2881,14 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
         condicoes={condicoes}
         tableInfo={rootTableInfo}
         onClose={() => setShowUnifyModal(false)}
+      />
+    )}
+
+    {/* Comparar 2 ou 3 cotações lado a lado (item 37) */}
+    {showCompareModal && (
+      <QuotesCompareModal
+        quotes={activeQuotes.filter(q => unifySelected.has(q.id))}
+        onClose={() => setShowCompareModal(false)}
       />
     )}
 
@@ -3267,9 +3277,17 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
             {unifyMode ? (
               <>
                 <span className="text-sm text-gray-600">
-                  <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — escolha 2 ou mais pra unificar
+                  <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — 2 ou mais pra unificar, 2 ou 3 pra comparar
                 </span>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowCompareModal(true)}
+                    disabled={unifySelected.size < 2 || unifySelected.size > 3}
+                    title={unifySelected.size > 3 ? 'Comparar funciona com 2 ou 3 cotações' : undefined}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue border border-weg-blue/30 bg-white hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <GitCompare size={13} /> Comparar lado a lado
+                  </button>
                   <button
                     onClick={() => setShowUnifyModal(true)}
                     disabled={unifySelected.size < 2}
@@ -3290,7 +3308,7 @@ export default function MinhasCotacoesPage({ onLoadQuote }) {
                 onClick={() => setUnifyMode(true)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg"
               >
-                <Layers size={13} /> Unificar cotações
+                <Layers size={13} /> Unificar ou comparar cotações
               </button>
             )}
           </div>
