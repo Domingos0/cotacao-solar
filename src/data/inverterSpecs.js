@@ -4,6 +4,7 @@
 const SPECS = {
   siw100g_m010: {
     title: 'SIW100G M010',
+    linha: 'SIW100G',
     subtitulo: 'Microinversor 1000 W',
     image: '/img/inversores/siw100g_m010.jpg',
     specs: {
@@ -19,6 +20,7 @@ const SPECS = {
   },
   siw100g_m024: {
     title: 'SIW100G M024',
+    linha: 'SIW100G',
     subtitulo: 'Microinversor 2400 W — LANÇAMENTO',
     image: '/img/inversores/siw100g_m024.jpg',
     specs: {
@@ -34,6 +36,7 @@ const SPECS = {
   },
   siw200g: {
     title: 'SIW200G W1',
+    linha: 'SIW200G',
     subtitulo: 'STANDARD — Inversor Monofásico 3–10,5 kW',
     image: '/img/inversores/siw200g_w1.jpg',
     specs: {
@@ -49,6 +52,7 @@ const SPECS = {
   },
   siw300h: {
     title: 'SIW300H W00',
+    linha: 'SIW300H',
     subtitulo: 'LINHA PREMIUM — Inversor Monofásico 3–10 kW',
     image: '/img/inversores/siw300h_w00.jpg',
     specs: {
@@ -63,6 +67,7 @@ const SPECS = {
   },
   siw400g_s: {
     title: 'SIW400G W1',
+    linha: 'SIW400G',
     subtitulo: 'STANDARD — Inversor Trifásico 12–25 kW',
     image: '/img/inversores/siw400g_w1.jpg',
     specs: {
@@ -78,6 +83,7 @@ const SPECS = {
   },
   siw400g_m: {
     title: 'SIW400G W00',
+    linha: 'SIW400G',
     subtitulo: 'STANDARD — Inversor Trifásico 15–37 kW',
     image: '/img/inversores/siw400g_w00.jpg',
     specs: {
@@ -93,6 +99,7 @@ const SPECS = {
   },
   siw400g_l: {
     title: 'SIW400G W1',
+    linha: 'SIW400G',
     subtitulo: 'STANDARD — Inversor Trifásico 75–100 kW',
     image: '/img/inversores/siw400g_large.jpg',
     specs: {
@@ -106,6 +113,7 @@ const SPECS = {
   },
   siw500h: {
     title: 'SIW500H',
+    linha: 'SIW500H',
     subtitulo: 'LINHA PREMIUM — Inversor String Trifásico 20–100 kW',
     image: '/img/inversores/siw500h.jpg',
     specs: {
@@ -119,6 +127,7 @@ const SPECS = {
   },
   siw610: {
     title: 'SIW610',
+    linha: 'SIW610',
     subtitulo: 'Inversor String Trifásico 18–75 kW',
     image: '/img/inversores/siw610.jpg',
     specs: {
@@ -134,6 +143,7 @@ const SPECS = {
   },
   cfw500: {
     title: 'CFW500 Solar Drive',
+    linha: 'CFW500',
     subtitulo: 'Inversor de Frequência para Bombeamento Solar',
     image: '/img/inversores/cfw500.jpg',
     specs: {
@@ -148,6 +158,7 @@ const SPECS = {
   },
   siw200h: {
     title: 'SIW200H',
+    linha: 'SIW200H',
     subtitulo: 'Inversor Híbrido Monofásico',
     image: '/img/inversores/siw200h.jpg',
     specs: {
@@ -160,6 +171,7 @@ const SPECS = {
   },
   siw400h: {
     title: 'SIW400H',
+    linha: 'SIW400H',
     subtitulo: 'Inversor Híbrido Trifásico',
     image: '/img/inversores/siw400h.jpg',
     specs: {

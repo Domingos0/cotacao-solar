@@ -78,6 +78,17 @@ export function ProductsProvider({ children }) {
   const [activeListCodes, setActiveListCodesState] = useState(null)
   const [condicoes, setCondicoes] = useState(DEFAULT_CONDICOES)
   const [catalogLoading, setCatalogLoading] = useState(!IS_DEV)
+  // Item 45 — datasheets por linha de inversor ({linha: url}); não faz
+  // parte do catálogo versionado (price_catalog_versions), é sua própria
+  // tabela simples, então carrega independente da checagem de versão.
+  const [datasheetsByLinha, setDatasheetsByLinha] = useState({})
+  const reloadDatasheets = useCallback(async () => {
+    if (IS_DEV) return
+    const { data, error } = await supabase.from('inverter_datasheets').select('linha, url')
+    if (error) { console.warn('[datasheets] load error:', error.message); return }
+    setDatasheetsByLinha(Object.fromEntries((data || []).map(r => [r.linha, r.url])))
+  }, [])
+  useEffect(() => { reloadDatasheets() }, [reloadDatasheets])
 
   // Erro global de gravação do catálogo (rascunho no Supabase) — todas as
   // funções save* abaixo atualizam o state local IMEDIATAMENTE (por isso a
@@ -413,6 +424,8 @@ export function ProductsProvider({ children }) {
       publishCatalog,
       catalogSaveError,
       clearCatalogSaveError,
+      datasheetsByLinha,
+      reloadDatasheets,
     }}>
       {children}
       {/* Aviso global: aparece em qualquer tela sempre que uma gravação do

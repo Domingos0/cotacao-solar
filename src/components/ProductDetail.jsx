@@ -1,10 +1,12 @@
-import { X, Package, Tag, Zap, Phone, CheckCircle, Copy, ShieldCheck, Bell, BellRing } from 'lucide-react'
+import { X, Package, Tag, Zap, Phone, CheckCircle, Copy, ShieldCheck, Bell, BellRing, FileText } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { getProductImage } from '../data/productImages'
 import { getInverterSpecs, extractModelPowerKw, buildPowerSubtitle } from '../data/inverterSpecs'
 import { effectiveEstoque } from '../data/products'
 import { useAuth } from '../context/AuthContext'
+import { useProducts } from '../context/ProductsContext'
 import { requestStockAlert, cancelStockAlert, hasStockAlert } from '../lib/stockAlert'
+import { resolveDatasheetUrl } from '../lib/datasheets'
 
 function formatPrice(preco, unidadeVenda) {
   if (!preco) return 'Sob consulta'
@@ -34,6 +36,7 @@ function ProductImg({ src, alt, fallbackEmoji }) {
 export default function ProductDetail({ product, onClose }) {
   const [copied, setCopied] = useState(false)
   const { session } = useAuth()
+  const { datasheetsByLinha } = useProducts()
   const [alertRequested, setAlertRequested] = useState(false)
   const [alertLoading, setAlertLoading] = useState(false)
 
@@ -56,6 +59,7 @@ export default function ProductDetail({ product, onClose }) {
   const emoji    = getCategoryEmoji(product.categoria)
   const estoqueEfetivo = effectiveEstoque(product)
   const isEsgotado = estoqueEfetivo === 'Esgotado' || estoqueEfetivo === 'Sem estoque'
+  const datasheetUrl = resolveDatasheetUrl(product, datasheetsByLinha)
 
   // Merge: specs enriquecidos do portfólio (família toda) + a potência
   // ESPECÍFICA deste modelo por cima. Os specs do portfólio são por família
@@ -248,6 +252,19 @@ export default function ProductDetail({ product, onClose }) {
                 <p className="font-mono font-semibold text-weg-blue text-sm">{product.modelo}</p>
               </div>
             </div>
+          )}
+
+          {/* Datasheet PDF (item 45) */}
+          {datasheetUrl && (
+            <a
+              href={datasheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 bg-gray-50 hover:bg-gray-100 rounded-xl px-4 py-3 transition-colors"
+            >
+              <FileText size={16} className="text-weg-blue shrink-0" />
+              <p className="text-sm font-semibold text-gray-700">Datasheet PDF</p>
+            </a>
           )}
 
           {/* WEG origin note */}

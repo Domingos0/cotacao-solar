@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractModelPowerKw, buildPowerSubtitle } from './inverterSpecs'
+import { extractModelPowerKw, buildPowerSubtitle, getInverterSpecs } from './inverterSpecs'
 
 describe('extractModelPowerKw', () => {
   it('extrai a potência do código do modelo (M080 → 8 kW)', () => {
@@ -35,5 +35,19 @@ describe('buildPowerSubtitle', () => {
     const { main, line } = buildPowerSubtitle('Microinversor 1000 W', 1)
     expect(main).toBe('Microinversor 1000 W')
     expect(line).toBe(null)
+  })
+})
+
+// Protege a correção do item 45: cada spec tem uma "linha" (ex: "SIW300H"),
+// usada pra buscar o datasheet correto em inverter_datasheets.
+describe('getInverterSpecs — campo linha', () => {
+  it('SIW300H M080 W00 pertence à linha SIW300H', () => {
+    expect(getInverterSpecs({ nome: 'SIW300H M080 W00' }).linha).toBe('SIW300H')
+  })
+  it('SIW200H (híbrido) pertence à linha SIW200H', () => {
+    expect(getInverterSpecs({ nome: 'SIW200H' }).linha).toBe('SIW200H')
+  })
+  it('CFW500 pertence à linha CFW500', () => {
+    expect(getInverterSpecs({ nome: 'CFW500 Solar Drive' }).linha).toBe('CFW500')
   })
 })

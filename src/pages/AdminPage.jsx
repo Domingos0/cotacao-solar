@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase'
 import { CATEGORIES, KIT_ROLE, assignKitRole, products as defaultProducts, fixedProducts } from '../data/products'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage, guessCategoria } from '../data/productImages'
+import { getInverterSpecs } from '../data/inverterSpecs'
+import { upsertDatasheet, importDatasheetsFromRows, uploadDatasheetFile } from '../lib/datasheets'
 import kitCompositions from '../data/kitCompositions.json'
 import { InlineEditor } from './MinhasCotacoesPage'
 import {
@@ -62,6 +64,7 @@ const EMPTY_PRODUCT = {
   nome: '', codigo: '', modelo: '', categoria: CATEGORIES.MODULOS,
   tipo: '', fabricante: 'WEG', potencia: '', unidadePotencia: 'kW',
   tensao: '', fase: '', preco: '', estoque: 'Disponível', estoque_previsao: '', descricao: '',
+  datasheetUrl: '',
 }
 
 // ─── Excel Parser ─────────────────────────────────────────────────────────────
@@ -649,6 +652,12 @@ function ProductRow({ product, onUpdate, onDelete }) {
               rows={2}
               className="w-full border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-weg-blue" />
           </div>
+          <div>
+            <label className="text-[10px] text-gray-500 uppercase">Datasheet (opcional, sobrepõe o link padrão da linha)</label>
+            <input type="text" value={form.datasheetUrl || ''} onChange={e => setForm(f => ({ ...f, datasheetUrl: e.target.value }))}
+              placeholder="https://..."
+              className="w-full border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-weg-blue" />
+          </div>
           <div className="flex gap-2 mt-2">
             <button onClick={save} className="flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg">
               <Check size={12} /> Salvar
@@ -826,6 +835,12 @@ function AddProductModal({ onAdd, onClose }) {
               <label className="block text-xs font-semibold text-gray-700 mb-1">Descrição</label>
               <textarea value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
                 rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Datasheet (opcional, sobrepõe o link padrão da linha)</label>
+              <input type="text" value={form.datasheetUrl || ''} onChange={e => setForm(f => ({ ...f, datasheetUrl: e.target.value }))}
+                placeholder="https://..."
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
             </div>
           </div>
@@ -4752,6 +4767,140 @@ function KitsFechadosPanel({ onBadgeChange }) {
   )
 }
 
+// ─── Datasheets por linha de inversor (item 45) ───────────────────────────────
+function DatasheetsPanel({ products }) {
+  const { datasheetsByLinha, reloadDatasheets } = useProducts()
+  const [savingLinha, setSavingLinha] = useState(null)
+  const [uploadingLinha, setUploadingLinha] = useState(null)
+  const [draftByLinha, setDraftByLinha] = useState({})
+  const [importing, setImporting] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  // Linhas realmente presentes no catálogo (via getInverterSpecs), não uma
+  // lista estática — se um dia entrar uma linha nova no catálogo, ela
+  // aparece aqui sozinha.
+  const linhas = useMemo(() => {
+    const set = new Set()
+    products.forEach(p => {
+      const linha = getInverterSpecs(p)?.linha
+      if (linha) set.add(linha)
+    })
+    return [...set].sort()
+  }, [products])
+
+  const semLink = linhas.filter(l => !datasheetsByLinha[l])
+
+  const salvarLinha = async (linha) => {
+    const url = (draftByLinha[linha] ?? datasheetsByLinha[linha] ?? '').trim()
+    if (!url) return
+    setSavingLinha(linha)
+    const { error } = await upsertDatasheet(linha, url)
+    setSavingLinha(null)
+    if (error) { setMsg(`Erro ao salvar ${linha}: ${error.message}`); return }
+    await reloadDatasheets()
+    setMsg('')
+  }
+
+  const uploadArquivoLinha = async (linha, file) => {
+    if (!file) return
+    setUploadingLinha(linha)
+    setMsg('')
+    const { url, error } = await uploadDatasheetFile(file, linha)
+    if (error) { setUploadingLinha(null); setMsg(`Erro ao subir PDF de ${linha}: ${error.message}`); return }
+    const { error: saveError } = await upsertDatasheet(linha, url)
+    setUploadingLinha(null)
+    if (saveError) { setMsg(`Erro ao salvar ${linha}: ${saveError.message}`); return }
+    await reloadDatasheets()
+    setMsg(`PDF de ${linha} enviado e salvo.`)
+  }
+
+  const handleImportFile = async (file) => {
+    if (!file) return
+    setImporting(true)
+    setMsg('')
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+      const { error, count } = await importDatasheetsFromRows(rows)
+      if (error) throw error
+      await reloadDatasheets()
+      setMsg(`${count} linha${count !== 1 ? 's' : ''} importada${count !== 1 ? 's' : ''} com sucesso.`)
+    } catch (e) {
+      setMsg(`Erro ao importar planilha: ${e.message || 'erro desconhecido'}`)
+    }
+    setImporting(false)
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+          <FileText size={18} className="text-weg-blue" /> Datasheets por linha
+        </h3>
+        <label className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 hover:border-weg-blue px-3 py-2 rounded-lg cursor-pointer font-semibold">
+          <ArrowUpFromLine size={14} /> {importing ? 'Importando…' : 'Importar planilha (linha, link)'}
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            disabled={importing}
+            onChange={e => { handleImportFile(e.target.files?.[0]); e.target.value = '' }}
+          />
+        </label>
+      </div>
+      <p className="text-xs text-gray-400 mb-3">
+        Um link por linha (ex: SIW300H) cobre todos os modelos dessa linha. Pra um modelo específico usar um
+        datasheet diferente, edite o produto em "Novo produto"/editar e preencha o campo Datasheet dele.
+      </p>
+
+      {semLink.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-700 flex items-start gap-2">
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+          <span><strong>{semLink.length}</strong> linha{semLink.length !== 1 ? 's' : ''} sem link: {semLink.join(', ')}</span>
+        </div>
+      )}
+      {msg && <p className="text-xs text-gray-500 mb-3">{msg}</p>}
+
+      <div className="space-y-2">
+        {linhas.map(linha => (
+          <div key={linha} className="flex items-center gap-2">
+            {datasheetsByLinha[linha]
+              ? <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+              : <AlertTriangle size={14} className="text-amber-400 shrink-0" />}
+            <span className="text-sm font-mono font-semibold text-gray-700 w-32 shrink-0">{linha}</span>
+            <input
+              type="text"
+              value={draftByLinha[linha] ?? datasheetsByLinha[linha] ?? ''}
+              onChange={e => setDraftByLinha(d => ({ ...d, [linha]: e.target.value }))}
+              placeholder="https://..."
+              className="flex-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-weg-blue"
+            />
+            <button
+              onClick={() => salvarLinha(linha)}
+              disabled={savingLinha === linha}
+              className="text-xs font-semibold text-white bg-weg-blue hover:bg-weg-blue/90 px-3 py-1.5 rounded-lg disabled:opacity-60 shrink-0"
+            >
+              {savingLinha === linha ? 'Salvando…' : 'Salvar'}
+            </button>
+            <label className="text-xs font-semibold text-gray-600 border border-gray-200 hover:border-weg-blue px-3 py-1.5 rounded-lg cursor-pointer shrink-0">
+              {uploadingLinha === linha ? 'Enviando…' : 'Subir PDF'}
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                disabled={uploadingLinha === linha}
+                onChange={e => { uploadArquivoLinha(linha, e.target.files?.[0]); e.target.value = '' }}
+              />
+            </label>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Admin Dashboard (rendered only when authenticated) ───────────────────────
 function AdminDashboard({ onLoadQuote }) {
   const { products, catalogLoading, tableInfo, activeListCodes, saveProducts, saveTableInfo, setActiveListCodes, clearActiveList, addProduct, updateProduct, deleteProduct, resetToDefaults, syncDefaultPrices, publishCatalog } = useProducts()
@@ -5051,6 +5200,9 @@ function AdminDashboard({ onLoadQuote }) {
       <div className="mb-5">
         <TableInfoEditor tableInfo={tableInfo} onSave={saveTableInfo} onImportClick={() => setShowImport(true)} catalogLoading={catalogLoading} />
       </div>
+
+      {/* Datasheets por linha (item 45) */}
+      <DatasheetsPanel products={products} />
 
       {/* Toolbar */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-5">

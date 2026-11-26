@@ -13,6 +13,7 @@ import RatingPrompt from '../components/RatingPrompt'
 import { canShowRatingPrompt } from '../lib/feedback'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
 import PaymentOptions from '../components/PaymentOptions'
+import { resolveDatasheetUrl } from '../lib/datasheets'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -4594,7 +4595,7 @@ function EstudoPrintContent({ resumo, tableInfo }) {
 
 // ─── Step 6: Resumo / Orçamento ──────────────────────────────────────────────
 function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, onGoToQuotes }) {
-  const { freteOpcoes, desconto: globalDesconto, condicoes } = useProducts()
+  const { freteOpcoes, desconto: globalDesconto, condicoes, datasheetsByLinha } = useProducts()
   const { session, isAdmin, profile } = useAuth()
   // Desconto individual do perfil tem prioridade sobre o desconto global
   const desconto = profile?.desconto_comercial != null ? profile.desconto_comercial : globalDesconto
@@ -5547,6 +5548,19 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
                     </div>
                     {!item.avulso && <p className="text-xs text-gray-500">{item.product.nome}</p>}
                     <p className="text-xs font-mono text-gray-400">{item.product.codigo !== '—' ? `SAP: ${item.product.codigo}` : ''}</p>
+                    {(() => {
+                      const dsUrl = resolveDatasheetUrl(item.product, datasheetsByLinha)
+                      return dsUrl && (
+                        <a
+                          href={dsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-weg-blue hover:underline flex items-center gap-1 mt-0.5 print:hidden"
+                        >
+                          <FileText size={10} /> Datasheet PDF
+                        </a>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className="bg-weg-gray rounded-lg px-2 py-1 text-sm font-bold text-weg-blue">
