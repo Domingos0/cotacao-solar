@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ProductsProvider, useProducts } from './context/ProductsContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Header from './components/Header'
@@ -270,8 +270,14 @@ function AuthenticatedApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Duas cotações carregadas sem savedId (duplicar, ou "usar no kit" vindo do
+  // Dimensionar Bateria) teriam a mesma key 'new' no KitBuilder abaixo e ele
+  // não remontaria — ficaria com os dados da primeira carregada. loadId força
+  // o remount mesmo quando não há savedId pra diferenciar.
+  const loadCounterRef = useRef(0)
   const handleLoadQuote = ({ quoteData, savedId }) => {
-    setLoadedQuote({ quoteData, savedId })
+    if (!savedId) loadCounterRef.current += 1
+    setLoadedQuote({ quoteData, savedId, loadId: savedId ? null : loadCounterRef.current })
     setPage('kit')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -304,7 +310,7 @@ function AuthenticatedApp() {
         {page === 'catalog' && <CatalogPage searchQuery={searchQuery} setSearchQuery={setSearchQuery} />}
         {page === 'kit' && (
           <KitBuilder
-            key={loadedQuote?.savedId || 'new'}
+            key={loadedQuote?.savedId || (loadedQuote?.loadId ? `new-${loadedQuote.loadId}` : 'new')}
             initialData={loadedQuote?.quoteData}
             initialSavedId={loadedQuote?.savedId}
             onGoToQuotes={() => handlePageChange('cotacoes')}

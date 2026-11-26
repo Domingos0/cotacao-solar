@@ -17,7 +17,7 @@ import {
   Package, ChevronDown, ChevronUp, X, Printer, AlertTriangle,
   Trash2, Check, Minus, Plus, Shield, Link2, Home,
   Users, Building2, AtSign, Phone as PhoneIcon, Search, LayoutGrid, List,
-  BadgePercent, Tag, Lock, MessageCircle,
+  BadgePercent, Tag, Lock, MessageCircle, Copy,
 } from 'lucide-react'
 
 // ─── Mini-thumbnail de item da tabela de proposta ─────────────────────────────
@@ -2091,6 +2091,33 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             >
               <MessageCircle size={15} /> Enviar por WhatsApp
             </button>
+
+            {/* Duplicar — mesmo kit (módulos/inversor/baterias/acessórios), pra outro
+                cliente ou outra potência. Abre o Monte seu Kit como cotação NOVA
+                (sem numero_orcamento/revisão/dados do cliente antigo). */}
+            {onLoadQuote && (
+              <button
+                onClick={() => {
+                  onLoadQuote({
+                    quoteData: {
+                      ...kitData,
+                      numero_orcamento: undefined,
+                      revisao: 0,
+                      revisoes: [],
+                      clienteNome: '',
+                      clienteCidade: '',
+                      clienteUF: '',
+                    },
+                    savedId: undefined,
+                  })
+                  onClose()
+                }}
+                title="Monta uma cotação nova com o mesmo kit — pra outro cliente ou outra potência"
+                className="flex items-center gap-1.5 text-sm text-weg-blue border border-blue-200 hover:border-blue-300 bg-blue-50 px-4 py-2 rounded-xl font-semibold"
+              >
+                <Copy size={15} /> Duplicar cotação
+              </button>
+            )}
 
             {/* Solicitar desconto — só para cliente, cotação ativa sem desconto já pendente/aprovado */}
             {!isAdmin && !isClosed && !['aguardando_desconto', 'aprovada'].includes(quote.status) && (
