@@ -12,6 +12,7 @@ import InfoTip from '../components/InfoTip'
 import RatingPrompt from '../components/RatingPrompt'
 import { canShowRatingPrompt } from '../lib/feedback'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
+import PaymentOptions from '../components/PaymentOptions'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { ESTADOS } from '../data/cidadesPorEstado'
 import { getProductImage, KIT_TYPE_IMG } from '../data/productImages'
@@ -5273,6 +5274,10 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
   // ── Tela pós-impressão ──
   if (showPrintedScreen) return (
+    <>
+    {showRatingPrompt && (
+      <RatingPrompt userId={session?.user?.id} page="kit" onClose={() => setShowRatingPrompt(false)} />
+    )}
     <div className="text-center py-12 print:hidden">
       <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
         <CheckCircle2 size={40} className="text-green-500" />
@@ -5320,6 +5325,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         </button>
       </div>
     </div>
+    </>
   )
 
   return (
@@ -5616,6 +5622,25 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        {/* Forma de pagamento (item 33) — editável na tela, só leitura no PDF */}
+        <div className="print:hidden">
+          <PaymentOptions
+            total={totalFinal}
+            formaPagamento={data.formaPagamento}
+            parcelas={data.parcelasCartao}
+            onChange={(patch) => onChange({ ...data, ...patch })}
+          />
+        </div>
+        <div className="hidden print:block px-4 py-3">
+          <PaymentOptions
+            total={totalFinal}
+            formaPagamento={data.formaPagamento}
+            parcelas={data.parcelasCartao}
+            readOnly
+            printMode
+          />
         </div>
 
         {/* ── Adicionar item avulso ── */}
@@ -6234,10 +6259,6 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
 
       {/* Steps */}
       <StepIndicator current={step} onNavigate={setStep} steps={STEPS} />
-
-      {showRatingPrompt && (
-        <RatingPrompt userId={session?.user?.id} page="kit" onClose={() => setShowRatingPrompt(false)} />
-      )}
 
       {/* Step content */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">

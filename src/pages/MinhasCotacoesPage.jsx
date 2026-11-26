@@ -9,6 +9,7 @@ import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
 import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
+import PaymentOptions from '../components/PaymentOptions'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -1739,6 +1740,18 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             </span>
             <span className="text-white font-extrabold text-xl whitespace-nowrap">{fmt(quote.total_final)}</span>
           </div>
+
+          {/* Forma de pagamento (item 33) */}
+          {(kitData.formaPagamento || kitData.parcelasCartao) && (
+            <div className="px-8 py-4 border-t border-gray-100">
+              <PaymentOptions
+                total={quote.total_final}
+                formaPagamento={kitData.formaPagamento}
+                parcelas={kitData.parcelasCartao}
+                readOnly
+              />
+            </div>
+          )}
 
           {/* Composição da Estrutura — sempre em nova página */}
           {structureComposition.length > 0 && (
