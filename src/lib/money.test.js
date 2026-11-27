@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { round2, distributeTotal } from './money'
+import { round2, distributeTotal, computeTotalFinal, FATOR_BASE } from './money'
 
 describe('round2', () => {
   it('arredonda .005 pra cima (sem erro de ponto flutuante)', () => {
@@ -32,5 +32,16 @@ describe('distributeTotal', () => {
     const result = distributeTotal([33.33, 33.33, 33.34, null], grandTotal)
     expect(result[3]).toBe(null)
     expect(round2(result[0] + result[1] + result[2])).toBe(grandTotal)
+  })
+})
+
+describe('computeTotalFinal', () => {
+  it('usa o desconto informado sem arredondar o fator (7,5% não vira 7%)', () => {
+    const sub = 10000
+    expect(computeTotalFinal(sub, 7.5, 1)).toBe(round2(sub * FATOR_BASE * 0.925))
+    expect(computeTotalFinal(sub, 7.5, 1)).not.toBe(round2(sub * FATOR_BASE * 0.93))
+  })
+  it('aplica o frete por cima', () => {
+    expect(computeTotalFinal(1000, 0, 1.05)).toBe(round2(1000 * FATOR_BASE * 1.05))
   })
 })

@@ -22,3 +22,14 @@ export function distributeTotal(rawAmounts, grandTotal) {
     return v
   })
 }
+
+// Mesma fórmula do compute_total_final do banco (fatores de precificação ×
+// desconto × frete, um arredondamento só no fim). Usado pelo editor de
+// revisão pra que o total gravado no histórico bata com o que o servidor
+// calcula — o desconto é sempre o DA COTAÇÃO (pode ser um desconto
+// específico do admin), nunca o desconto global da tabela.
+export const FATOR_BASE = 0.63 * 0.92 * 0.95 * 0.93
+
+export function computeTotalFinal(subtotal, descontoPct = 0, fretePct = 1) {
+  return round2((subtotal || 0) * FATOR_BASE * (1 - (Number(descontoPct) || 0) / 100) * (Number(fretePct) || 1))
+}

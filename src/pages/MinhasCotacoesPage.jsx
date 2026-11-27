@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
 import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
-import { round2, distributeTotal } from '../lib/money'
+import { round2, distributeTotal, computeTotalFinal } from '../lib/money'
 import { buildProposalMessage } from '../lib/whatsapp'
 import ProposalOutput from '../components/ProposalOutput'
 import { buildProposal, proposalFromQuote } from '../lib/proposal'
@@ -130,7 +130,6 @@ function findAlternativePanel(panel, freteNome, catalogProducts) {
 }
 
 // Fatores de precificação (mirror de KitBuilder)
-const FATOR_BASE = 0.63 * 0.92 * 0.95 * 0.93  // ≈ 0.5121
 
 const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = d => d
@@ -604,10 +603,11 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
       })),
     ].filter(Boolean)
 
-    const fatorDesc = round2(1 - (desconto / 100))
-    const subtotal  = rawItems.reduce((s, i) => round2(s + round2((i.product?.preco || 0) * i.qty)), 0)
-    const totalAjust = round2(subtotal * FATOR_BASE * fatorDesc)
-    const newTotal   = round2(totalAjust * (selFrete?.acrescimo || 1))
+    // Desconto DA COTAÇÃO (pode ser o desconto específico que o admin deu
+    // ao montar o kit) — não o desconto global da tabela.
+    const descontoCotacao = quote.desconto_pct ?? desconto ?? 0
+    const subtotal  = round2(rawItems.reduce((s, i) => s + (i.product?.preco || 0) * i.qty, 0))
+    const newTotal  = computeTotalFinal(subtotal, descontoCotacao, selFrete?.acrescimo || 1)
     const dbItems = rawItems.map(i => ({
       label:      i.label,
       produto:    i.product.nome,

@@ -4725,7 +4725,9 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   // (pro cenário de montar o kit pra um cliente em avaliação) — substitui o
   // desconto padrão só nessa cotação, sem precisar do fluxo de solicitar/
   // aprovar depois.
-  const descontoAdminRaw = isAdmin ? String(data.descontoAdminPct ?? '').trim() : ''
+  // Kit montado pelo admin com desconto específico continua com esse desconto
+  // quando o próprio cliente reabre e salva (senão voltava pro global).
+  const descontoAdminRaw = (isAdmin || data.criadoPorAdmin) ? String(data.descontoAdminPct ?? '').trim() : ''
   const descontoEfetivo = descontoAdminRaw !== ''
     ? Math.max(0, Math.min(100, parseFloat(descontoAdminRaw.replace(',', '.')) || 0))
     : desconto
