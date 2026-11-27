@@ -4,7 +4,9 @@ import ProductThumb from './ProductThumb'
 import { fmtLocalDate } from '../lib/dates'
 
 const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const fmtDate = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—'
+// valid_until é coluna date ('2026-12-03'): new Date() leria meia-noite UTC
+// e mostraria o dia anterior no Brasil — fmtLocalDate lê como data local.
+const fmtDate = d => (d ? fmtLocalDate(d) : '—')
 
 const ROWS = [
   { key: 'numero',   label: 'Referência' },
