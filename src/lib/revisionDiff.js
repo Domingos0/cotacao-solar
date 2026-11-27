@@ -20,7 +20,11 @@ export function diffRevisions(revA, revB) {
     const b = mapB.get(key)
     if (a && !b) return { key, status: 'removed', a, b: null }
     if (!a && b) return { key, status: 'added', a: null, b }
-    const changed = a.qty !== b.qty || a.preco_unit !== b.preco_unit || a.total !== b.total
+    // Só quantidade ou preço unitário contam. O total da linha varia alguns
+    // centavos entre revisões por causa da distribuição do arredondamento
+    // (distributeTotal) — isso não é mudança de verdade e escondia as reais.
+    const centavos = v => Math.round(Number(v || 0) * 100)
+    const changed = Number(a.qty) !== Number(b.qty) || centavos(a.preco_unit) !== centavos(b.preco_unit)
     return { key, status: changed ? 'changed' : 'same', a, b }
   })
 

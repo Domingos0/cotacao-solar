@@ -52,3 +52,16 @@ describe('diffRevisions', () => {
     expect(d.freteChanged).toBe(true)
   })
 })
+
+describe('diffRevisions — centavos de arredondamento', () => {
+  it('mesma quantidade e mesmo preço unitário, total diferente em centavos → same', () => {
+    const a = { items: [{ codigo_sap: '18592885', label: 'Módulo', qty: 14, preco_unit: 1485.44, total: 20796.16 }] }
+    const b = { items: [{ codigo_sap: '18592885', label: 'Módulo', qty: 14, preco_unit: 1485.44, total: 20796.13 }] }
+    expect(diffRevisions(a, b).items[0].status).toBe('same')
+  })
+  it('preço unitário diferente → changed', () => {
+    const a = { items: [{ codigo_sap: '1', label: 'X', qty: 1, preco_unit: 100, total: 100 }] }
+    const b = { items: [{ codigo_sap: '1', label: 'X', qty: 1, preco_unit: 100.5, total: 100.5 }] }
+    expect(diffRevisions(a, b).items[0].status).toBe('changed')
+  })
+})
