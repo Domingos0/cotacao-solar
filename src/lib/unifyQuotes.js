@@ -48,3 +48,42 @@ export function checkUnifyCnpj(quotes) {
   if (cnpjs.size > 1) return { ok: false, motivo: 'cnpj_diferente', refs: [] }
   return { ok: true, motivo: null, refs: [] }
 }
+
+// Admin → Cotações "Por cliente": agrupa pelo CNPJ (cliente cadastrado) ou,
+// na cotação interna pra cliente sem cadastro, pelo nome digitado. Grupos
+// ordenados pela cotação mais recente; dentro, mais recente primeiro.
+export function groupQuotesByClient(quotes) {
+  const map = new Map()
+  ;(quotes || []).forEach(q => {
+    const kd = q.data || {}
+    const semCadastro = kd.clienteCadastrado === false
+    const cnpj = semCadastro ? '' : String(q.profiles?.cnpj || '').replace(/\D/g, '')
+    const key = semCadastro
+      ? `sem:${(kd.clienteNome || '').trim().toLowerCase() || q.id}`
+      : (cnpj ? `cnpj:${cnpj}` : `user:${q.user_id || q.id}`)
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        nome: semCadastro ? (kd.clienteNome || 'Cliente sem cadastro') : (q.profiles?.nome || kd.clienteNome || 'Cliente'),
+        empresa: semCadastro ? '' : (q.profiles?.empresa || ''),
+        cnpj: semCadastro ? '' : (q.profiles?.cnpj || ''),
+        semCadastro,
+        quotes: [],
+      })
+    }
+    map.get(key).quotes.push(q)
+  })
+  const ts = q => new Date(q.created_at || 0).getTime()
+  return [...map.values()]
+    .map(g => {
+      const quotes = [...g.quotes].sort((a, b) => ts(b) - ts(a))
+      return {
+        ...g,
+        quotes,
+        total: round2(quotes.reduce((s, q) => s + (q.total_final || 0), 0)),
+        kwp: round2(quotes.reduce((s, q) => s + (Number(q.kwp) || 0), 0)),
+        ultima: quotes[0]?.created_at || null,
+      }
+    })
+    .sort((a, b) => new Date(b.ultima || 0) - new Date(a.ultima || 0))
+}

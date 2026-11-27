@@ -14,7 +14,7 @@ import {
   uploadPromoFolder, getPromoStatus, PROMO_STATUS_LABELS, PROMO_REGIOES_KEYS,
 } from '../lib/promoKits'
 import { round2 } from '../lib/money'
-import { checkUnifyCnpj } from '../lib/unifyQuotes'
+import { checkUnifyCnpj, groupQuotesByClient } from '../lib/unifyQuotes'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { parseStockPdfLines, produtosParaRevisar, diasAtePrevisao, textoAlertaPrevisao } from '../lib/stockForecast'
 import kitCompositions from '../data/kitCompositions.json'
@@ -2312,6 +2312,7 @@ function QuoteManagement({ onLoadQuote }) {
   const [unifySelected, setUnifySelected] = useState(() => new Set())
   const [showUnifyModal, setShowUnifyModal]   = useState(false)
   const [showCompareModal, setShowCompareModal] = useState(false)
+  const [openGroups, setOpenGroups] = useState(() => new Set())
   const toggleUnifySelected = (id) => setUnifySelected(prev => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id); else next.add(id)
@@ -2658,609 +2659,22 @@ function QuoteManagement({ onLoadQuote }) {
   const unifyCheck = checkUnifyCnpj(selectedQuotes)
   const bloqueiaUnificar = selectedQuotes.length >= 2 && !unifyCheck.ok
 
-  // ── Card de kit aguardando implantação ──
-  const ImplantCard = ({ q }) => {
-    const [confirming, setConfirming] = useState(false)
-    const [confirmingPerdida, setConfirmingPerdida] = useState(false)
-    const [motivoPerda, setMotivoPerda] = useState('')
-    const [busy, setBusy] = useState(false)
-    const kd = q.data || {}
+  // Visão "Por cliente": grupos por CNPJ (ou nome, se sem cadastro)
+  const clientGroups = viewMode === 'clientes' ? groupQuotesByClient(filtered) : []
+  const toggleGroup = key => setOpenGroups(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  })
+  const selectGroup = g => setUnifySelected(prev => {
+    const next = new Set(prev)
+    const todas = g.quotes.every(q => next.has(q.id))
+    g.quotes.forEach(q => { if (todas) next.delete(q.id); else next.add(q.id) })
+    return next
+  })
 
-    const doImplantar = async () => {
-      setBusy(true)
-      const error = await updateQuote(q.id, { status: 'implantado' })
-      setBusy(false)
-      if (error) {
-        console.error('[doImplantar]', error)
-        flashActionError(`Erro ao confirmar implantação: ${error.message || 'tente novamente.'}`)
-        return
-      }
-      setConfirming(false)
-    }
-
-    const doPerdida = async () => {
-      if (!motivoPerda) return
-      setBusy(true)
-      const error = await updateQuote(q.id, { status: 'perdida', motivo_perda: motivoPerda })
-      setBusy(false)
-      if (error) {
-        console.error('[doPerdida]', error)
-        flashActionError(`Erro ao marcar como perdida: ${error.message || 'tente novamente.'}`)
-        return
-      }
-      setConfirmingPerdida(false)
-    }
-
-    return (
-      <div className="bg-white rounded-2xl border-2 border-orange-200 shadow-sm p-5 space-y-4">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              {kd.numero_orcamento && (
-                <span className="text-xs font-mono font-bold text-weg-blue bg-weg-blue/10 px-2 py-0.5 rounded-full">
-                  {kd.numero_orcamento}{(kd.revisao || 0) > 0 ? ` · Rev.${kd.revisao}` : ''}
-                </span>
-              )}
-              <span className="text-xs bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Package size={10} /> Aguard. Implantação
-              </span>
-            </div>
-            <p className="font-bold text-gray-900 mt-1">{q.nome_projeto || `Kit ${q.kwp} kWp`}</p>
-          </div>
-          <div className="text-right shrink-0">
-            <p className="font-bold text-lg text-gray-900">{fmt(q.total_final)}</p>
-            <p className="text-xs text-gray-400">{q.kwp} kWp</p>
-          </div>
-        </div>
-
-        {/* Client info */}
-        <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-600 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <Users size={12} className="text-gray-400 shrink-0" />
-            <span className="font-semibold">{q.profiles?.nome || '—'}</span>
-            {q.profiles?.empresa && <span className="text-gray-400">— {q.profiles.empresa}</span>}
-          </div>
-          {q.profiles?.telefone && (
-            <div className="flex items-center gap-2">
-              <Phone size={12} className="text-gray-400 shrink-0" />
-              <span>{q.profiles.telefone}</span>
-            </div>
-          )}
-          {q.profiles?.cnpj && (
-            <div className="flex items-center gap-2">
-              <FileText size={12} className="text-gray-400 shrink-0" />
-              <span className="font-mono">{q.profiles.cnpj}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <CalendarDays size={12} className="text-gray-400 shrink-0" />
-            <span>Fechado em {new Date(q.created_at).toLocaleDateString('pt-BR')}</span>
-          </div>
-          {q.frete_nome && (
-            <div className="flex items-center gap-2">
-              <Truck size={12} className="text-gray-400 shrink-0" />
-              <span className="truncate">{q.frete_nome}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Kit items summary */}
-        {kd.panel && (
-          <div className="text-xs text-gray-500 space-y-0.5 border-t border-gray-100 pt-3">
-            <p>☀️ <strong>{kd.panelQty}×</strong> {kd.panel.modelo || kd.panel.nome}</p>
-            {kd.inverter && <p>⚡ <strong>{kd.inverterQty || 1}×</strong> {kd.inverter.modelo || kd.inverter.nome}</p>}
-            {Array.isArray(kd.inverters) && kd.inverters.map((i, idx) => (
-              <p key={idx}>⚡ <strong>{i.qty}×</strong> {i.inverter?.modelo || i.inverter?.nome}</p>
-            ))}
-          </div>
-        )}
-
-        {/* Actions */}
-        {confirming ? (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm">
-            <p className="font-semibold text-emerald-800 mb-2">Confirmar implantação do kit?</p>
-            <div className="flex gap-2">
-              <button onClick={doImplantar} disabled={busy}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
-                {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Sim, confirmar</>}
-              </button>
-              <button onClick={() => setConfirming(false)} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
-            </div>
-          </div>
-        ) : confirmingPerdida ? (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm space-y-2">
-            <p className="font-semibold text-red-700">Marcar como proposta perdida?</p>
-            <select
-              value={motivoPerda}
-              onChange={e => setMotivoPerda(e.target.value)}
-              className="w-full border border-red-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-300"
-            >
-              <option value="">Motivo da perda…</option>
-              {MOTIVOS_PERDA.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-            <div className="flex gap-2">
-              <button onClick={doPerdida} disabled={busy || !motivoPerda}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
-                {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><XCircle size={14} /> Sim, marcar perdida</>}
-              </button>
-              <button onClick={() => { setConfirmingPerdida(false); setMotivoPerda('') }} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <button onClick={() => setConfirming(true)}
-              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
-              <CheckCircle2 size={16} /> Confirmar implantação
-            </button>
-            <button onClick={() => setConfirmingPerdida(true)}
-              className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
-              <XCircle size={15} />
-            </button>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  const STATUS_BORDER = {
-    rascunho: 'border-l-gray-300', enviada: 'border-l-blue-400',
-    em_analise: 'border-l-blue-400', aguardando_desconto: 'border-l-yellow-400',
-    aprovada: 'border-l-green-400', recusada: 'border-l-red-400',
-    fechado: 'border-l-orange-400', faturado: 'border-l-sky-400',
-    em_transporte: 'border-l-violet-400', implantado: 'border-l-emerald-400',
-    perdida: 'border-l-red-300',
-  }
-
-  const STATUS_PILLS = [
-    { value: 'all',                 label: 'Todas',           count: quotes.length },
-    { value: 'feitas_pelo_adm',     label: '🛠️ Feitas pelo ADM', count: quotes.filter(q => q.data?.criadoPorAdmin).length },
-    { value: 'rascunho',            label: 'Rascunho',        count: quotes.filter(q => q.status === 'rascunho').length },
-    { value: 'em_analise',          label: 'Em análise',      count: quotes.filter(q => ['em_analise','enviada'].includes(q.status)).length },
-    { value: 'aguardando_desconto', label: 'Desc. pendente',  count: pendingDiscount.length },
-    { value: 'aprovada',            label: 'Aprovada',        count: quotes.filter(q => q.status === 'aprovada').length },
-    { value: 'fechado',             label: 'Pedido',          count: quotes.filter(q => q.status === 'fechado').length },
-    { value: 'faturado',            label: 'Faturado',        count: quotes.filter(q => q.status === 'faturado').length },
-    { value: 'em_transporte',       label: 'Em Transporte',   count: quotes.filter(q => q.status === 'em_transporte').length },
-    { value: 'implantado',          label: 'Implantado',      count: quotes.filter(q => q.status === 'implantado').length },
-    { value: 'perdida',             label: 'Perdida',         count: quotes.filter(q => q.status === 'perdida').length },
-  ]
-
-  const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
-  const r2 = v => Number(Math.round(Number(String(+v) + 'e2')) + 'e-2')
-
-  return (
-    <>
-    {/* ── Proposta (layout de design/): imprimir ou PDF pro WhatsApp ── */}
-    {printingQuote && (
-      <ProposalOutput
-        proposal={proposalFromQuote(printingQuote, { tableInfo, condicoes })}
-        mode="print"
-        onClose={() => setPrintingQuote(null)}
-      />
-    )}
-    {sharingQuote && (
-      <ProposalOutput
-        proposal={proposalFromQuote(sharingQuote, { tableInfo, condicoes })}
-        mode="share"
-        phone={sharingQuote.profiles?.telefone}
-        nome={(sharingQuote.data?.clienteCadastrado === false ? sharingQuote.data?.clienteNome : sharingQuote.profiles?.nome) || ''}
-        link={sharingQuote.data?.clienteCadastrado === false ? '' : `${window.location.origin}${pathForPage('cotacoes', sharingQuote.id)}`}
-        onClose={() => setSharingQuote(null)}
-      />
-    )}
-    {showUnifyModal && (
-      <UnifiedProposalModal
-        quotes={selectedQuotes}
-        condicoes={condicoes}
-        tableInfo={tableInfo}
-        onClose={() => setShowUnifyModal(false)}
-      />
-    )}
-    {showCompareModal && (
-      <QuotesCompareModal quotes={selectedQuotes} onClose={() => setShowCompareModal(false)} />
-    )}
-    {revisingQuote && revisingSuccessData && createPortal(
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col items-center text-center gap-4">
-          <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
-            <CheckCircle2 size={40} className="text-green-500" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-900 mb-0.5">Revisão salva!</h3>
-            <p className="text-xs text-gray-400">
-              {revisingQuote.data?.numero_orcamento ? `EFF-${revisingQuote.data.numero_orcamento}` : revisingQuote.id} · revisão {revisingSuccessData.revisao}
-            </p>
-          </div>
-          <p className="text-xs text-gray-400">Fechando em <strong>{revisingCountdown}s</strong>…</p>
-          <button
-            onClick={() => { setRevisingSuccessData(null); setRevisingQuote(null) }}
-            className="text-sm text-weg-blue hover:underline font-semibold"
-          >
-            Fechar agora
-          </button>
-        </div>
-      </div>,
-      document.body
-    )}
-    {compareRevs && (
-      <RevisionCompareModal revA={compareRevs.a} revB={compareRevs.b} onClose={() => setCompareRevs(null)} />
-    )}
-    {revisingQuote && !revisingSuccessData && createPortal(
-      <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4 overflow-y-auto" onClick={() => !revisingSaving && setRevisingQuote(null)}>
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <div>
-              <h3 className="font-bold text-gray-900">Revisar cotação interna</h3>
-              <p className="text-xs text-gray-400">{revisingQuote.data?.numero_orcamento ? `EFF-${revisingQuote.data.numero_orcamento}` : revisingQuote.id}</p>
-            </div>
-            <button onClick={() => !revisingSaving && setRevisingQuote(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
-              <X size={18} />
-            </button>
-          </div>
-          <div className="p-6">
-            <InlineEditor
-              quote={revisingQuote}
-              onApply={handleApplyRevisao}
-              onCancel={() => setRevisingQuote(null)}
-              saving={revisingSaving}
-              error={revisingError}
-            />
-          </div>
-        </div>
-      </div>,
-      document.body
-    )}
-    <div className="space-y-4">
-
-      {actionError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700 text-sm">
-          <AlertTriangle size={16} /> {actionError}
-        </div>
-      )}
-      {/* ── Toolbar ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2 mr-auto">
-          <LayoutList size={20} className="text-weg-blue" /> Cotações
-          <span className="text-sm font-normal text-gray-400">({filtered.length}/{quotes.length})</span>
-        </h3>
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar CNPJ, nome, empresa ou cotação…"
-            className="pl-8 pr-8 py-2 text-sm border border-gray-200 rounded-xl w-72 focus:outline-none focus:border-weg-blue bg-white" />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={13} />
-            </button>
-          )}
-        </div>
-        <button onClick={fetchQuotes} className="p-2 rounded-xl text-gray-400 hover:text-weg-blue hover:bg-gray-100 transition-colors" title="Atualizar">
-          <RefreshCw size={15} />
-        </button>
-      </div>
-
-      {/* ── Filtros por status (pills) ── */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {STATUS_PILLS.map(p => (
-          <button key={p.value} onClick={() => setFilter(p.value)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
-              filter === p.value
-                ? 'bg-weg-blue text-white border-weg-blue'
-                : 'bg-white text-gray-500 border-gray-200 hover:border-weg-blue/50 hover:text-weg-blue'
-            }`}>
-            {p.label}
-            {p.count > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                filter === p.value ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-500'
-              } ${p.value === 'aguardando_desconto' && filter !== p.value ? '!bg-yellow-100 !text-yellow-700' : ''}`}>
-                {p.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Banner desconto pendente */}
-      {pendingDiscount.length > 0 && filter !== 'aguardando_desconto' && (
-        <div onClick={() => setFilter('aguardando_desconto')}
-          className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex items-center gap-2 text-sm text-yellow-800 cursor-pointer hover:bg-yellow-100">
-          <BadgePercent size={16} />
-          <span><strong>{pendingDiscount.length}</strong> solicitaç{pendingDiscount.length > 1 ? 'ões' : 'ão'} de desconto aguardando resposta</span>
-          <span className="ml-auto text-yellow-600 underline text-xs">Ver →</span>
-        </div>
-      )}
-
-      {/* ── Toggle Cards / Lista / Funil ── */}
-      <div className="flex justify-end">
-        <div className="flex gap-0.5 bg-gray-100 p-1 rounded-xl">
-          <button onClick={() => setViewMode('cards')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'cards' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-            <LayoutGrid size={13} /> Cards
-          </button>
-          <button onClick={() => setViewMode('table')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'table' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-            <List size={13} /> Lista
-          </button>
-          <button onClick={() => setViewMode('funil')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'funil' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-            <LayoutDashboard size={13} /> Funil
-          </button>
-        </div>
-      </div>
-
-      {/* ── Unificar / comparar ── */}
-      {viewMode !== 'funil' && filtered.length > 0 && (
-        <div className="flex items-center justify-between gap-3 px-4 py-3 mb-3 rounded-xl border border-gray-100 bg-white shadow-sm flex-wrap">
-          {unifyMode ? (
-            <>
-              <span className="text-sm text-gray-600">
-                <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — 2 ou mais pra unificar (mesmo CNPJ), 2 ou 3 pra comparar
-                {bloqueiaUnificar && (
-                  <span className="block text-xs text-amber-600 font-semibold mt-0.5">
-                    {unifyCheck.motivo === 'cnpj_diferente'
-                      ? 'CNPJs diferentes: só dá pra unificar cotações do mesmo CNPJ (comparar continua liberado).'
-                      : `Sem CNPJ do cliente: ${unifyCheck.refs.join(', ')} — só dá pra unificar cotações do mesmo CNPJ (comparar continua liberado).`}
-                  </span>
-                )}
-              </span>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => setShowCompareModal(true)}
-                  disabled={unifySelected.size < 2 || unifySelected.size > 3}
-                  title={unifySelected.size > 3 ? 'Comparar funciona com 2 ou 3 cotações' : undefined}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue border border-weg-blue/30 bg-white hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <GitCompare size={13} /> Comparar lado a lado
-                </button>
-                <button
-                  onClick={() => setShowUnifyModal(true)}
-                  disabled={unifySelected.size < 2 || bloqueiaUnificar}
-                  title={bloqueiaUnificar ? 'Só cotações do mesmo CNPJ podem ser unificadas' : undefined}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-weg-blue hover:bg-weg-blue/90 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Layers size={13} /> Unificar selecionadas
-                </button>
-                <button onClick={exitUnifyMode} className="text-xs font-semibold text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg">
-                  Cancelar
-                </button>
-              </div>
-            </>
-          ) : (
-            <button
-              onClick={() => setUnifyMode(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg"
-            >
-              <Layers size={13} /> Unificar ou comparar cotações
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Cotações ── */}
-      {filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
-          <FileText size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">Nenhuma cotação encontrada.</p>
-          {search && <button onClick={() => setSearch('')} className="mt-2 text-xs text-weg-blue underline">Limpar busca</button>}
-        </div>
-      ) : viewMode === 'funil' ? (
-        /* ── FUNIL (KANBAN) VIEW — drag & drop ── */
-        <div className="-mx-1 overflow-x-auto pb-4 pt-1 select-none">
-          <div className="flex gap-3 px-1 min-w-max items-start">
-            {FUNIL_COLUMNS.map(col => {
-              const colQuotes  = funilQuotes.filter(q => col.keys.includes(q.status))
-              const colTotal   = colQuotes.reduce((s, q) => s + (q.total_final || 0), 0)
-              const isOver     = dragOverCol === col.key
-              const isDragging = draggingId !== null
-
-              const handleDragOver = e => {
-                e.preventDefault()
-                e.dataTransfer.dropEffect = 'move'
-                if (dragOverCol !== col.key) setDragOverCol(col.key)
-              }
-              const handleDrop = async e => {
-                e.preventDefault()
-                const id = e.dataTransfer.getData('quoteId')
-                setDragOverCol(null)
-                setDraggingId(null)
-                if (!id) return
-                const q = quotes.find(x => x.id === id)
-                if (!q || col.keys.includes(q.status)) return
-                if (col.key === 'implantado') {
-                  setDragConfirm({ quoteId: id, targetStatus: 'implantado', field: 'ov_numero', label: 'OV', placeholder: 'Ex: OV-2026-001', question: 'Mover para Pedido Implantando' })
-                  setDragInputValue('')
-                  return
-                }
-                if (col.key === 'faturado') {
-                  setDragConfirm({ quoteId: id, targetStatus: 'faturado', field: 'nf_numero', label: 'NF', placeholder: 'Ex: NF-2026-001', question: 'Mover para Pedido Faturado' })
-                  setDragInputValue('')
-                  return
-                }
-                await updateQuote(id, { status: col.key })
-              }
-
-              return (
-                <div key={col.key}
-                  className="w-[220px] shrink-0 flex flex-col"
-                  onDragOver={handleDragOver}
-                  onDragEnter={e => { e.preventDefault(); setDragOverCol(col.key) }}
-                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCol(null) }}
-                  onDrop={handleDrop}
-                >
-                  {/* Column header */}
-                  <div className="mb-2 px-1">
-                    <div className="h-1 rounded-full mb-2 transition-all" style={{ backgroundColor: col.color, opacity: isOver ? 1 : 0.6 }} />
-                    <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide truncate leading-tight">{col.label}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {colQuotes.length} negócio{colQuotes.length !== 1 ? 's' : ''} · {fmt(colTotal)}
-                    </p>
-                  </div>
-
-                  {/* Drop zone */}
-                  <div className={`flex flex-col gap-2 min-h-[80px] rounded-xl transition-all p-1.5 -m-1.5 ${
-                    isOver && isDragging ? 'bg-blue-50/60 ring-2 ring-weg-blue/30 ring-dashed' : ''
-                  }`}>
-                    {/* Drop hint */}
-                    {isOver && isDragging && (
-                      <div className="border-2 border-dashed border-weg-blue/40 rounded-xl py-3 text-center animate-pulse">
-                        <p className="text-[11px] text-weg-blue font-semibold">Soltar aqui → {col.label}</p>
-                      </div>
-                    )}
-
-                    {/* Cards */}
-                    <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto pr-0.5">
-                      {colQuotes.map(q => {
-                        const kd      = q.data || {}
-                        const rev     = kd.revisao || 0
-                        const isDraggingThis = draggingId === q.id
-                        return (
-                          <div key={q.id}
-                            draggable
-                            onDragStart={e => {
-                              e.dataTransfer.setData('quoteId', q.id)
-                              e.dataTransfer.effectAllowed = 'move'
-                              setDraggingId(q.id)
-                            }}
-                            onDragEnd={() => { setDraggingId(null); setDragOverCol(null) }}
-                            onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}
-                            className={`bg-white rounded-xl border shadow-sm p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group ${
-                              isDraggingThis
-                                ? 'opacity-40 border-weg-blue scale-95'
-                                : 'border-gray-100 hover:border-gray-200'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-1 mb-1.5">
-                              <span className="font-mono font-bold text-[11px] text-weg-blue leading-tight">
-                                {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
-                              </span>
-                              {rev > 0 && (
-                                <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full shrink-0 leading-tight">Rev.{rev}</span>
-                              )}
-                            </div>
-                            <p className="font-semibold text-gray-800 text-[12px] leading-snug line-clamp-2">
-                              {q.profiles?.nome || kd.clienteNome || '—'}
-                            </p>
-                            {q.profiles?.empresa && (
-                              <p className="text-[10px] text-gray-400 mt-0.5 truncate">{q.profiles.empresa}</p>
-                            )}
-                            <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between">
-                              <span className="text-[10px] text-gray-400">{fmtDt(q.created_at).split(',')[0]}</span>
-                              <span className="font-bold text-gray-900 text-[12px]">{fmt(q.total_final)}</span>
-                            </div>
-                            <div className="mt-1.5 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={e => { e.stopPropagation(); setPrintingQuote(q) }}
-                                title="Baixar proposta"
-                                className="p-1 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
-                                <Download size={11} />
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })}
-
-                      {/* Empty column placeholder */}
-                      {colQuotes.length === 0 && !(isOver && isDragging) && (
-                        <div className="border-2 border-dashed border-gray-100 rounded-xl py-6 text-center">
-                          <p className="text-[11px] text-gray-300">
-                            {isDragging ? 'Soltar aqui' : 'Nenhuma cotação'}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      ) : viewMode === 'table' ? (
-        /* ── TABLE VIEW ── */
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 bg-blue-50/40">
-                  {unifyMode && <th className="px-3 py-3 w-10" />}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cotação</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente / Empresa</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">kWp</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
-                  <th className="px-3 py-3 w-10" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(q => {
-                  const kd = q.data || {}
-                  const dotColor = ADMIN_DOT_COLOR[q.status] || '#d1d5db'
-                  return (
-                    <tr key={q.id}
-                      className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors cursor-pointer"
-                      onClick={() => unifyMode ? toggleUnifySelected(q.id) : setExpandedId(expandedId === q.id ? null : q.id)}>
-                      {unifyMode && (
-                        <td className="px-3 py-3">
-                          <span className="text-weg-blue">
-                            {unifySelected.has(q.id) ? <CheckSquare size={18} /> : <Square size={18} className="text-gray-300" />}
-                          </span>
-                        </td>
-                      )}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="text-sm text-gray-600">{fmtDt(q.created_at).split(', ')[0]}</span>
-                        <span className="block text-xs text-gray-400">{fmtDt(q.created_at).split(', ')[1]}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-6 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-                          <div>
-                            <span className="font-mono font-bold text-weg-blue text-sm">
-                              {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
-                            </span>
-                            {(kd.revisao || 0) > 0 && (
-                              <span className="ml-1.5 text-[10px] font-bold text-amber-600">Rev. {kd.revisao}</span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900 text-sm truncate max-w-[200px]">
-                          {q.profiles?.nome || kd.clienteNome || '—'}
-                        </p>
-                        {q.profiles?.empresa && (
-                          <p className="text-xs text-gray-400 truncate max-w-[200px]">{q.profiles.empresa}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <span className="text-sm font-semibold text-gray-700">{q.kwp} kWp</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[q.status]}`}>
-                          {STATUS_LABEL[q.status] || q.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-800 text-sm whitespace-nowrap">
-                        {fmt(q.total_final)}
-                      </td>
-                      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setPrintingQuote(q)} title="Baixar proposta"
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
-                          <Download size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        /* ── CARDS VIEW ── */
-        <div className="space-y-3">
-          {filtered.map(q => {
+  // Card de uma cotação — usado na visão Cards e dentro de cada cliente
+  const renderQuoteCard = q => {
             const kd = q.data || {}
             const isExpanded = expandedId === q.id
             const rev = kd.revisao || 0
@@ -3660,6 +3074,664 @@ function QuoteManagement({ onLoadQuote }) {
                         <strong>Resposta ao cliente:</strong> {q.desconto_resposta}
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+            )
+  }
+
+  // ── Card de kit aguardando implantação ──
+  const ImplantCard = ({ q }) => {
+    const [confirming, setConfirming] = useState(false)
+    const [confirmingPerdida, setConfirmingPerdida] = useState(false)
+    const [motivoPerda, setMotivoPerda] = useState('')
+    const [busy, setBusy] = useState(false)
+    const kd = q.data || {}
+
+    const doImplantar = async () => {
+      setBusy(true)
+      const error = await updateQuote(q.id, { status: 'implantado' })
+      setBusy(false)
+      if (error) {
+        console.error('[doImplantar]', error)
+        flashActionError(`Erro ao confirmar implantação: ${error.message || 'tente novamente.'}`)
+        return
+      }
+      setConfirming(false)
+    }
+
+    const doPerdida = async () => {
+      if (!motivoPerda) return
+      setBusy(true)
+      const error = await updateQuote(q.id, { status: 'perdida', motivo_perda: motivoPerda })
+      setBusy(false)
+      if (error) {
+        console.error('[doPerdida]', error)
+        flashActionError(`Erro ao marcar como perdida: ${error.message || 'tente novamente.'}`)
+        return
+      }
+      setConfirmingPerdida(false)
+    }
+
+    return (
+      <div className="bg-white rounded-2xl border-2 border-orange-200 shadow-sm p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {kd.numero_orcamento && (
+                <span className="text-xs font-mono font-bold text-weg-blue bg-weg-blue/10 px-2 py-0.5 rounded-full">
+                  {kd.numero_orcamento}{(kd.revisao || 0) > 0 ? ` · Rev.${kd.revisao}` : ''}
+                </span>
+              )}
+              <span className="text-xs bg-orange-100 text-orange-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Package size={10} /> Aguard. Implantação
+              </span>
+            </div>
+            <p className="font-bold text-gray-900 mt-1">{q.nome_projeto || `Kit ${q.kwp} kWp`}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="font-bold text-lg text-gray-900">{fmt(q.total_final)}</p>
+            <p className="text-xs text-gray-400">{q.kwp} kWp</p>
+          </div>
+        </div>
+
+        {/* Client info */}
+        <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-600 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Users size={12} className="text-gray-400 shrink-0" />
+            <span className="font-semibold">{q.profiles?.nome || '—'}</span>
+            {q.profiles?.empresa && <span className="text-gray-400">— {q.profiles.empresa}</span>}
+          </div>
+          {q.profiles?.telefone && (
+            <div className="flex items-center gap-2">
+              <Phone size={12} className="text-gray-400 shrink-0" />
+              <span>{q.profiles.telefone}</span>
+            </div>
+          )}
+          {q.profiles?.cnpj && (
+            <div className="flex items-center gap-2">
+              <FileText size={12} className="text-gray-400 shrink-0" />
+              <span className="font-mono">{q.profiles.cnpj}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <CalendarDays size={12} className="text-gray-400 shrink-0" />
+            <span>Fechado em {new Date(q.created_at).toLocaleDateString('pt-BR')}</span>
+          </div>
+          {q.frete_nome && (
+            <div className="flex items-center gap-2">
+              <Truck size={12} className="text-gray-400 shrink-0" />
+              <span className="truncate">{q.frete_nome}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Kit items summary */}
+        {kd.panel && (
+          <div className="text-xs text-gray-500 space-y-0.5 border-t border-gray-100 pt-3">
+            <p>☀️ <strong>{kd.panelQty}×</strong> {kd.panel.modelo || kd.panel.nome}</p>
+            {kd.inverter && <p>⚡ <strong>{kd.inverterQty || 1}×</strong> {kd.inverter.modelo || kd.inverter.nome}</p>}
+            {Array.isArray(kd.inverters) && kd.inverters.map((i, idx) => (
+              <p key={idx}>⚡ <strong>{i.qty}×</strong> {i.inverter?.modelo || i.inverter?.nome}</p>
+            ))}
+          </div>
+        )}
+
+        {/* Actions */}
+        {confirming ? (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm">
+            <p className="font-semibold text-emerald-800 mb-2">Confirmar implantação do kit?</p>
+            <div className="flex gap-2">
+              <button onClick={doImplantar} disabled={busy}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
+                {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><CheckCircle2 size={14} /> Sim, confirmar</>}
+              </button>
+              <button onClick={() => setConfirming(false)} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+            </div>
+          </div>
+        ) : confirmingPerdida ? (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm space-y-2">
+            <p className="font-semibold text-red-700">Marcar como proposta perdida?</p>
+            <select
+              value={motivoPerda}
+              onChange={e => setMotivoPerda(e.target.value)}
+              className="w-full border border-red-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-300"
+            >
+              <option value="">Motivo da perda…</option>
+              {MOTIVOS_PERDA.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={doPerdida} disabled={busy || !motivoPerda}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded-lg text-xs flex items-center justify-center gap-1 disabled:opacity-60">
+                {busy ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><XCircle size={14} /> Sim, marcar perdida</>}
+              </button>
+              <button onClick={() => { setConfirmingPerdida(false); setMotivoPerda('') }} className="px-4 py-2 border border-gray-200 text-gray-500 font-semibold rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={() => setConfirming(true)}
+              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+              <CheckCircle2 size={16} /> Confirmar implantação
+            </button>
+            <button onClick={() => setConfirmingPerdida(true)}
+              className="px-4 py-3 border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl text-sm flex items-center justify-center gap-1">
+              <XCircle size={15} />
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const STATUS_BORDER = {
+    rascunho: 'border-l-gray-300', enviada: 'border-l-blue-400',
+    em_analise: 'border-l-blue-400', aguardando_desconto: 'border-l-yellow-400',
+    aprovada: 'border-l-green-400', recusada: 'border-l-red-400',
+    fechado: 'border-l-orange-400', faturado: 'border-l-sky-400',
+    em_transporte: 'border-l-violet-400', implantado: 'border-l-emerald-400',
+    perdida: 'border-l-red-300',
+  }
+
+  const STATUS_PILLS = [
+    { value: 'all',                 label: 'Todas',           count: quotes.length },
+    { value: 'feitas_pelo_adm',     label: '🛠️ Feitas pelo ADM', count: quotes.filter(q => q.data?.criadoPorAdmin).length },
+    { value: 'rascunho',            label: 'Rascunho',        count: quotes.filter(q => q.status === 'rascunho').length },
+    { value: 'em_analise',          label: 'Em análise',      count: quotes.filter(q => ['em_analise','enviada'].includes(q.status)).length },
+    { value: 'aguardando_desconto', label: 'Desc. pendente',  count: pendingDiscount.length },
+    { value: 'aprovada',            label: 'Aprovada',        count: quotes.filter(q => q.status === 'aprovada').length },
+    { value: 'fechado',             label: 'Pedido',          count: quotes.filter(q => q.status === 'fechado').length },
+    { value: 'faturado',            label: 'Faturado',        count: quotes.filter(q => q.status === 'faturado').length },
+    { value: 'em_transporte',       label: 'Em Transporte',   count: quotes.filter(q => q.status === 'em_transporte').length },
+    { value: 'implantado',          label: 'Implantado',      count: quotes.filter(q => q.status === 'implantado').length },
+    { value: 'perdida',             label: 'Perdida',         count: quotes.filter(q => q.status === 'perdida').length },
+  ]
+
+  const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+  const r2 = v => Number(Math.round(Number(String(+v) + 'e2')) + 'e-2')
+
+  return (
+    <>
+    {/* ── Proposta (layout de design/): imprimir ou PDF pro WhatsApp ── */}
+    {printingQuote && (
+      <ProposalOutput
+        proposal={proposalFromQuote(printingQuote, { tableInfo, condicoes })}
+        mode="print"
+        onClose={() => setPrintingQuote(null)}
+      />
+    )}
+    {sharingQuote && (
+      <ProposalOutput
+        proposal={proposalFromQuote(sharingQuote, { tableInfo, condicoes })}
+        mode="share"
+        phone={sharingQuote.profiles?.telefone}
+        nome={(sharingQuote.data?.clienteCadastrado === false ? sharingQuote.data?.clienteNome : sharingQuote.profiles?.nome) || ''}
+        link={sharingQuote.data?.clienteCadastrado === false ? '' : `${window.location.origin}${pathForPage('cotacoes', sharingQuote.id)}`}
+        onClose={() => setSharingQuote(null)}
+      />
+    )}
+    {showUnifyModal && (
+      <UnifiedProposalModal
+        quotes={selectedQuotes}
+        condicoes={condicoes}
+        tableInfo={tableInfo}
+        onClose={() => setShowUnifyModal(false)}
+      />
+    )}
+    {showCompareModal && (
+      <QuotesCompareModal quotes={selectedQuotes} onClose={() => setShowCompareModal(false)} />
+    )}
+    {revisingQuote && revisingSuccessData && createPortal(
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col items-center text-center gap-4">
+          <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+            <CheckCircle2 size={40} className="text-green-500" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 mb-0.5">Revisão salva!</h3>
+            <p className="text-xs text-gray-400">
+              {revisingQuote.data?.numero_orcamento ? `EFF-${revisingQuote.data.numero_orcamento}` : revisingQuote.id} · revisão {revisingSuccessData.revisao}
+            </p>
+          </div>
+          <p className="text-xs text-gray-400">Fechando em <strong>{revisingCountdown}s</strong>…</p>
+          <button
+            onClick={() => { setRevisingSuccessData(null); setRevisingQuote(null) }}
+            className="text-sm text-weg-blue hover:underline font-semibold"
+          >
+            Fechar agora
+          </button>
+        </div>
+      </div>,
+      document.body
+    )}
+    {compareRevs && (
+      <RevisionCompareModal revA={compareRevs.a} revB={compareRevs.b} onClose={() => setCompareRevs(null)} />
+    )}
+    {revisingQuote && !revisingSuccessData && createPortal(
+      <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4 overflow-y-auto" onClick={() => !revisingSaving && setRevisingQuote(null)}>
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div>
+              <h3 className="font-bold text-gray-900">Revisar cotação interna</h3>
+              <p className="text-xs text-gray-400">{revisingQuote.data?.numero_orcamento ? `EFF-${revisingQuote.data.numero_orcamento}` : revisingQuote.id}</p>
+            </div>
+            <button onClick={() => !revisingSaving && setRevisingQuote(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="p-6">
+            <InlineEditor
+              quote={revisingQuote}
+              onApply={handleApplyRevisao}
+              onCancel={() => setRevisingQuote(null)}
+              saving={revisingSaving}
+              error={revisingError}
+            />
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+    <div className="space-y-4">
+
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700 text-sm">
+          <AlertTriangle size={16} /> {actionError}
+        </div>
+      )}
+      {/* ── Toolbar ── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2 mr-auto">
+          <LayoutList size={20} className="text-weg-blue" /> Cotações
+          <span className="text-sm font-normal text-gray-400">({filtered.length}/{quotes.length})</span>
+        </h3>
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar CNPJ, nome, empresa ou cotação…"
+            className="pl-8 pr-8 py-2 text-sm border border-gray-200 rounded-xl w-72 focus:outline-none focus:border-weg-blue bg-white" />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <button onClick={fetchQuotes} className="p-2 rounded-xl text-gray-400 hover:text-weg-blue hover:bg-gray-100 transition-colors" title="Atualizar">
+          <RefreshCw size={15} />
+        </button>
+      </div>
+
+      {/* ── Filtros por status (pills) ── */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {STATUS_PILLS.map(p => (
+          <button key={p.value} onClick={() => setFilter(p.value)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
+              filter === p.value
+                ? 'bg-weg-blue text-white border-weg-blue'
+                : 'bg-white text-gray-500 border-gray-200 hover:border-weg-blue/50 hover:text-weg-blue'
+            }`}>
+            {p.label}
+            {p.count > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                filter === p.value ? 'bg-white/30 text-white' : 'bg-gray-100 text-gray-500'
+              } ${p.value === 'aguardando_desconto' && filter !== p.value ? '!bg-yellow-100 !text-yellow-700' : ''}`}>
+                {p.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Banner desconto pendente */}
+      {pendingDiscount.length > 0 && filter !== 'aguardando_desconto' && (
+        <div onClick={() => setFilter('aguardando_desconto')}
+          className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex items-center gap-2 text-sm text-yellow-800 cursor-pointer hover:bg-yellow-100">
+          <BadgePercent size={16} />
+          <span><strong>{pendingDiscount.length}</strong> solicitaç{pendingDiscount.length > 1 ? 'ões' : 'ão'} de desconto aguardando resposta</span>
+          <span className="ml-auto text-yellow-600 underline text-xs">Ver →</span>
+        </div>
+      )}
+
+      {/* ── Toggle Cards / Lista / Funil ── */}
+      <div className="flex justify-end">
+        <div className="flex gap-0.5 bg-gray-100 p-1 rounded-xl">
+          <button onClick={() => setViewMode('cards')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'cards' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <LayoutGrid size={13} /> Cards
+          </button>
+          <button onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'table' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <List size={13} /> Lista
+          </button>
+          <button onClick={() => setViewMode('clientes')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'clientes' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <Building2 size={13} /> Por cliente
+          </button>
+          <button onClick={() => setViewMode('funil')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${viewMode === 'funil' ? 'bg-white text-weg-blue shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <LayoutDashboard size={13} /> Funil
+          </button>
+        </div>
+      </div>
+
+      {/* ── Unificar / comparar ── */}
+      {viewMode !== 'funil' && filtered.length > 0 && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 mb-3 rounded-xl border border-gray-100 bg-white shadow-sm flex-wrap">
+          {unifyMode ? (
+            <>
+              <span className="text-sm text-gray-600">
+                <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — 2 ou mais pra unificar (mesmo CNPJ), 2 ou 3 pra comparar
+                {bloqueiaUnificar && (
+                  <span className="block text-xs text-amber-600 font-semibold mt-0.5">
+                    {unifyCheck.motivo === 'cnpj_diferente'
+                      ? 'CNPJs diferentes: só dá pra unificar cotações do mesmo CNPJ (comparar continua liberado).'
+                      : `Sem CNPJ do cliente: ${unifyCheck.refs.join(', ')} — só dá pra unificar cotações do mesmo CNPJ (comparar continua liberado).`}
+                  </span>
+                )}
+              </span>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => setShowCompareModal(true)}
+                  disabled={unifySelected.size < 2 || unifySelected.size > 3}
+                  title={unifySelected.size > 3 ? 'Comparar funciona com 2 ou 3 cotações' : undefined}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue border border-weg-blue/30 bg-white hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <GitCompare size={13} /> Comparar lado a lado
+                </button>
+                <button
+                  onClick={() => setShowUnifyModal(true)}
+                  disabled={unifySelected.size < 2 || bloqueiaUnificar}
+                  title={bloqueiaUnificar ? 'Só cotações do mesmo CNPJ podem ser unificadas' : undefined}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-weg-blue hover:bg-weg-blue/90 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Layers size={13} /> Unificar selecionadas
+                </button>
+                <button onClick={exitUnifyMode} className="text-xs font-semibold text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg">
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              onClick={() => setUnifyMode(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg"
+            >
+              <Layers size={13} /> Unificar ou comparar cotações
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Cotações ── */}
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-16 text-center">
+          <FileText size={40} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">Nenhuma cotação encontrada.</p>
+          {search && <button onClick={() => setSearch('')} className="mt-2 text-xs text-weg-blue underline">Limpar busca</button>}
+        </div>
+      ) : viewMode === 'funil' ? (
+        /* ── FUNIL (KANBAN) VIEW — drag & drop ── */
+        <div className="-mx-1 overflow-x-auto pb-4 pt-1 select-none">
+          <div className="flex gap-3 px-1 min-w-max items-start">
+            {FUNIL_COLUMNS.map(col => {
+              const colQuotes  = funilQuotes.filter(q => col.keys.includes(q.status))
+              const colTotal   = colQuotes.reduce((s, q) => s + (q.total_final || 0), 0)
+              const isOver     = dragOverCol === col.key
+              const isDragging = draggingId !== null
+
+              const handleDragOver = e => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                if (dragOverCol !== col.key) setDragOverCol(col.key)
+              }
+              const handleDrop = async e => {
+                e.preventDefault()
+                const id = e.dataTransfer.getData('quoteId')
+                setDragOverCol(null)
+                setDraggingId(null)
+                if (!id) return
+                const q = quotes.find(x => x.id === id)
+                if (!q || col.keys.includes(q.status)) return
+                if (col.key === 'implantado') {
+                  setDragConfirm({ quoteId: id, targetStatus: 'implantado', field: 'ov_numero', label: 'OV', placeholder: 'Ex: OV-2026-001', question: 'Mover para Pedido Implantando' })
+                  setDragInputValue('')
+                  return
+                }
+                if (col.key === 'faturado') {
+                  setDragConfirm({ quoteId: id, targetStatus: 'faturado', field: 'nf_numero', label: 'NF', placeholder: 'Ex: NF-2026-001', question: 'Mover para Pedido Faturado' })
+                  setDragInputValue('')
+                  return
+                }
+                await updateQuote(id, { status: col.key })
+              }
+
+              return (
+                <div key={col.key}
+                  className="w-[220px] shrink-0 flex flex-col"
+                  onDragOver={handleDragOver}
+                  onDragEnter={e => { e.preventDefault(); setDragOverCol(col.key) }}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverCol(null) }}
+                  onDrop={handleDrop}
+                >
+                  {/* Column header */}
+                  <div className="mb-2 px-1">
+                    <div className="h-1 rounded-full mb-2 transition-all" style={{ backgroundColor: col.color, opacity: isOver ? 1 : 0.6 }} />
+                    <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide truncate leading-tight">{col.label}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {colQuotes.length} negócio{colQuotes.length !== 1 ? 's' : ''} · {fmt(colTotal)}
+                    </p>
+                  </div>
+
+                  {/* Drop zone */}
+                  <div className={`flex flex-col gap-2 min-h-[80px] rounded-xl transition-all p-1.5 -m-1.5 ${
+                    isOver && isDragging ? 'bg-blue-50/60 ring-2 ring-weg-blue/30 ring-dashed' : ''
+                  }`}>
+                    {/* Drop hint */}
+                    {isOver && isDragging && (
+                      <div className="border-2 border-dashed border-weg-blue/40 rounded-xl py-3 text-center animate-pulse">
+                        <p className="text-[11px] text-weg-blue font-semibold">Soltar aqui → {col.label}</p>
+                      </div>
+                    )}
+
+                    {/* Cards */}
+                    <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto pr-0.5">
+                      {colQuotes.map(q => {
+                        const kd      = q.data || {}
+                        const rev     = kd.revisao || 0
+                        const isDraggingThis = draggingId === q.id
+                        return (
+                          <div key={q.id}
+                            draggable
+                            onDragStart={e => {
+                              e.dataTransfer.setData('quoteId', q.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              setDraggingId(q.id)
+                            }}
+                            onDragEnd={() => { setDraggingId(null); setDragOverCol(null) }}
+                            onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}
+                            className={`bg-white rounded-xl border shadow-sm p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all group ${
+                              isDraggingThis
+                                ? 'opacity-40 border-weg-blue scale-95'
+                                : 'border-gray-100 hover:border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1 mb-1.5">
+                              <span className="font-mono font-bold text-[11px] text-weg-blue leading-tight">
+                                {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                              </span>
+                              {rev > 0 && (
+                                <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full shrink-0 leading-tight">Rev.{rev}</span>
+                              )}
+                            </div>
+                            <p className="font-semibold text-gray-800 text-[12px] leading-snug line-clamp-2">
+                              {q.profiles?.nome || kd.clienteNome || '—'}
+                            </p>
+                            {q.profiles?.empresa && (
+                              <p className="text-[10px] text-gray-400 mt-0.5 truncate">{q.profiles.empresa}</p>
+                            )}
+                            <div className="mt-2 pt-2 border-t border-gray-50 flex items-center justify-between">
+                              <span className="text-[10px] text-gray-400">{fmtDt(q.created_at).split(',')[0]}</span>
+                              <span className="font-bold text-gray-900 text-[12px]">{fmt(q.total_final)}</span>
+                            </div>
+                            <div className="mt-1.5 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={e => { e.stopPropagation(); setPrintingQuote(q) }}
+                                title="Baixar proposta"
+                                className="p-1 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
+                                <Download size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+
+                      {/* Empty column placeholder */}
+                      {colQuotes.length === 0 && !(isOver && isDragging) && (
+                        <div className="border-2 border-dashed border-gray-100 rounded-xl py-6 text-center">
+                          <p className="text-[11px] text-gray-300">
+                            {isDragging ? 'Soltar aqui' : 'Nenhuma cotação'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : viewMode === 'table' ? (
+        /* ── TABLE VIEW ── */
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100 bg-blue-50/40">
+                  {unifyMode && <th className="px-3 py-3 w-10" />}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cotação</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente / Empresa</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">kWp</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
+                  <th className="px-3 py-3 w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(q => {
+                  const kd = q.data || {}
+                  const dotColor = ADMIN_DOT_COLOR[q.status] || '#d1d5db'
+                  return (
+                    <tr key={q.id}
+                      className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors cursor-pointer"
+                      onClick={() => unifyMode ? toggleUnifySelected(q.id) : setExpandedId(expandedId === q.id ? null : q.id)}>
+                      {unifyMode && (
+                        <td className="px-3 py-3">
+                          <span className="text-weg-blue">
+                            {unifySelected.has(q.id) ? <CheckSquare size={18} /> : <Square size={18} className="text-gray-300" />}
+                          </span>
+                        </td>
+                      )}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-sm text-gray-600">{fmtDt(q.created_at).split(', ')[0]}</span>
+                        <span className="block text-xs text-gray-400">{fmtDt(q.created_at).split(', ')[1]}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-1.5 h-6 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                          <div>
+                            <span className="font-mono font-bold text-weg-blue text-sm">
+                              {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
+                            </span>
+                            {(kd.revisao || 0) > 0 && (
+                              <span className="ml-1.5 text-[10px] font-bold text-amber-600">Rev. {kd.revisao}</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-gray-900 text-sm truncate max-w-[200px]">
+                          {q.profiles?.nome || kd.clienteNome || '—'}
+                        </p>
+                        {q.profiles?.empresa && (
+                          <p className="text-xs text-gray-400 truncate max-w-[200px]">{q.profiles.empresa}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className="text-sm font-semibold text-gray-700">{q.kwp} kWp</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[q.status]}`}>
+                          {STATUS_LABEL[q.status] || q.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-gray-800 text-sm whitespace-nowrap">
+                        {fmt(q.total_final)}
+                      </td>
+                      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setPrintingQuote(q)} title="Baixar proposta"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-weg-blue hover:bg-blue-50">
+                          <Download size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : viewMode === 'cards' ? (
+        /* ── CARDS VIEW ── */
+        <div className="space-y-3">
+          {filtered.map(renderQuoteCard)}
+        </div>
+      ) : (
+        /* ── POR CLIENTE ── */
+        <div className="space-y-3">
+          {clientGroups.map(g => {
+            const aberto = search.trim() ? true : openGroups.has(g.key)
+            const selecionadasDoGrupo = g.quotes.filter(q => unifySelected.has(q.id)).length
+            return (
+              <div key={g.key} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={() => toggleGroup(g.key)}
+                    className="flex items-center gap-3 flex-1 min-w-[220px] text-left"
+                    aria-expanded={aberto}
+                  >
+                    <span className="w-9 h-9 rounded-full bg-weg-blue/10 text-weg-blue flex items-center justify-center shrink-0">
+                      <Building2 size={16} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-bold text-gray-900 truncate">
+                        {g.nome}{g.empresa && <span className="font-normal text-gray-500"> · {g.empresa}</span>}
+                      </span>
+                      <span className="block text-xs text-gray-500">
+                        {g.cnpj ? `CNPJ ${g.cnpj}` : (g.semCadastro ? 'Cliente sem cadastro' : 'Sem CNPJ')}
+                        {' · '}{g.quotes.length} cotaç{g.quotes.length === 1 ? 'ão' : 'ões'}
+                        {' · '}{Number(g.kwp).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kWp
+                      </span>
+                    </span>
+                  </button>
+                  <span className="font-bold text-gray-800 text-sm whitespace-nowrap">{fmt(g.total)}</span>
+                  {unifyMode && (
+                    <button
+                      onClick={() => selectGroup(g)}
+                      className="text-xs font-semibold text-weg-blue border border-weg-blue/30 hover:bg-weg-blue/10 px-2.5 py-1 rounded-lg whitespace-nowrap"
+                    >
+                      {selecionadasDoGrupo === g.quotes.length ? 'Desmarcar todas' : 'Selecionar todas'}
+                    </button>
+                  )}
+                  <button onClick={() => toggleGroup(g.key)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100" aria-label={aberto ? 'Recolher' : 'Expandir'}>
+                    <ChevronDown size={16} className={`transition-transform ${aberto ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+                {aberto && (
+                  <div className="border-t border-gray-100 bg-gray-50/50 p-3 space-y-3">
+                    {g.quotes.map(renderQuoteCard)}
                   </div>
                 )}
               </div>

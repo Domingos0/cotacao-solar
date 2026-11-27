@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sumMaterialsBySap, buildUnifiedProposal, checkUnifyCnpj } from './unifyQuotes'
+import { sumMaterialsBySap, buildUnifiedProposal, checkUnifyCnpj, groupQuotesByClient } from './unifyQuotes'
 
 describe('sumMaterialsBySap', () => {
   it('soma a quantidade e o total do mesmo SAP em kits diferentes', () => {
@@ -78,5 +78,26 @@ describe('checkUnifyCnpj', () => {
   })
   it('cotação sem CNPJ não unifica e diz qual é', () => {
     expect(checkUnifyCnpj([q('1', '12.345.678/0001-90'), q('2', '')])).toEqual({ ok: false, motivo: 'sem_cnpj', refs: ['EFF-2'] })
+  })
+})
+
+describe('groupQuotesByClient', () => {
+  const q = (id, cnpj, created_at, extra = {}) => ({ id, user_id: `u${id}`, total_final: 100, kwp: 5, created_at, profiles: { nome: `Cliente ${cnpj}`, cnpj }, data: {}, ...extra })
+  it('agrupa pelo CNPJ (mesmo CNPJ em usuários diferentes cai junto) e soma total/kWp', () => {
+    const g = groupQuotesByClient([
+      q('1', '12.345.678/0001-90', '2026-11-01'),
+      q('2', '12345678000190', '2026-11-20'),
+      q('3', '98.765.432/0001-10', '2026-11-10'),
+    ])
+    expect(g).toHaveLength(2)
+    expect(g[0].quotes.map(x => x.id)).toEqual(['2', '1'])
+    expect(g[0].total).toBe(200)
+    expect(g[0].kwp).toBe(10)
+  })
+  it('cotação interna pra cliente sem cadastro agrupa pelo nome digitado', () => {
+    const interna = (id) => q(id, '11.111.111/0001-11', '2026-11-05', { data: { clienteCadastrado: false, clienteNome: 'Maria' } })
+    const g = groupQuotesByClient([interna('a'), interna('b')])
+    expect(g).toHaveLength(1)
+    expect(g[0]).toMatchObject({ nome: 'Maria', semCadastro: true, cnpj: '' })
   })
 })
