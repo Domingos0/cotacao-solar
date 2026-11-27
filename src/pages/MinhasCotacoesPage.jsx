@@ -17,6 +17,8 @@ import { fmtLocalDate } from '../lib/dates'
 import PaymentOptions from '../components/PaymentOptions'
 import RevisionCompareModal from '../components/RevisionCompareModal'
 import QuotesCompareModal from '../components/QuotesCompareModal'
+import ListaNovaModal, { ListaNovaBadge } from '../components/ListaNovaPreview'
+import { loadListaInfo, listaDesatualizada } from '../lib/listaPrecos'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -2347,6 +2349,14 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
   const [adminExpandedId, setAdminExpandedId]   = useState(null)
   const [compareRevs, setCompareRevs]           = useState(null) // { a, b } — item 34
   // Unificar cotações por cliente (item 35)
+  // Selo "Lista nova": cotação feita numa lista de preços anterior à atual
+  const [listaInfo, setListaInfo] = useState(null)
+  const [listaModalQuote, setListaModalQuote] = useState(null)
+  const listaKey = quotes.map(q => `${q.id}:${q.current_version_id}:${q.status}`).join(',')
+  useEffect(() => {
+    if (!quotes.length) return
+    loadListaInfo(quotes).then(setListaInfo).catch(e => console.warn('[listaInfo]', e?.message))
+  }, [listaKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [unifyMode, setUnifyMode]         = useState(false)
   const [unifySelected, setUnifySelected] = useState(() => new Set())
   const [showUnifyModal, setShowUnifyModal] = useState(false)
@@ -2517,6 +2527,14 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
     )}
 
     {/* Comparar 2 ou 3 cotações lado a lado (item 37) */}
+    {listaModalQuote && listaInfo && (
+      <ListaNovaModal
+        quote={listaModalQuote}
+        info={listaInfo}
+        isAdmin={false}
+        onClose={() => setListaModalQuote(null)}
+      />
+    )}
     {showCompareModal && (
       <QuotesCompareModal
         quotes={activeQuotes.filter(q => unifySelected.has(q.id))}
@@ -2923,6 +2941,15 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
                           >
                             {kitData.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
                           </button>
+                          {listaDesatualizada(q, listaInfo) && (
+                            <span className="block mt-0.5">
+                              <ListaNovaBadge
+                                label={listaInfo.porQuote[q.id].label}
+                                labelAtual={listaInfo.currentLabel}
+                                onClick={() => setListaModalQuote(q)}
+                              />
+                            </span>
+                          )}
                           {qPanelEsgotado && (
                             <span className="flex items-center gap-1 mt-0.5 text-[10px] font-semibold text-red-600">
                               <AlertTriangle size={10} /> Módulo esgotado

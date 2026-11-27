@@ -21,6 +21,8 @@ import { parseStockPdfLines, produtosParaRevisar, diasAtePrevisao, textoAlertaPr
 import kitCompositions from '../data/kitCompositions.json'
 import { InlineEditor, UnifiedProposalModal } from './MinhasCotacoesPage'
 import QuotesCompareModal from '../components/QuotesCompareModal'
+import ListaNovaModal, { ListaNovaBadge } from '../components/ListaNovaPreview'
+import { loadListaInfo, listaDesatualizada } from '../lib/listaPrecos'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado, notifyKitStatusChanged,
@@ -2398,6 +2400,45 @@ function QuoteManagement({ onLoadQuote }) {
     return () => clearInterval(id)
   }, [])
 
+  // Lista de preços de cada cotação × lista publicada agora (selo "Lista nova").
+  // Só recarrega quando muda a versão de alguma cotação (não a cada polling).
+  const [listaInfo, setListaInfo] = useState(null)
+  const [listaModalQuote, setListaModalQuote] = useState(null)
+  const versoesKey = quotes.map(q => `${q.id}:${q.current_version_id}:${q.status}`).join(',')
+  useEffect(() => {
+    if (!quotes.length) return
+    loadListaInfo(quotes).then(setListaInfo).catch(e => console.warn('[listaInfo]', e?.message))
+  }, [versoesKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Atualiza pra lista atual E registra como nova revisão no histórico da
+  // cotação (data.revisoes), pro cliente poder comparar antes × depois.
+  const handleRequoteComRevisao = async (q) => {
+    const { data: res, error } = await supabase.rpc('requote_quote', { p_quote_id: q.id, p_reprice: true })
+    if (error) { flashActionError(`Erro ao atualizar para a lista atual: ${error.message || 'tente novamente.'}`); return }
+    const row = Array.isArray(res) ? res[0] : res
+    const { data: novosItens } = await supabase.from('quote_items')
+      .select('label, produto, codigo_sap, qty, unit, preco_unit, total').eq('quote_id', q.id).order('ordem')
+    const kd = q.data || {}
+    const prev = kd.revisoes || []
+    const rev0 = !prev.some(r => r.revisao === 0) && (kd.revisao || 0) === 0 ? [{
+      revisao: 0, data: q.created_at, total_final: q.total_final || 0, frete: q.frete_nome || '—',
+      items: (q.quote_items || []).map(({ label, produto, codigo_sap, qty, unit, preco_unit, total }) => ({ label, produto, codigo_sap, qty, unit, preco_unit, total })),
+    }] : []
+    const novaRevisao = (kd.revisao || 0) + 1
+    const novoData = {
+      ...kd,
+      revisao: novaRevisao,
+      revisoes: [...rev0, ...prev, {
+        revisao: novaRevisao, data: new Date().toISOString(), total_final: row?.total_final ?? q.total_final,
+        frete: q.frete_nome || '—', items: novosItens || [],
+        motivo: `Atualização para a ${listaInfo?.currentLabel || 'lista atual'}`,
+      }],
+    }
+    const { error: e2 } = await supabase.from('quotes').update({ data: novoData }).eq('id', q.id)
+    if (e2) flashActionError(`Preço atualizado, mas não registrou a revisão: ${e2.message}`)
+    await fetchQuotes(true)
+  }
+
   const updateQuote = async (id, patch) => {
     const { error } = await supabase.from('quotes').update(patch).eq('id', id)
     if (!error) setQuotes(qs => qs.map(q => q.id === id ? { ...q, ...patch } : q))
@@ -2784,6 +2825,13 @@ function QuoteManagement({ onLoadQuote }) {
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[q.status]}`}>
                       {STATUS_LABEL[q.status] || q.status}
                     </span>
+                    {listaDesatualizada(q, listaInfo) && (
+                      <ListaNovaBadge
+                        label={listaInfo.porQuote[q.id].label}
+                        labelAtual={listaInfo.currentLabel}
+                        onClick={() => setListaModalQuote(q)}
+                      />
+                    )}
                     {q.desconto_pct > 0 && (
                       <span className="text-xs font-semibold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
                         -{q.desconto_pct}% desc.
@@ -3345,6 +3393,15 @@ function QuoteManagement({ onLoadQuote }) {
         condicoes={condicoes}
         tableInfo={tableInfo}
         onClose={() => setShowUnifyModal(false)}
+      />
+    )}
+    {listaModalQuote && listaInfo && (
+      <ListaNovaModal
+        quote={listaModalQuote}
+        info={listaInfo}
+        isAdmin
+        onConfirm={() => handleRequoteComRevisao(listaModalQuote)}
+        onClose={() => setListaModalQuote(null)}
       />
     )}
     {showCompareModal && (
