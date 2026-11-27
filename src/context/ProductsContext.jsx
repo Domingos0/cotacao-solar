@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { products as defaultProducts, assignKitRole, fixedProducts } from '../data/products'
 import { supabase } from '../lib/supabase'
+import { createSerialQueue, replaceWithRetry } from '../lib/catalogQueue'
 
 const ProductsContext = createContext()
 
@@ -219,23 +220,18 @@ export function ProductsProvider({ children }) {
   // número) corriam juntas — a 2ª gravava no rascunho que a 1ª acabou de
   // PUBLICAR e o banco recusava: "cannot edit a published catalog version
   // directly".
-  const saveQueueRef = useRef(Promise.resolve())
-  const runSerial = useCallback((fn) => {
-    const p = saveQueueRef.current.then(fn, fn)
-    saveQueueRef.current = p.catch(() => {})
-    return p
-  }, [])
+  // (lógica em lib/catalogQueue.js, com teste que reproduz a corrida)
+  const runSerialRef = useRef(null)
+  if (!runSerialRef.current) runSerialRef.current = createSerialQueue()
+  const runSerial = useCallback((fn) => runSerialRef.current(fn), [])
 
   const replaceProductsRemote = useCallback(async (newProducts) => {
-    for (let tentativa = 0; tentativa < 2; tentativa++) {
-      const draftId = await ensureDraftVersion()
-      if (!draftId) throw new DraftUnavailableError('rascunho indisponível')
-      const { error } = await supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts })
-      if (!error) return
-      // Rascunho guardado já foi publicado (outra aba/admin publicou): pega um novo e tenta 1x de novo
-      if (tentativa === 0 && /published/i.test(error.message || '')) { draftVersionIdRef.current = null; continue }
-      throw error
-    }
+    const r = await replaceWithRetry({
+      getDraftId: ensureDraftVersion,
+      resetDraft: () => { draftVersionIdRef.current = null },
+      replace: draftId => supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts }),
+    })
+    if (r.semRascunho) throw new DraftUnavailableError('rascunho indisponível')
   }, [ensureDraftVersion])
 
   const saveProducts = useCallback((newProducts) => {
