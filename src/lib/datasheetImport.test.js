@@ -28,7 +28,7 @@ const MODELOS = [
   'SIW300H M075 W00', 'SIW400G K015 W00', 'SIW400G K025 W00', 'SIW400G K037 W00', 'SIW400G T012 W1',
   'SIW400G T020 W1', 'SIW400G T025 W1', 'SIW400G T050 W00', 'SIW400G T075 W01', 'SIW400G T100 W0',
   'SIW400H T015 W10', 'SIW400H T030 W10', 'SIW420G K025 W00', 'SIW420G K075 W00', 'SIW500G T075 W00',
-  'SIW500G T100 W0', 'SIW500H ST012 M2', 'SIW500H ST015 M2', 'SIW500H ST030 M3', 'SIW610 T018 W0',
+  'SIW500G T100 W0', 'SIW500H ST012 M2', 'SIW500H ST015 M2', 'SIW500H T020 W00', 'SIW500H ST030 M3', 'SIW610 T018 W0',
   'SIW610 T075 W0', 'CFW500 15',
 ]
 const PRODUTOS = MODELOS.map((nome, i) => ({ id: `p${i}`, nome, potencia: parseProductModel(nome).kw || 0 }))
@@ -74,6 +74,15 @@ describe('planDatasheetImport com o zip real', () => {
     // já coberto pelo PDF padrão da linha → sem override
     expect(modelo('SIW400G T020 W1')).toBeUndefined()
     expect(modelo('SIW610 T075 W0')).toBeUndefined()
+    // folha do ST020 não serve pro T020 (modelos diferentes) → fica com o PDF da linha
+    expect(modelo('SIW500H T020 W00')).toBeUndefined()
+  })
+
+  it('funciona com File de verdade (nome num getter, não propriedade própria)', () => {
+    class FakeFile { constructor(n) { this._n = n } get name() { return this._n } }
+    const p = planDatasheetImport(ARQUIVOS.map(f => new FakeFile(f.name)), PRODUTOS, linhaDe)
+    expect(p.linhas.find(x => x.linha === 'SIW610').file.name).toBe('DATASHEET_SIW_610-_T075_W0_web.pdf')
+    expect(p.modelos.length).toBe(plano.modelos.length)
   })
 
   it('baterias/acessórios ficam de fora com o motivo', () => {

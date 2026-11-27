@@ -36,7 +36,7 @@ export function parseDatasheetName(fileName) {
   const codeRe = /(?:^|[^A-Z0-9])(ST|SK|[MKTS])(\d{3})(?=[^0-9]|$)/g
   const restoEsp = resto.replace(/_/g, ' ')
   let m
-  while ((m = codeRe.exec(restoEsp))) codes.push({ p: famPrefix(m[1]), n: Number(m[2]) })
+  while ((m = codeRe.exec(restoEsp))) codes.push({ p: famPrefix(m[1]), raw: m[1], n: Number(m[2]) })
 
   // 2+ códigos da mesma família viram faixa (M030_M050_M060 → M 30..60)
   if (!range && codes.length >= 2 && codes.every(c => c.p === codes[0].p)) {
@@ -62,7 +62,7 @@ export function parseProductModel(nome) {
   if (!m) return { serie, code: null, kw: null }
   const p = famPrefix(m[1])
   const n = Number(m[2])
-  return { serie, code: { p, n }, kw: p === 'M' ? n / 10 : n }
+  return { serie, code: { p, raw: m[1], n }, kw: p === 'M' ? n / 10 : n }
 }
 
 // 3 = arquivo só desse modelo, 2 = modelo citado entre vários,
@@ -72,7 +72,9 @@ export function coverage(file, prod) {
   const semModelo = !file.codes.length && !file.range && !file.kw
   if (semModelo) return 1
   if (!prod.code) return 0
-  const citado = file.codes.some(c => c.p === prod.code.p && c.n === prod.code.n)
+  // Código exato: prefixo IDÊNTICO (ST020 ≠ T020 — são modelos diferentes);
+  // a família (ST ~ T) só vale pra faixa logo abaixo.
+  const citado = file.codes.some(c => c.raw === prod.code.raw && c.n === prod.code.n)
   if (citado) return file.codes.length === 1 ? 3 : 2
   if (file.range && file.range.p === prod.code.p && prod.code.n >= file.range.min && prod.code.n <= file.range.max) return 1
   // "7 a 10K" cobre 10,5 kW (M105): meio kW de folga no teto
@@ -85,7 +87,9 @@ const prefereArquivo = (a, b) =>
 
 // files: [{ name }], products: [{ id, nome }], getLinha(product) → 'SIW200G' | null
 export function planDatasheetImport(files, products, getLinha) {
-  const parsedFiles = files.map(f => ({ ...f, ...parseDatasheetName(f.name) }))
+  // File do navegador guarda `name` num getter do protótipo — `{...f}` perde
+  // o nome. Copia explícito e guarda o File original em `original`.
+  const parsedFiles = files.map(f => ({ name: f.name, original: f, ...parseDatasheetName(f.name) }))
   const inversores = products
     .map(p => ({ product: p, linha: getLinha(p), ...parseProductModel(p.nome) }))
     .filter(p => p.serie)
