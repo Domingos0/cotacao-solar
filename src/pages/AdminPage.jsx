@@ -23,6 +23,7 @@ import { InlineEditor, UnifiedProposalModal } from './MinhasCotacoesPage'
 import QuotesCompareModal from '../components/QuotesCompareModal'
 import ListaNovaModal, { ListaNovaBadge } from '../components/ListaNovaPreview'
 import { loadListaInfo, listaDesatualizada } from '../lib/listaPrecos'
+import { isUnificada, unificadaAtiva, numerosOrigem, textoFechamento, textoCancelada } from '../lib/unificada'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado, notifyKitStatusChanged,
@@ -2825,6 +2826,14 @@ function QuoteManagement({ onLoadQuote }) {
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLOR[q.status]}`}>
                       {STATUS_LABEL[q.status] || q.status}
                     </span>
+                    {isUnificada(q) && (
+                      <span className="text-xs font-bold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">Unificada</span>
+                    )}
+                    {unificadaAtiva(q, quotes) && (
+                      <span className="text-xs font-semibold text-violet-600 bg-white border border-violet-200 px-2 py-0.5 rounded-full">
+                        Parte da {unificadaAtiva(q, quotes).numero}
+                      </span>
+                    )}
                     {listaDesatualizada(q, listaInfo) && (
                       <ListaNovaBadge
                         label={listaInfo.porQuote[q.id].label}
@@ -2900,6 +2909,16 @@ function QuoteManagement({ onLoadQuote }) {
                 {/* ── Painel expandido ── */}
                 {isExpanded && (
                   <div className="border-t border-gray-100">
+                    {(isUnificada(q) || textoFechamento(q) || textoCancelada(q) || unificadaAtiva(q, quotes)) && (
+                      <div className="px-5 py-2.5 bg-violet-50/60 border-b border-violet-100 text-xs text-violet-900 space-y-0.5">
+                        {isUnificada(q) && <p><strong>Proposta unificada</strong> — reúne {numerosOrigem(q).join(' + ')}. Fechar esta fecha todas juntas.</p>}
+                        {!isUnificada(q) && unificadaAtiva(q, quotes) && (
+                          <p>Faz parte da proposta unificada <strong>{unificadaAtiva(q, quotes).numero}</strong>. Fechar esta sozinha cancela a unificada.</p>
+                        )}
+                        {textoFechamento(q) && <p className="font-semibold">✔ {textoFechamento(q)}</p>}
+                        {textoCancelada(q) && <p className="text-red-700 font-semibold">{textoCancelada(q)}</p>}
+                      </div>
+                    )}
 
                     {/* Itens do kit */}
                     {(q.quote_items || []).length > 0 && (
@@ -2929,7 +2948,7 @@ function QuoteManagement({ onLoadQuote }) {
                           Associar a cliente cadastrado
                         </button>
                       )}
-                      {kd.criadoPorAdmin && (
+                      {kd.criadoPorAdmin && !isUnificada(q) && (
                         <button
                           onClick={e => { e.stopPropagation(); setRevisingError(''); setRevisingQuote(q) }}
                           className="text-amber-700 hover:underline font-semibold flex items-center gap-1"
@@ -2947,8 +2966,8 @@ function QuoteManagement({ onLoadQuote }) {
                       >
                         <MessageCircle size={11} /> WhatsApp
                       </button>
-                      {/* Duplicar cotação (item 30) */}
-                      {onLoadQuote && (
+                      {/* Duplicar cotação (item 30) — não vale pra unificada */}
+                      {onLoadQuote && !isUnificada(q) && (
                         <button
                           onClick={e => {
                             e.stopPropagation()
@@ -3030,14 +3049,14 @@ function QuoteManagement({ onLoadQuote }) {
                         </span>
                         {new Date(q.valid_until) < new Date() && (
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <button
+                            {!isUnificada(q) && <button
                               onClick={e => { e.stopPropagation(); handleRequote(q.id, true) }}
                               disabled={requotingId === q.id}
                               title="Reprecificar pela lista vigente e renovar validade"
                               className="text-xs font-semibold px-3 py-1 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 disabled:opacity-50"
                             >
                               {requotingId === q.id ? '...' : 'Atualizar p/ preço atual'}
-                            </button>
+                            </button>}
                             <button
                               onClick={e => { e.stopPropagation(); handleRequote(q.id, false) }}
                               disabled={requotingId === q.id}
@@ -3097,7 +3116,7 @@ function QuoteManagement({ onLoadQuote }) {
                     )}
 
                     {/* Ajustar o desconto de cotação aberta (inclusive já aprovada) */}
-                    {!['aguardando_desconto', 'fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'].includes(q.status) && (
+                    {!isUnificada(q) && !['aguardando_desconto', 'fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'].includes(q.status) && (
                       <div className="px-5 py-3 border-t border-gray-100">
                         {approvingId === q.id ? renderApprovePanel(q) : (
                           <button
@@ -3393,6 +3412,7 @@ function QuoteManagement({ onLoadQuote }) {
         condicoes={condicoes}
         tableInfo={tableInfo}
         onClose={() => setShowUnifyModal(false)}
+        onSaved={() => { fetchQuotes(true); exitUnifyMode() }}
       />
     )}
     {listaModalQuote && listaInfo && (

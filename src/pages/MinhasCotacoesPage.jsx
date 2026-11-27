@@ -19,6 +19,7 @@ import RevisionCompareModal from '../components/RevisionCompareModal'
 import QuotesCompareModal from '../components/QuotesCompareModal'
 import ListaNovaModal, { ListaNovaBadge } from '../components/ListaNovaPreview'
 import { loadListaInfo, listaDesatualizada } from '../lib/listaPrecos'
+import { isUnificada, unificadaAtiva, numerosOrigem, textoFechamento, textoCancelada } from '../lib/unificada'
 import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage } from '../data/productImages'
 import { ESTADOS } from '../data/cidadesPorEstado'
@@ -1088,7 +1089,9 @@ export function InlineEditor({ quote, onApply, onCancel, initialPanel, saving = 
 }
 
 // ─── Quote Detail Modal ────────────────────────────────────────────────────────
-function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefresh, onGoToFechados }) {
+function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefresh, onGoToFechados, todasCotacoes = [] }) {
+  const isUnif = isUnificada(quote)
+  const parteDe = unificadaAtiva(quote, todasCotacoes)
   const items    = quote.quote_items || []
   const kitData  = quote.data || {}
   const revisoes = kitData.revisoes || []
@@ -1320,6 +1323,17 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                   ? 'O time de implementação será notificado. Após fechamento o kit não poderá ser editado.'
                   : 'A proposta será marcada como perdida. Esta ação não pode ser desfeita.'}
               </p>
+              {isFechar && isUnif && (
+                <p className="mt-2 text-sm font-semibold text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+                  Esta é a proposta unificada: {numerosOrigem(quote).join(' e ')} também serão fechadas juntas.
+                </p>
+              )}
+              {isFechar && !isUnif && parteDe && (
+                <p className="mt-2 text-sm font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Esta cotação faz parte da proposta unificada {parteDe.numero}. Fechar só esta cancela a {parteDe.numero}.
+                  Para fechar tudo junto, feche a {parteDe.numero}.
+                </p>
+              )}
             </div>
           </div>
           {!isFechar && (
@@ -1680,6 +1694,16 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             </div>
           )}
 
+          {/* Proposta unificada: o que ela reúne / de qual faz parte / como fechou */}
+          {(isUnif || parteDe || textoFechamento(quote) || textoCancelada(quote)) && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 space-y-1">
+              {isUnif && <p><strong>Proposta unificada</strong> — reúne {numerosOrigem(quote).join(' + ')}. Fechar esta fecha todas juntas. Para alterar algum kit, revise a cotação de origem e unifique de novo.</p>}
+              {!isUnif && parteDe && <p>Faz parte da proposta unificada <strong>{parteDe.numero}</strong>.</p>}
+              {textoFechamento(quote) && <p className="font-semibold">✔ {textoFechamento(quote)}</p>}
+              {textoCancelada(quote) && <p className="font-semibold text-red-700">{textoCancelada(quote)}</p>}
+            </div>
+          )}
+
           {/* Financial summary */}
           {(() => {
             const hasApprovedDiscount = !isAdmin && quote.status === 'aprovada' && (quote.desconto_pct || 0) > 0
@@ -1799,7 +1823,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             {/* Duplicar — mesmo kit (módulos/inversor/baterias/acessórios), pra outro
                 cliente ou outra potência. Abre o Monte seu Kit como cotação NOVA
                 (sem numero_orcamento/revisão/dados do cliente antigo). */}
-            {onLoadQuote && (
+            {onLoadQuote && !isUnif && (
               <button
                 onClick={() => {
                   onLoadQuote({
@@ -1845,16 +1869,16 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
                 "Modelos prontos" no Monte seu Kit, sanitizado (sem dado
                 pessoal deste cliente). Modelo de admin fica visível pra
                 todo mundo; de cliente, só pra ele mesmo. */}
-            <button
+            {!isUnif && <button
               onClick={() => { setShowSaveTemplate(true); setTemplateNome(''); setTemplateError(''); setTemplateSaved(false) }}
               title="Salva este kit como modelo reutilizável no Monte seu Kit"
               className="flex items-center gap-1.5 text-sm text-amber-700 border border-amber-300 hover:border-amber-400 bg-amber-50 px-4 py-2 rounded-xl font-semibold"
             >
               <Star size={15} /> Salvar como modelo
-            </button>
+            </button>}
 
             {/* Solicitar desconto — só para cliente, cotação ativa sem desconto já pendente/aprovado */}
-            {!isAdmin && !isClosed && !['aguardando_desconto', 'aprovada'].includes(quote.status) && (
+            {!isAdmin && !isUnif && !isClosed && !['aguardando_desconto', 'aprovada'].includes(quote.status) && (
               <button
                 onClick={() => { setShowDiscountModal(true); setDiscountSent(false); setDiscountMotivo('') }}
                 className="flex items-center gap-1.5 text-sm text-amber-600 border-2 border-amber-400 bg-amber-50 hover:bg-amber-100 px-4 py-2 rounded-xl font-semibold"
@@ -1866,13 +1890,13 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
             {/* Enquanto aguarda resposta do desconto, cliente não pode alterar/rejeitar/fechar o kit */}
             {!isClosed && (isAdmin || quote.status !== 'aguardando_desconto') && (
               <>
-                {/* Revisar */}
-                <button
+                {/* Revisar — unificada não se edita (revise as cotações de origem e unifique de novo) */}
+                {!isUnif && <button
                   onClick={() => setEditMode(true)}
                   className="flex items-center gap-1.5 text-sm text-weg-blue border border-weg-blue/30 bg-weg-blue/5 hover:bg-weg-blue/10 px-4 py-2 rounded-xl font-semibold"
                 >
                   <Edit3 size={15} /> Revisar / Alterar kit
-                </button>
+                </button>}
 
                 {/* Rejeitar */}
                 <button
@@ -2181,11 +2205,39 @@ function RevisionDetailModal({ quote, revision, onClose }) {
 // primeiro (nunca estende o prazo além do que já foi prometido em alguma delas).
 // Exportado: o Admin usa o mesmo modal (item: unificar/comparar no Admin).
 // Desconto do pacote só aparece pro admin — cliente não se dá desconto.
-export function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
+export function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose, onSaved }) {
   const { isAdmin, profile } = useAuth()
   const [desconto, setDesconto] = useState(0)
   const [output, setOutput] = useState(null) // null | 'print' | 'share'
   const unified = useMemo(() => buildUnifiedProposal(quotes, isAdmin ? desconto : 0), [quotes, desconto, isAdmin])
+  // Salvar como proposta unificada (cotação própria, número EFF novo)
+  const [confirmSalvar, setConfirmSalvar] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [salvoErro, setSalvoErro] = useState('')
+  const [salvoNumero, setSalvoNumero] = useState('')
+
+  const salvarUnificada = async () => {
+    setSalvando(true); setSalvoErro('')
+    const dono = quotes[0]?.profiles || (isAdmin ? {} : profile) || {}
+    const p = proposalFromUnified(quotes, unified, { ownerProfile: dono, tableInfo, condicoes })
+    const apresentacao = {
+      titulo: p.titulo, kitsUnificados: p.kitsUnificados, estrutura: p.estrutura,
+      equipamentos: p.equipamentos, stats: p.stats, referenciaCliente: p.referenciaCliente,
+    }
+    const { data, error } = await supabase.rpc('save_unified_quote', {
+      p_quote_ids: quotes.map(q => q.id),
+      p_desconto_pacote: isAdmin ? Number(desconto) || 0 : 0,
+      p_apresentacao: apresentacao,
+    })
+    setSalvando(false)
+    if (error) { setSalvoErro(error.message || 'Não foi possível salvar.'); return }
+    const row = Array.isArray(data) ? data[0] : data
+    setSalvoNumero(row?.numero || '')
+    setConfirmSalvar(false)
+  }
+  // Atualiza a lista só ao fechar (se atualizar antes, a seleção some e o
+  // modal ficaria vazio na frente do usuário)
+  const fechar = () => { if (salvoNumero) onSaved?.(); onClose() }
 
   let outputEl = null
   if (output) {
@@ -2211,7 +2263,7 @@ export function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) 
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="bg-weg-blue text-white px-6 py-4 rounded-t-2xl flex items-center justify-between sticky top-0">
           <h3 className="font-bold flex items-center gap-2"><Layers size={18} /> Unificar {quotes.length} cotações</h3>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/20"><X size={18} /></button>
+          <button onClick={fechar} className="p-1.5 rounded-full hover:bg-white/20"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-2 gap-3">
@@ -2284,8 +2336,38 @@ export function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) 
             >
               <MessageCircle size={16} /> Enviar por WhatsApp
             </button>
-            <button onClick={onClose} className="btn-outline px-5 py-3">Fechar</button>
+            <button onClick={fechar} className="btn-outline px-5 py-3">Fechar</button>
           </div>
+
+          {/* Salvar como proposta unificada */}
+          {salvoNumero ? (
+            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              <strong>Proposta unificada {salvoNumero} salva.</strong> Ela aparece na lista com o selo "Unificada", e as cotações
+              selecionadas ficam marcadas como parte dela. Ao fechar a {salvoNumero}, todas fecham juntas.
+            </div>
+          ) : confirmSalvar ? (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm space-y-2">
+              <p className="font-semibold text-violet-900">Deseja salvar esta proposta unificada?</p>
+              <p className="text-violet-800 text-xs">
+                Ela vira uma cotação própria, com número novo, reunindo {quotes.map(q => q.data?.numero_orcamento || q.id.slice(0, 8).toUpperCase()).join(' + ')}.
+                As cotações continuam na lista, marcadas como parte dela. Fechar a unificada fecha todas; fechar uma sozinha cancela a unificada.
+              </p>
+              {salvoErro && <p className="text-xs text-red-600 font-semibold">{salvoErro}</p>}
+              <div className="flex gap-2">
+                <button onClick={salvarUnificada} disabled={salvando} className="text-xs font-semibold text-white bg-violet-700 hover:bg-violet-800 px-4 py-2 rounded-lg disabled:opacity-50">
+                  {salvando ? 'Salvando…' : 'Sim, salvar proposta unificada'}
+                </button>
+                <button onClick={() => { setConfirmSalvar(false); setSalvoErro('') }} disabled={salvando} className="text-xs font-semibold text-gray-500 px-3 py-2 rounded-lg hover:bg-white">Agora não</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmSalvar(true)}
+              className="w-full flex items-center justify-center gap-2 border-2 border-violet-300 text-violet-700 hover:bg-violet-50 font-semibold py-2.5 rounded-xl text-sm"
+            >
+              <Layers size={15} /> Salvar como proposta unificada
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -2524,6 +2606,7 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
         condicoes={condicoes}
         tableInfo={rootTableInfo}
         onClose={() => setShowUnifyModal(false)}
+        onSaved={() => { fetchQuotes(true); exitUnifyMode() }}
       />
     )}
 
@@ -2942,6 +3025,12 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
                           >
                             {kitData.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
                           </button>
+                          {isUnificada(q) && (
+                            <span className="block mt-0.5 text-[10px] font-bold text-violet-700">Unificada · {numerosOrigem(q).join(' + ')}</span>
+                          )}
+                          {unificadaAtiva(q, quotes) && (
+                            <span className="block mt-0.5 text-[10px] font-semibold text-violet-600">Parte da {unificadaAtiva(q, quotes).numero}</span>
+                          )}
                           {listaDesatualizada(q, listaInfo) && (
                             <span className="block mt-0.5">
                               <ListaNovaBadge
@@ -3513,6 +3602,7 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
       {selectedQuote && (
         <QuoteDetailModal
           quote={selectedQuote}
+          todasCotacoes={[...quotes, ...allQuotes]}
           onClose={() => setSelectedQuote(null)}
           onLoadQuote={onLoadQuote}
           onStatusChange={handleStatusChange}

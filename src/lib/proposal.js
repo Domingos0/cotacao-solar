@@ -226,6 +226,41 @@ export function proposalFromQuote(quote, { ownerProfile, tableInfo, condicoes, r
   const kitData = quote.data || quote.kit_data || {}
   const profile = ownerProfile || quote.profiles || {}
   const items = revision ? (revision.items || []) : (quote.quote_items || [])
+
+  // Proposta unificada salva (save_unified_quote): mesma apresentação da
+  // unificação — kits incluídos, estrutura somada, equipamentos — guardada
+  // em data.apresentacao na hora de salvar.
+  if (kitData.unificada) {
+    const ap = kitData.apresentacao || {}
+    const pacote = kitData.descontoPacote || {}
+    return buildProposal({
+      numero: kitData.numero_orcamento || null,
+      revisao: kitData.revisao || 0,
+      emitidaEm: quote.updated_at || quote.created_at,
+      validaAte: quote.valid_until,
+      listaNome: tableInfo?.nome || '',
+      cliente: {
+        nome: profile.nome, empresa: profile.empresa, cnpj: profile.cnpj,
+        cidade: kitData.clienteCidade, uf: kitData.clienteUF,
+      },
+      titulo: ap.titulo || `${(kitData.origem || []).length} kits · ${fmtNum(quote.kwp)} kWp`,
+      referenciaCliente: ap.referenciaCliente || '',
+      freteNome: quote.frete_nome,
+      consultor: kitData.criadoPorAdminNome || '',
+      kwp: quote.kwp,
+      stats: ap.stats || null,
+      items,
+      totalFinal: quote.total_final,
+      descontoPacote: Number(pacote.pct) > 0 ? { pct: Number(pacote.pct), bruto: Number(pacote.bruto) } : null,
+      estrutura: ap.estrutura || null,
+      kitsUnificados: ap.kitsUnificados || (kitData.origem || []).map(o => ({
+        numero: o.numero, revisao: o.revisao || 0, resumo: `${fmtNum(o.kwp)} kWp`, referencia: o.clienteNome || '', total: Number(o.total) || 0,
+      })),
+      equipamentos: ap.equipamentos || [],
+      condicoes,
+    })
+  }
+
   return buildProposal({
     numero: kitData.numero_orcamento || null,
     revisao: revision ? revision.revisao : (kitData.revisao || 0),

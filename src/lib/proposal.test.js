@@ -132,3 +132,28 @@ describe('equipamentos da proposta', () => {
     expect(p.equipamentos.map(e => e.codigo)).toEqual(['1', '2'])
   })
 })
+
+describe('proposalFromQuote — unificada salva', () => {
+  it('usa a apresentação gravada (kits incluídos, desconto do pacote, estrutura)', () => {
+    const quote = {
+      id: 'u', kwp: 17.36, total_final: 36104.55, valid_until: '2026-12-01', frete_nome: 'CIF', quote_items: [{ label: 'Módulo', produto: 'X', codigo_sap: '1', qty: 28, preco_unit: 650, total: 18200 }],
+      profiles: { nome: 'Manoel', cnpj: '32.668.251/0001-35' },
+      data: {
+        numero_orcamento: 'EFF-2026-260', unificada: true, revisao: 0,
+        descontoPacote: { pct: 5, bruto: 38004.79 },
+        origem: [{ numero: 'EFF-2026-249', kwp: 9.3, total: 24784.48 }, { numero: 'EFF-2026-242', kwp: 8.06, total: 13220.31 }],
+        apresentacao: { titulo: '2 kits · 17,36 kWp', kitsUnificados: [{ numero: 'EFF-2026-249', resumo: 'a', total: 24784.48 }, { numero: 'EFF-2026-242', resumo: 'b', total: 13220.31 }], estrutura: { nome: 'Fibro', componentes: [{ sap: '9', descricao: 'Perfil', qty: 4 }] } },
+      },
+    }
+    const p = proposalFromQuote(quote)
+    expect(p.numero).toBe('EFF-2026-260')
+    expect(p.kitsUnificados).toHaveLength(2)
+    expect(p.descontoPacote).toEqual({ pct: 5, bruto: 38004.79 })
+    expect(p.estrutura.componentes[0].qty).toBe(4)
+    expect(p.totalFinal).toBe(36104.55)
+  })
+  it('sem apresentação gravada, monta os kits a partir da origem', () => {
+    const p = proposalFromQuote({ kwp: 2, total_final: 10, quote_items: [], data: { unificada: true, origem: [{ numero: 'A', kwp: 1, total: 5 }, { numero: 'B', kwp: 1, total: 5 }] } })
+    expect(p.kitsUnificados.map(k => k.numero)).toEqual(['A', 'B'])
+  })
+})
