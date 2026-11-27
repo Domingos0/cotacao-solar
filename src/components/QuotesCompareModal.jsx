@@ -1,5 +1,7 @@
 import { X } from 'lucide-react'
 import { extractQuoteSummary } from '../lib/compareQuotes'
+import ProductThumb from './ProductThumb'
+import { fmtLocalDate } from '../lib/dates'
 
 const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—'
@@ -8,8 +10,8 @@ const ROWS = [
   { key: 'numero',   label: 'Referência' },
   { key: 'cliente',  label: 'Cliente' },
   { key: 'kwp',      label: 'Potência', render: v => v ? `${v} kWp` : '—' },
-  { key: 'modulo',   label: 'Módulo' },
-  { key: 'inversor', label: 'Inversor' },
+  { key: 'modulo',   label: 'Módulo', thumb: 'moduloItem' },
+  { key: 'inversor', label: 'Inversor', thumb: 'inversorItem' },
   { key: 'frete',    label: 'Frete' },
   { key: 'validade', label: 'Validade', render: fmtDate },
 ]
@@ -38,7 +40,12 @@ export default function QuotesCompareModal({ quotes, onClose }) {
                   <td className="py-2.5 pr-4 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap align-top w-32">{row.label}</td>
                   {summaries.map(s => (
                     <td key={s.id} className="py-2.5 px-3 text-gray-800">
-                      {row.render ? row.render(s[row.key]) : (s[row.key] || '—')}
+                      {row.thumb && s[row.thumb] ? (
+                        <span className="flex items-center gap-2.5">
+                          <ProductThumb label={s[row.thumb].label} produto={s[row.thumb].produto} size={44} />
+                          <span>{s[row.key]}</span>
+                        </span>
+                      ) : (row.render ? row.render(s[row.key]) : (s[row.key] || '—'))}
                     </td>
                   ))}
                 </tr>

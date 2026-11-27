@@ -18,6 +18,8 @@ export function extractQuoteSummary(quote) {
     kwp: quote.kwp || null,
     modulo: modulo ? `${modulo.qty}× ${modulo.produto}` : '—',
     inversor: inversor ? `${inversor.qty}× ${inversor.produto}` : '—',
+    moduloItem: modulo ? { label: modulo.label, produto: modulo.produto } : null,
+    inversorItem: inversor ? { label: inversor.label, produto: inversor.produto } : null,
     totalFinal: quote.total_final || 0,
     formaPagamento,
     parcelas,

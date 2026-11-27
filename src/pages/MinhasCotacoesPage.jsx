@@ -2246,8 +2246,9 @@ export function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) 
             </div>
             <div className="max-h-56 overflow-y-auto divide-y divide-gray-50">
               {unified.materiais.map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                  <div className="min-w-0">
+                <div key={i} className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+                  <ItemThumb label={item.label} produto={item.produto} />
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-gray-800 truncate">{item.produto || item.label}</p>
                     <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap || '—'}</p>
                   </div>
