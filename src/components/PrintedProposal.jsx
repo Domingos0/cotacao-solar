@@ -216,29 +216,6 @@ export default function PrintedProposal({ proposal: p, datasheets = [] }) {
             <strong style={{ whiteSpace: 'nowrap' }}>Tabela completa na página 2 →</strong>
           </div>
 
-          {/* Economia estimada (item 38) */}
-          {p.economia && (
-            <div style={{ border: '1.5px solid #16A34A', background: '#F0FDF4', borderRadius: 12, padding: '10px 20px', marginTop: 10, color: '#14532D' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                <div>
-                  <p style={{ ...p0, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#15803D' }}>Geração estimada</p>
-                  <p style={{ ...p0, fontSize: 15, fontWeight: 800 }}>~{Math.round(p.economia.geracaoMensalKwh).toLocaleString('pt-BR')} kWh/mês</p>
-                </div>
-                <div>
-                  <p style={{ ...p0, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#15803D' }}>Economia estimada</p>
-                  <p style={{ ...p0, fontSize: 15, fontWeight: 800 }}>~{fmt(p.economia.economiaMensal)}/mês</p>
-                  <p style={{ ...p0, fontSize: 10 }}>{fmt(p.economia.economiaAnual)} por ano</p>
-                </div>
-                <div>
-                  <p style={{ ...p0, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#15803D' }}>Retorno do investimento</p>
-                  <p style={{ ...p0, fontSize: 15, fontWeight: 800 }}>{p.economia.paybackAnos ? `~${p.economia.paybackAnos.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} anos` : '—'}</p>
-                </div>
-              </div>
-              <p style={{ ...p0, fontSize: 9, color: '#166534', marginTop: 6 }}>
-                Estimativa com {p.economia.hsp.toLocaleString('pt-BR')} h de sol pico/dia e tarifa de {fmt(p.economia.tarifa)}/kWh. Valores reais dependem do local, orientação, sombreamento e tarifa da concessionária.
-              </p>
-            </div>
-          )}
         </div>
 
         <Rodape esquerda="Ernaniff Representações · Representante WEG Energia Solar · Marabá – PA" pagina={1} />
