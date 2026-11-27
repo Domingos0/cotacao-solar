@@ -4927,6 +4927,10 @@ function DatasheetsPanel({ products }) {
   const [bulkFiles, setBulkFiles] = useState(null)   // File[]
   const [bulkPlan, setBulkPlan]   = useState(null)
   const [bulkBusy, setBulkBusy]   = useState('')
+  const [showLinhas, setShowLinhas] = useState(false)
+  // Links por linha são carregados uma vez quando o app abre — recarrega ao
+  // abrir o painel pra não mostrar "sem link" de algo que já foi salvo.
+  useEffect(() => { reloadDatasheets() }, [reloadDatasheets])
   const [savingLinha, setSavingLinha] = useState(null)
   const [uploadingLinha, setUploadingLinha] = useState(null)
   const [draftByLinha, setDraftByLinha] = useState({})
@@ -4978,7 +4982,9 @@ function DatasheetsPanel({ products }) {
       setBulkBusy('Salvando PDFs por modelo…')
       updateProducts(Object.fromEntries(bulkPlan.modelos.map(({ product, file }) => [product.id, { datasheetUrl: urlPorArquivo[file.name] }])))
       await reloadDatasheets()
-      setMsg(`${usados.length} PDFs enviados: ${bulkPlan.linhas.length} linhas e ${bulkPlan.modelos.length} modelos atualizados.`)
+      setMsg(import.meta.env.DEV
+        ? `${usados.length} PDFs enviados e ${bulkPlan.linhas.length} linhas salvas. Atenção: em desenvolvimento o catálogo é local — os ${bulkPlan.modelos.length} PDFs por modelo NÃO ficam salvos; aplique de novo no site publicado.`
+        : `${usados.length} PDFs enviados: ${bulkPlan.linhas.length} linhas e ${bulkPlan.modelos.length} modelos atualizados.`)
       setBulkPlan(null); setBulkFiles(null)
     } catch (e) {
       setMsg(`Erro ao importar datasheets — ${e.message}`)
@@ -5115,12 +5121,22 @@ function DatasheetsPanel({ products }) {
         </div>
       )}
 
-      {semLink.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-700 flex items-start gap-2">
-          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-          <span><strong>{semLink.length}</strong> linha{semLink.length !== 1 ? 's' : ''} sem link: {semLink.join(', ')}</span>
-        </div>
-      )}
+      {/* Resumo curto; a lista linha a linha só abre se o admin quiser editar */}
+      <button
+        onClick={() => setShowLinhas(v => !v)}
+        className="w-full flex items-center gap-2 rounded-lg px-3 py-2 mb-3 text-xs text-left border border-gray-200 hover:bg-gray-50"
+        aria-expanded={showLinhas}
+      >
+        {semLink.length === 0
+          ? <CheckCircle2 size={13} className="text-green-500 shrink-0" />
+          : <AlertTriangle size={13} className="text-amber-500 shrink-0" />}
+        <span className="flex-1 text-gray-600">
+          <strong className="text-gray-800">{linhas.length - semLink.length} de {linhas.length}</strong> linhas com datasheet
+          {semLink.length > 0 && <> · sem link: <span className="text-amber-700">{semLink.join(', ')}</span></>}
+        </span>
+        <span className="text-weg-blue font-semibold whitespace-nowrap">{showLinhas ? 'Ocultar linhas' : 'Ver / editar linhas'}</span>
+        <ChevronDown size={14} className={`text-gray-400 transition-transform ${showLinhas ? 'rotate-180' : ''}`} />
+      </button>
       {msg && (
         <p className={`text-xs mb-3 rounded-lg px-3 py-2 ${msg.startsWith('Erro') ? 'bg-red-50 border border-red-200 text-red-700 font-semibold' : 'bg-green-50 border border-green-200 text-green-700'}`}>
           {msg}
@@ -5129,7 +5145,7 @@ function DatasheetsPanel({ products }) {
         </p>
       )}
 
-      <div className="space-y-2">
+      {showLinhas && <div className="space-y-2">
         {linhas.map(linha => (
           <div key={linha} className="flex items-center gap-2">
             {datasheetsByLinha[linha]
@@ -5162,7 +5178,7 @@ function DatasheetsPanel({ products }) {
             </label>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   )
 }

@@ -82,8 +82,10 @@ export function ProductsProvider({ children }) {
   // parte do catálogo versionado (price_catalog_versions), é sua própria
   // tabela simples, então carrega independente da checagem de versão.
   const [datasheetsByLinha, setDatasheetsByLinha] = useState({})
+  // Carrega também em desenvolvimento: o upload/salvar de datasheet grava
+  // direto no Supabase mesmo no dev, então sem isso a tela mostrava
+  // "9 linhas sem link" logo depois de salvar.
   const reloadDatasheets = useCallback(async () => {
-    if (IS_DEV) return
     const { data, error } = await supabase.from('inverter_datasheets').select('linha, url')
     if (error) { console.warn('[datasheets] load error:', error.message); return }
     setDatasheetsByLinha(Object.fromEntries((data || []).map(r => [r.linha, r.url])))
