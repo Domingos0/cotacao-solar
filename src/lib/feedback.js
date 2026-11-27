@@ -39,12 +39,25 @@ export async function submitFeedback({ userId, tipo, mensagem, pagina, screensho
   return { error }
 }
 
+// feedbacks.user_id aponta pra auth.users (não pra public.profiles), então
+// o join "profiles:user_id(...)" do PostgREST falha ("Could not find a
+// relationship between 'feedbacks' and 'user_id'"). Busca os perfis à parte
+// e junta aqui — mesmo formato de antes (row.profiles = { nome, ... }).
 export async function listFeedbacks() {
   const { data, error } = await supabase
     .from('feedbacks')
-    .select('*, profiles:user_id(nome, empresa, numero_usuario)')
+    .select('*')
     .order('created_at', { ascending: false })
-  return { data: data || [], error }
+  if (error) return { data: [], error }
+  const rows = data || []
+  const ids = [...new Set(rows.map(r => r.user_id).filter(Boolean))]
+  if (!ids.length) return { data: rows, error: null }
+  const { data: perfis } = await supabase
+    .from('profiles')
+    .select('id, nome, empresa, numero_usuario')
+    .in('id', ids)
+  const porId = Object.fromEntries((perfis || []).map(p => [p.id, p]))
+  return { data: rows.map(r => ({ ...r, profiles: porId[r.user_id] || null })), error: null }
 }
 
 export async function resolveFeedback(id, respostaAdmin) {
