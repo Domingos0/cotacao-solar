@@ -317,6 +317,16 @@ export function ProductsProvider({ children }) {
     publishAfter(saveProducts(updated))
   }, [products, saveProducts, publishAfter])
 
+  // Vários produtos numa gravação só. Chamar updateProduct num loop NÃO
+  // funciona: cada chamada parte da mesma lista `products` e a última
+  // sobrescreve as anteriores (só a última alteração ficava salva).
+  // updatesById: { [id]: { ...campos } }
+  const updateProducts = useCallback((updatesById) => {
+    if (!updatesById || !Object.keys(updatesById).length) return
+    const updated = products.map(p => (updatesById[p.id] ? { ...p, ...updatesById[p.id] } : p))
+    publishAfter(saveProducts(updated))
+  }, [products, saveProducts, publishAfter])
+
   const deleteProduct = useCallback((id) => {
     const updated = products.filter(p => p.id !== id)
     publishAfter(saveProducts(updated))
@@ -410,6 +420,7 @@ export function ProductsProvider({ children }) {
       clearActiveList,
       addProduct,
       updateProduct,
+      updateProducts,
       deleteProduct,
       resetToDefaults,
       syncDefaultPrices,

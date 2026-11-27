@@ -9,6 +9,7 @@ import { MOTIVOS_PERDA } from '../data/motivosPerda'
 import { getProductImage, guessCategoria } from '../data/productImages'
 import { getInverterSpecs } from '../data/inverterSpecs'
 import { upsertDatasheet, importDatasheetsFromRows, uploadDatasheetFile } from '../lib/datasheets'
+import { planDatasheetImport } from '../lib/datasheetImport'
 import {
   listPromoKits, upsertPromoKit, deletePromoKit, listPromoRegioes, upsertPromoRegiao,
   uploadPromoFolder, getPromoStatus, PROMO_STATUS_LABELS, PROMO_REGIOES_KEYS,
@@ -928,7 +929,7 @@ function PrevisaoAviso({ value, compact = false }) {
 }
 
 function DisponibilidadeCard() {
-  const { products, updateProduct } = useProducts()
+  const { products, updateProduct, updateProducts } = useProducts()
   const [open, setOpen]           = useState(false)
   const [catFilter, setCatFilter] = useState('Todos')
   const [importing, setImporting] = useState(false)
@@ -970,12 +971,11 @@ function DisponibilidadeCard() {
 
   const applyImport = () => {
     if (!importResult) return
-    importResult.matched.filter(r => r.changed).forEach(r => {
-      updateProduct(r.product.id, {
-        estoque: r.status,
-        estoque_previsao: r.status === 'Previsão' ? (r.previsao || r.product.estoque_previsao || '') : '',
-      })
-    })
+    // Uma gravação só (updateProduct num loop salvava só o último produto)
+    updateProducts(Object.fromEntries(importResult.matched.filter(r => r.changed).map(r => [r.product.id, {
+      estoque: r.status,
+      estoque_previsao: r.status === 'Previsão' ? (r.previsao || r.product.estoque_previsao || '') : '',
+    }])))
     setImportResult(null)
   }
 
@@ -4922,7 +4922,11 @@ function KitsFechadosPanel({ onBadgeChange }) {
 
 // ─── Datasheets por linha de inversor (item 45) ───────────────────────────────
 function DatasheetsPanel({ products }) {
-  const { datasheetsByLinha, reloadDatasheets } = useProducts()
+  const { datasheetsByLinha, reloadDatasheets, updateProducts } = useProducts()
+  // Importar vários PDFs de uma vez (plano montado pelo nome dos arquivos)
+  const [bulkFiles, setBulkFiles] = useState(null)   // File[]
+  const [bulkPlan, setBulkPlan]   = useState(null)
+  const [bulkBusy, setBulkBusy]   = useState('')
   const [savingLinha, setSavingLinha] = useState(null)
   const [uploadingLinha, setUploadingLinha] = useState(null)
   const [draftByLinha, setDraftByLinha] = useState({})
@@ -4942,6 +4946,45 @@ function DatasheetsPanel({ products }) {
   }, [products])
 
   const semLink = linhas.filter(l => !datasheetsByLinha[l])
+
+  const pickBulk = (fileList) => {
+    const files = Array.from(fileList || []).filter(f => /\.pdf$/i.test(f.name))
+    if (!files.length) return
+    setMsg('')
+    setBulkFiles(files)
+    setBulkPlan(planDatasheetImport(files, products, p => getInverterSpecs(p)?.linha || null))
+  }
+
+  const applyBulk = async () => {
+    if (!bulkPlan) return
+    const usados = [...new Map(
+      [...bulkPlan.linhas.map(l => l.file), ...bulkPlan.modelos.map(m => m.file)].map(f => [f.name, f])
+    ).values()]
+    const urlPorArquivo = {}
+    try {
+      for (let i = 0; i < usados.length; i++) {
+        const f = usados[i]
+        setBulkBusy(`Enviando ${i + 1} de ${usados.length}: ${f.name}`)
+        const original = bulkFiles.find(x => x.name === f.name)
+        const { url, error } = await uploadDatasheetFile(original, f.name.replace(/\.pdf$/i, ''))
+        if (error) throw new Error(`${f.name}: ${error.message}`)
+        urlPorArquivo[f.name] = url
+      }
+      setBulkBusy('Salvando links das linhas…')
+      for (const { linha, file } of bulkPlan.linhas) {
+        const { error } = await upsertDatasheet(linha, urlPorArquivo[file.name])
+        if (error) throw new Error(`${linha}: ${error.message}`)
+      }
+      setBulkBusy('Salvando PDFs por modelo…')
+      updateProducts(Object.fromEntries(bulkPlan.modelos.map(({ product, file }) => [product.id, { datasheetUrl: urlPorArquivo[file.name] }])))
+      await reloadDatasheets()
+      setMsg(`${usados.length} PDFs enviados: ${bulkPlan.linhas.length} linhas e ${bulkPlan.modelos.length} modelos atualizados.`)
+      setBulkPlan(null); setBulkFiles(null)
+    } catch (e) {
+      setMsg(`Erro ao importar datasheets — ${e.message}`)
+    }
+    setBulkBusy('')
+  }
 
   const salvarLinha = async (linha) => {
     const url = (draftByLinha[linha] ?? datasheetsByLinha[linha] ?? '').trim()
@@ -4992,6 +5035,17 @@ function DatasheetsPanel({ products }) {
         <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
           <FileText size={18} className="text-weg-blue" /> Datasheets por linha
         </h3>
+        <div className="flex items-center gap-2 flex-wrap">
+        <label className="flex items-center gap-1.5 text-sm text-white bg-weg-blue hover:bg-weg-blue/90 px-3 py-2 rounded-lg cursor-pointer font-semibold">
+          <ArrowUpFromLine size={14} /> Importar vários PDFs
+          <input
+            type="file"
+            accept="application/pdf"
+            multiple
+            className="hidden"
+            onChange={e => { pickBulk(e.target.files); e.target.value = '' }}
+          />
+        </label>
         <label className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 hover:border-weg-blue px-3 py-2 rounded-lg cursor-pointer font-semibold">
           <ArrowUpFromLine size={14} /> {importing ? 'Importando…' : 'Importar planilha (linha, link)'}
           <input
@@ -5002,11 +5056,64 @@ function DatasheetsPanel({ products }) {
             onChange={e => { handleImportFile(e.target.files?.[0]); e.target.value = '' }}
           />
         </label>
+        </div>
       </div>
       <p className="text-xs text-gray-400 mb-3">
         Um link por linha (ex: SIW300H) cobre todos os modelos dessa linha. Pra um modelo específico usar um
         datasheet diferente, edite o produto em "Novo produto"/editar e preencha o campo Datasheet dele.
       </p>
+
+      {/* Prévia da importação de vários PDFs */}
+      {bulkPlan && (
+        <div className="border border-weg-blue/30 rounded-xl mb-3 overflow-hidden">
+          <div className="bg-weg-blue/5 px-4 py-3 flex items-center justify-between gap-3 flex-wrap border-b border-weg-blue/20">
+            <p className="text-sm font-semibold text-gray-900">
+              {bulkFiles.length} PDFs lidos — {bulkPlan.linhas.length} linha{bulkPlan.linhas.length !== 1 ? 's' : ''} e {bulkPlan.modelos.length} modelo{bulkPlan.modelos.length !== 1 ? 's' : ''} vão receber datasheet
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={applyBulk}
+                disabled={!!bulkBusy || (!bulkPlan.linhas.length && !bulkPlan.modelos.length)}
+                className="text-xs font-semibold text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+              >
+                {bulkBusy ? 'Enviando…' : 'Aplicar'}
+              </button>
+              <button onClick={() => { setBulkPlan(null); setBulkFiles(null) }} disabled={!!bulkBusy} className="text-xs font-semibold text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg">
+                Cancelar
+              </button>
+            </div>
+          </div>
+          {bulkBusy && <p className="px-4 py-2 text-xs text-weg-blue font-semibold border-b border-weg-blue/10">{bulkBusy}</p>}
+          <div className="max-h-80 overflow-y-auto text-xs divide-y divide-gray-100">
+            {bulkPlan.linhas.length > 0 && (
+              <div className="px-4 py-2">
+                <p className="font-bold text-gray-500 uppercase tracking-wide text-[10px] mb-1">PDF padrão da linha</p>
+                {bulkPlan.linhas.map(({ linha, file }) => (
+                  <p key={linha} className="py-0.5"><span className="font-mono font-bold text-weg-blue w-20 inline-block">{linha}</span> ← {file.name}
+                    {datasheetsByLinha[linha] && <span className="text-amber-600"> (substitui o atual)</span>}
+                  </p>
+                ))}
+              </div>
+            )}
+            {bulkPlan.modelos.length > 0 && (
+              <div className="px-4 py-2">
+                <p className="font-bold text-gray-500 uppercase tracking-wide text-[10px] mb-1">Modelos com PDF próprio</p>
+                {bulkPlan.modelos.map(({ product, file }) => (
+                  <p key={product.id} className="py-0.5"><span className="font-semibold text-gray-800">{product.nome}</span> ← {file.name}</p>
+                ))}
+              </div>
+            )}
+            {bulkPlan.ignorados.length > 0 && (
+              <div className="px-4 py-2 text-gray-400">
+                <p className="font-bold uppercase tracking-wide text-[10px] mb-1">Não usados</p>
+                {bulkPlan.ignorados.map(({ file, motivo }) => (
+                  <p key={file.name} className="py-0.5">{file.name} — {motivo}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {semLink.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-700 flex items-start gap-2">
