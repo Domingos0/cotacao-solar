@@ -14,6 +14,8 @@ import {
   uploadPromoFolder, getPromoStatus, PROMO_STATUS_LABELS, PROMO_REGIOES_KEYS,
 } from '../lib/promoKits'
 import { round2 } from '../lib/money'
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { parseStockPdfLines, produtosParaRevisar, diasAtePrevisao, textoAlertaPrevisao } from '../lib/stockForecast'
 import kitCompositions from '../data/kitCompositions.json'
 import { InlineEditor, UnifiedProposalModal } from './MinhasCotacoesPage'
 import QuotesCompareModal from '../components/QuotesCompareModal'
@@ -652,6 +654,7 @@ function ProductRow({ product, onUpdate, onDelete }) {
                 <input type="date" value={form.estoque_previsao || ''}
                   onChange={e => setForm(f => ({ ...f, estoque_previsao: e.target.value }))}
                   className="w-full border border-blue-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-weg-blue" />
+                <PrevisaoAviso value={form.estoque_previsao} compact />
               </div>
             )}
           </div>
@@ -837,6 +840,7 @@ function AddProductModal({ onAdd, onClose }) {
                   <input type="date" value={form.estoque_previsao || ''}
                     onChange={e => setForm(f => ({ ...f, estoque_previsao: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue" />
+                  <PrevisaoAviso value={form.estoque_previsao} />
                 </div>
               )}
             </div>
@@ -878,7 +882,10 @@ const DISP_KEYS = ['Disponível', 'Previsão', 'Esgotado']
 // Lê PDF e agrupa itens de texto por linha (usando posição Y)
 async function extractPdfLines(file) {
   const pdfjsLib = await import('pdfjs-dist')
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href
+  // ?url: o Vite resolve o arquivo do worker (dev e build). O new URL com
+  // nome de pacote resolvia pra /src/pages/pdfjs-dist/... (404) e todo
+  // PDF dava erro antes de ser lido.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
   const buffer = await file.arrayBuffer()
   const pdf    = await pdfjsLib.getDocument({ data: buffer }).promise
   const allLines = []
@@ -905,44 +912,18 @@ async function extractPdfLines(file) {
   return allLines
 }
 
-// Classifica a linha da tabela WEG:
-//   Disponível (ou Disponível (CD PE))  → 'Disponível'
-//   Indisponível + data DD/MM/YYYY      → 'Previsão'
-//   Indisponível + * (prazo 30 dias)    → 'Previsão'
-//   Indisponível + ***                  → 'Esgotado'
-//   Indisponível sem previsão           → 'Esgotado'
-function classifyLine(line) {
-  if (/disponiv/i.test(line) && !/indisponiv/i.test(line)) return 'Disponível'
-  if (/indisponiv/i.test(line)) {
-    if (/\d{2}\/\d{2}\/\d{4}/.test(line)) return 'Previsão'  // tem data
-    if (/\*{3}/.test(line))                return 'Esgotado'  // *** sem alternativa
-    if (/\*/.test(line))                   return 'Previsão'  // * prazo fabricação
-    return 'Esgotado'
-  }
-  return null
-}
-
-// Extrai { sap → status } das linhas do PDF
-function parsePdfLines(lines, knownSAPs) {
-  const sapSet  = new Set(knownSAPs)
-  const results = {}
-
-  lines.forEach((line, i) => {
-    // Cada linha de produto começa com código de 8 dígitos
-    const m = line.match(/^\s*(\d{8})\b/)
-    if (!m) return
-    const sap = m[1]
-    if (!sapSet.has(sap) || results[sap]) return
-
-    // Usa linha atual; se status for inconclusivo, olha próxima (previsão pode vir depois)
-    let status = classifyLine(line)
-    if (!status) {
-      const ctx = [line, lines[i + 1]].filter(Boolean).join(' ')
-      status = classifyLine(ctx)
-    }
-    if (status) results[sap] = status
-  })
-  return results
+// Aviso embaixo dos campos de data de previsão: data que já passou (o
+// material chegou? corrija a data) ou previsão chegando (revise).
+function PrevisaoAviso({ value, compact = false }) {
+  const dias = diasAtePrevisao(value)
+  if (dias === null || dias > 7) return null
+  const vencida = dias < 0
+  return (
+    <p className={`${compact ? 'text-[10px]' : 'text-xs'} mt-1 flex items-start gap-1 font-semibold ${vencida ? 'text-red-600' : 'text-amber-600'}`}>
+      <AlertTriangle size={compact ? 10 : 12} className="shrink-0 mt-px" />
+      {vencida ? 'Essa data já passou — confirme se o material chegou ou corrija a previsão.' : textoAlertaPrevisao(dias)}
+    </p>
+  )
 }
 
 function DisponibilidadeCard() {
@@ -960,6 +941,7 @@ function DisponibilidadeCard() {
   const counts = useMemo(() =>
     DISP_KEYS.reduce((acc, k) => ({ ...acc, [k]: products.filter(p => (p.estoque || 'Disponível') === k).length }), {})
   , [products])
+  const paraRevisar = useMemo(() => produtosParaRevisar(products), [products])
 
   const handlePdfImport = async (e) => {
     const file = e.target.files?.[0]
@@ -971,10 +953,12 @@ function DisponibilidadeCard() {
     try {
       const lines     = await extractPdfLines(file)
       const knownSAPs = products.map(p => p.codigo).filter(c => /^\d{8}$/.test(c))
-      const updates   = parsePdfLines(lines, knownSAPs)
-      const matched   = Object.entries(updates).map(([sap, status]) => {
+      const updates   = parseStockPdfLines(lines, knownSAPs)
+      const matched   = Object.entries(updates).map(([sap, { status, previsao }]) => {
         const product = products.find(p => p.codigo === sap)
-        return { sap, status, product, changed: product && (product.estoque || 'Disponível') !== status }
+        const mudouStatus = product && (product.estoque || 'Disponível') !== status
+        const mudouData   = product && status === 'Previsão' && previsao && previsao !== (product.estoque_previsao || '')
+        return { sap, status, previsao, product, changed: !!(mudouStatus || mudouData) }
       }).filter(r => r.product)
       setImportResult({ updates, matched, fileName: file.name, total: Object.keys(updates).length })
     } catch (err) {
@@ -986,7 +970,10 @@ function DisponibilidadeCard() {
   const applyImport = () => {
     if (!importResult) return
     importResult.matched.filter(r => r.changed).forEach(r => {
-      updateProduct(r.product.id, { estoque: r.status })
+      updateProduct(r.product.id, {
+        estoque: r.status,
+        estoque_previsao: r.status === 'Previsão' ? (r.previsao || r.product.estoque_previsao || '') : '',
+      })
     })
     setImportResult(null)
   }
@@ -1077,6 +1064,45 @@ function DisponibilidadeCard() {
         </div>
       </div>
 
+      {/* Previsões vencidas / chegando — admin confirma se chegou ou ajusta a data */}
+      {paraRevisar.length > 0 && (
+        <div className="mx-5 mb-3 border border-amber-300 bg-amber-50 rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 flex items-center gap-2 border-b border-amber-200">
+            <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+            <p className="text-xs font-semibold text-amber-900">
+              {paraRevisar.length} previs{paraRevisar.length === 1 ? 'ão' : 'ões'} de estoque pra revisar — o material chegou?
+            </p>
+          </div>
+          <div className="divide-y divide-amber-100 max-h-56 overflow-y-auto">
+            {paraRevisar.map(({ product: p, dias }) => (
+              <div key={p.id} className="px-4 py-2 flex items-center gap-3 flex-wrap text-xs">
+                <div className="flex-1 min-w-[160px]">
+                  <p className="font-semibold text-gray-800 truncate" title={p.nome}>{p.nome}</p>
+                  <p className={dias < 0 ? 'text-red-600 font-semibold' : 'text-amber-700'}>
+                    {p.estoque_previsao.split('-').reverse().join('/')} · {textoAlertaPrevisao(dias)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => updateProduct(p.id, { estoque: 'Disponível', estoque_previsao: '' })}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold"
+                >
+                  <Check size={12} /> Chegou
+                </button>
+                <label className="flex items-center gap-1 text-gray-600">
+                  Nova data
+                  <input
+                    type="date"
+                    value={p.estoque_previsao || ''}
+                    onChange={e => updateProduct(p.id, { estoque_previsao: e.target.value })}
+                    className="border border-amber-300 rounded px-1.5 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Import error */}
       {importError && (
         <div className="mx-5 mb-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2 text-xs text-red-700">
@@ -1141,6 +1167,9 @@ function DisponibilidadeCard() {
                       </td>
                       <td className="px-3 py-2 text-center">
                         <span className={`px-2 py-0.5 rounded-full border font-semibold text-[10px] ${cfgN.badge} ${r.changed ? 'ring-1 ring-weg-blue' : 'opacity-50'}`}>{r.status}</span>
+                        {r.previsao && (
+                          <span className="block text-[10px] text-yellow-700 mt-0.5">{r.previsao.split('-').reverse().join('/')}</span>
+                        )}
                       </td>
                     </tr>
                   )
@@ -1231,6 +1260,9 @@ function DisponibilidadeCard() {
                               onChange={e => updateProduct(p.id, { estoque_previsao: e.target.value })}
                               className="text-[10px] border border-yellow-300 rounded px-1.5 py-0.5 text-yellow-800 bg-yellow-50 focus:outline-none focus:ring-1 focus:ring-yellow-400 w-32"
                             />
+                          )}
+                          {st === 'Previsão' && (
+                            <PrevisaoAviso value={p.estoque_previsao} compact />
                           )}
                         </div>
                       </td>
@@ -1956,6 +1988,8 @@ function UserManagement() {
 
 // ─── Dashboard Panel ──────────────────────────────────────────────────────────
 function DashboardPanel({ onGoToTab }) {
+  const { products: catalogo } = useProducts()
+  const previsoesRevisar = useMemo(() => produtosParaRevisar(catalogo), [catalogo])
   const [stats, setStats] = useState(null)
   const [recentQuotes, setRecentQuotes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2047,6 +2081,22 @@ function DashboardPanel({ onGoToTab }) {
         <TrendingUp size={20} className="text-weg-blue" />
         <h3 className="font-bold text-gray-900 text-lg">Dashboard</h3>
       </div>
+
+      {previsoesRevisar.length > 0 && (
+        <button
+          onClick={() => onGoToTab('produtos')}
+          className="w-full text-left flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 hover:bg-amber-100 transition-colors"
+        >
+          <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <span className="text-sm text-amber-900">
+            <strong>{previsoesRevisar.length} previs{previsoesRevisar.length === 1 ? 'ão' : 'ões'} de estoque pra revisar</strong>
+            {previsoesRevisar.some(r => r.dias < 0) && <> — {previsoesRevisar.filter(r => r.dias < 0).length} já vencida{previsoesRevisar.filter(r => r.dias < 0).length === 1 ? '' : 's'}</>}
+            <span className="block text-xs text-amber-800 mt-0.5">
+              Confirme se o material chegou ou ajuste a data em Produtos → Disponibilidade de Materiais.
+            </span>
+          </span>
+        </button>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
