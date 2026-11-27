@@ -6,6 +6,7 @@
 import { round2, distributeTotal } from './money'
 import { CARTAO_PARCELAS, totalComCartao, valorParcela } from './payment'
 import kitCompositions from '../data/kitCompositions.json'
+import { parseLocalDate } from './dates'
 
 const VALIDADE_PADRAO_DIAS = 7
 
@@ -101,7 +102,7 @@ export function buildProposal({
 } = {}) {
   const { kwp: kwpCalc, stats } = statsFromKitData(kitData, kwp)
   const emitida = new Date(emitidaEm || Date.now())
-  const validade = validaAte ? new Date(validaAte) : addDays(emitida, VALIDADE_PADRAO_DIAS)
+  const validade = validaAte ? parseLocalDate(validaAte) : addDays(emitida, VALIDADE_PADRAO_DIAS)
   const forma = formaPagamento === 'cartao' ? 'cartao' : 'avista'
   const parcelasEscolhidas = forma === 'cartao' ? (parcelas || 1) : null
 

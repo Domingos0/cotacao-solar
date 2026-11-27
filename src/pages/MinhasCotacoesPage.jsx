@@ -7,13 +7,13 @@ import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal, computeTotalFinal } from '../lib/money'
-import { buildProposalMessage } from '../lib/whatsapp'
 import ProposalOutput from '../components/ProposalOutput'
 import { buildProposal, proposalFromQuote } from '../lib/proposal'
 import { buildUnifiedProposal } from '../lib/unifyQuotes'
 import { createTemplateFromQuote } from '../lib/kitTemplates'
 import { calcPainelIntegrador } from '../lib/integradorPainel'
 import { pathForPage } from '../lib/routing'
+import { fmtLocalDate } from '../lib/dates'
 import PaymentOptions from '../components/PaymentOptions'
 import RevisionCompareModal from '../components/RevisionCompareModal'
 import QuotesCompareModal from '../components/QuotesCompareModal'
@@ -1478,12 +1478,8 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
         proposal={proposalFromQuote(quote, { ownerProfile, tableInfo, condicoes, revision: proposalOut.revision })}
         mode={proposalOut.mode}
         phone={ownerProfile?.telefone}
-        message={buildProposalMessage({
-          clienteNome: ownerProfile?.nome,
-          kitNome: quote.nome_projeto || `Kit ${Number(quote.kwp || 0).toFixed(2)} kWp`,
-          totalFinal: proposalOut.revision ? proposalOut.revision.total_final : quote.total_final,
-          numeroOrcamento: kitData.numero_orcamento,
-        })}
+        nome={isAdmin && kitData.clienteCadastrado !== false ? (ownerProfile?.nome || '') : (kitData.clienteNome || '')}
+        link={isAdmin && kitData.clienteCadastrado !== false ? `${window.location.origin}${pathForPage('cotacoes', quote.id)}` : ''}
         onClose={() => setProposalOut(null)}
       />
     )}
@@ -1558,7 +1554,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               <AlertTriangle size={16} className={`shrink-0 mt-0.5 ${quote.price_locked ? 'text-blue-500' : 'text-amber-500'}`} />
               <div>
                 <p className={`font-bold text-sm ${quote.price_locked ? 'text-blue-800' : 'text-amber-800'}`}>
-                  Cotação vencida ({new Date(quote.valid_until).toLocaleDateString('pt-BR')})
+                  Cotação vencida ({fmtLocalDate(quote.valid_until)})
                 </p>
                 <p className={`text-xs mt-0.5 ${quote.price_locked ? 'text-blue-700' : 'text-amber-700'}`}>
                   {quote.price_locked
@@ -2181,14 +2177,16 @@ function RevisionDetailModal({ quote, revision, onClose }) {
 // (com desconto opcional de pacote), kWp somado, lista de materiais por SAP
 // (quantidades somadas entre os kits) e validade = a da cotação que vence
 // primeiro (nunca estende o prazo além do que já foi prometido em alguma delas).
-function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
+// Exportado: o Admin usa o mesmo modal (item: unificar/comparar no Admin).
+// Desconto do pacote só aparece pro admin — cliente não se dá desconto.
+export function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
+  const { isAdmin } = useAuth()
   const [desconto, setDesconto] = useState(0)
-  const [isPrinting, setIsPrinting] = useState(false)
-  const unified = useMemo(() => buildUnifiedProposal(quotes, desconto), [quotes, desconto])
+  const [output, setOutput] = useState(null) // null | 'print' | 'share'
+  const unified = useMemo(() => buildUnifiedProposal(quotes, isAdmin ? desconto : 0), [quotes, desconto, isAdmin])
 
-  const handlePrint = () => setIsPrinting(true)
-
-  if (isPrinting) {
+  let outputEl = null
+  if (output) {
     const dono = quotes[0]?.profiles || {}
     const kd = quotes[0]?.data || {}
     const fmtKwp = Number(unified.totalKwp || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
@@ -2204,10 +2202,20 @@ function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
       condicoes,
       obs: `Proposta que reúne as cotações ${quotes.map(q => q.data?.numero_orcamento || q.id.slice(0, 8).toUpperCase()).join(', ')}.`,
     })
-    return <ProposalOutput proposal={proposal} mode="print" onClose={() => setIsPrinting(false)} />
+    outputEl = (
+      <ProposalOutput
+        proposal={proposal}
+        mode={output}
+        phone={dono.telefone || ''}
+        nome={dono.nome || ''}
+        onClose={() => setOutput(null)}
+      />
+    )
   }
 
   return (
+    <>
+    {outputEl}
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="bg-weg-blue text-white px-6 py-4 rounded-t-2xl flex items-center justify-between sticky top-0">
@@ -2223,21 +2231,23 @@ function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
             <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
               <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Validade</p>
               <p className="text-base font-bold text-gray-800">
-                {unified.validadeMinima ? new Date(unified.validadeMinima).toLocaleDateString('pt-BR') : 'Sem validade definida'}
+                {unified.validadeMinima ? fmtLocalDate(unified.validadeMinima) : 'Sem validade definida'}
               </p>
               <p className="text-[11px] text-gray-400 mt-0.5">Vale a data da cotação que vence primeiro</p>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Desconto do pacote (%)</label>
-            <input
-              type="number" min="0" max="100" step="0.5"
-              value={desconto}
-              onChange={e => setDesconto(e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
-            />
-          </div>
+          {isAdmin && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Desconto do pacote (%)</label>
+              <input
+                type="number" min="0" max="100" step="0.5"
+                value={desconto}
+                onChange={e => setDesconto(e.target.value === '' ? 0 : Number(e.target.value))}
+                className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-weg-blue"
+              />
+            </div>
+          )}
 
           <div className="border border-gray-100 rounded-xl overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase">
@@ -2269,18 +2279,25 @@ function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
             <p className="text-2xl font-extrabold text-weg-blue">{fmt(unified.totalComDesconto)}</p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
-              onClick={handlePrint}
-              className="flex-1 flex items-center justify-center gap-2 bg-weg-blue hover:bg-weg-blue/90 text-white font-semibold py-3 rounded-xl"
+              onClick={() => setOutput('print')}
+              className="flex-1 min-w-[160px] flex items-center justify-center gap-2 bg-weg-blue hover:bg-weg-blue/90 text-white font-semibold py-3 rounded-xl"
             >
               <Printer size={16} /> Gerar PDF único
+            </button>
+            <button
+              onClick={() => setOutput('share')}
+              className="flex-1 min-w-[160px] flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl"
+            >
+              <MessageCircle size={16} /> Enviar por WhatsApp
             </button>
             <button onClick={onClose} className="btn-outline px-5 py-3">Fechar</button>
           </div>
         </div>
       </div>
     </div>
+    </>
   )
 }
 

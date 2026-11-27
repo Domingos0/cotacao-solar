@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildWaLink, buildProposalMessage } from './whatsapp'
+import { buildWaLink, buildProposalMessage, buildShareMessage } from './whatsapp'
 
 describe('buildWaLink', () => {
   it('completa o DDI 55 quando o telefone não tem', () => {
@@ -28,5 +28,24 @@ describe('buildProposalMessage', () => {
   })
   it('sem nome do cliente, usa saudação genérica', () => {
     expect(buildProposalMessage({ kitNome: 'Kit X', totalFinal: 100 })).toContain('Olá!')
+  })
+})
+
+describe('buildShareMessage', () => {
+  const proposal = {
+    numero: 'EFF-2026-202', revisao: 1, titulo: 'Kit Solar 5,54 kWp', totalFinal: 19625.17,
+    opcaoCartao: { parcelas: 6, valorParcela: 3470.06 }, cartao: [], validaAte: new Date(2026, 11, 4),
+  }
+  it('traz referência, total, opção de cartão, validade e o link', () => {
+    const msg = buildShareMessage(proposal, { nome: 'Ana', link: 'https://x/minhas-cotacoes/1' })
+    expect(msg).toContain('Olá, Ana!')
+    expect(msg).toContain('EFF-2026-202 · Rev. 1')
+    expect(msg).toContain('19.625,17')
+    expect(msg).toContain('6x de R$')
+    expect(msg).toContain('04/12/2026')
+    expect(msg).toContain('https://x/minhas-cotacoes/1')
+  })
+  it('sem link, não mostra a linha do link', () => {
+    expect(buildShareMessage(proposal)).not.toContain('🔗')
   })
 })

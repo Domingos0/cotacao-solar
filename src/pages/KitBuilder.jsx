@@ -12,7 +12,7 @@ import InfoTip from '../components/InfoTip'
 import GuidedTour from '../components/GuidedTour'
 import RatingPrompt from '../components/RatingPrompt'
 import { canShowRatingPrompt } from '../lib/feedback'
-import { buildProposalMessage } from '../lib/whatsapp'
+import { pathForPage } from '../lib/routing'
 import ProposalOutput from '../components/ProposalOutput'
 import { buildProposal } from '../lib/proposal'
 import { execPrint } from '../lib/print'
@@ -5319,14 +5319,18 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
     formaPagamento: data.formaPagamento, parcelas: data.parcelasCartao,
     condicoes, obs: data.proposta?.obs || '',
   }) : null
-  const proposalMsg = buildProposalMessage({
-    clienteNome: data.clienteNome,
-    kitNome: `Kit ${realKwp.toFixed(2)} kWp`,
-    totalFinal,
-    numeroOrcamento: data.numero_orcamento,
-  })
   const proposalOutEl = proposal && (
-    <ProposalOutput proposal={proposal} mode={proposalOut} phone={selectedCliente?.telefone || ''} message={proposalMsg} onClose={closeProposalOut} />
+    <ProposalOutput
+      proposal={proposal}
+      mode={proposalOut}
+      phone={selectedCliente?.telefone || ''}
+      // Admin mandando pro cliente cadastrado: saúda pelo nome e manda o link
+      // da cotação (o cliente abre logado). Integrador mandando pro cliente
+      // final: sem link, que pede login no portal.
+      nome={data.clienteNome || ''}
+      link={isAdmin && clienteCadastrado && savedId ? `${window.location.origin}${pathForPage('cotacoes', savedId)}` : ''}
+      onClose={closeProposalOut}
+    />
   )
 
   // ── Request discount (só disponível após a cotação já estar salva) ──

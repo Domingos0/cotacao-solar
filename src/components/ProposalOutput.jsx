@@ -11,7 +11,7 @@ import PrintedProposal from './PrintedProposal'
 import { execPrint, waitImages } from '../lib/print'
 import { renderProposalPdf, canShareFile, downloadFile } from '../lib/sharePdf'
 import { proposalFileName } from '../lib/proposal'
-import { buildWaLink } from '../lib/whatsapp'
+import { buildWaLink, buildShareMessage } from '../lib/whatsapp'
 
 function WhatsIcon({ className = 'w-4 h-4' }) {
   return (
@@ -21,7 +21,10 @@ function WhatsIcon({ className = 'w-4 h-4' }) {
   )
 }
 
-export default function ProposalOutput({ proposal, mode = 'print', phone = '', message = '', onClose }) {
+// nome/link: saudação e link da cotação no portal que vão na mensagem junto
+// com o PDF (link só quando quem recebe é o dono da cotação).
+export default function ProposalOutput({ proposal, mode = 'print', phone = '', nome = '', link = '', onClose }) {
+  const message = buildShareMessage(proposal, { nome, link })
   const rootRef = useRef(null)
   const [state, setState] = useState(mode === 'share' ? 'gerando' : 'pronto') // gerando | pronto | erro
   const [pdf, setPdf] = useState(null) // { file, previews }

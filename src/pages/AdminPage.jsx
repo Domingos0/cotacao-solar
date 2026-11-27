@@ -15,14 +15,16 @@ import {
 } from '../lib/promoKits'
 import { round2 } from '../lib/money'
 import kitCompositions from '../data/kitCompositions.json'
-import { InlineEditor } from './MinhasCotacoesPage'
+import { InlineEditor, UnifiedProposalModal } from './MinhasCotacoesPage'
+import QuotesCompareModal from '../components/QuotesCompareModal'
 import {
   getNotifySettings, saveNotifySettings, getRemoteNotifySettings, sendWhatsApp, sendEmail,
   notifyClienteApproved, notifyDescontoAprovado, notifyDescontoRecusado, notifyKitStatusChanged,
   notifyPrecoTravado, notifyFeedbackResolvido,
 } from '../lib/notify'
 import { listFeedbacks, resolveFeedback } from '../lib/feedback'
-import { buildProposalMessage } from '../lib/whatsapp'
+import { pathForPage } from '../lib/routing'
+import { fmtLocalDate } from '../lib/dates'
 import ProposalOutput from '../components/ProposalOutput'
 import { proposalFromQuote } from '../lib/proposal'
 import RevisionCompareModal from '../components/RevisionCompareModal'
@@ -34,7 +36,7 @@ import {
   BadgePercent, Bell, MessageCircle, Mail, Eye, EyeOff,
   TrendingUp, Zap, Sun, DollarSign, Activity,
   UserCheck, UserX, Building2, Phone, AtSign, CalendarDays,
-  MessageSquare, Star, Copy, GitCompare, Flame,
+  MessageSquare, Star, Copy, GitCompare, Flame, Layers, CheckSquare, Square,
 } from 'lucide-react'
 
 const ALL_CATEGORIES = Object.values(CATEGORIES)
@@ -2254,6 +2256,17 @@ function QuoteManagement({ onLoadQuote }) {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [viewMode, setViewMode] = useState('cards')
+  // Unificar / comparar cotações (mesmo fluxo de Minhas Cotações)
+  const [unifyMode, setUnifyMode]         = useState(false)
+  const [unifySelected, setUnifySelected] = useState(() => new Set())
+  const [showUnifyModal, setShowUnifyModal]   = useState(false)
+  const [showCompareModal, setShowCompareModal] = useState(false)
+  const toggleUnifySelected = (id) => setUnifySelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const exitUnifyMode = () => { setUnifyMode(false); setUnifySelected(new Set()) }
   const [draggingId, setDraggingId]   = useState(null)
   const [dragOverCol, setDragOverCol] = useState(null)
   const [dragConfirm, setDragConfirm] = useState(null)
@@ -2588,6 +2601,14 @@ function QuoteManagement({ onLoadQuote }) {
 
   const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
+  const selectedQuotes = quotes.filter(q => unifySelected.has(q.id))
+  // Unificar só faz sentido pro MESMO cliente. Cotação interna pra cliente
+  // sem cadastro fica no user do admin — aí o cliente é o nome digitado.
+  const clienteKey = q => q.data?.clienteCadastrado === false
+    ? `sem-cadastro:${(q.data?.clienteNome || '').trim().toLowerCase()}`
+    : q.user_id
+  const mixedClients = new Set(selectedQuotes.map(clienteKey)).size > 1
+
   // ── Card de kit aguardando implantação ──
   const ImplantCard = ({ q }) => {
     const [confirming, setConfirming] = useState(false)
@@ -2776,14 +2797,21 @@ function QuoteManagement({ onLoadQuote }) {
         proposal={proposalFromQuote(sharingQuote, { tableInfo, condicoes })}
         mode="share"
         phone={sharingQuote.profiles?.telefone}
-        message={buildProposalMessage({
-          clienteNome: sharingQuote.profiles?.nome || sharingQuote.data?.clienteNome,
-          kitNome: sharingQuote.nome_projeto || `Kit ${Number(sharingQuote.kwp || 0).toFixed(2)} kWp`,
-          totalFinal: sharingQuote.total_final,
-          numeroOrcamento: sharingQuote.data?.numero_orcamento,
-        })}
+        nome={(sharingQuote.data?.clienteCadastrado === false ? sharingQuote.data?.clienteNome : sharingQuote.profiles?.nome) || ''}
+        link={sharingQuote.data?.clienteCadastrado === false ? '' : `${window.location.origin}${pathForPage('cotacoes', sharingQuote.id)}`}
         onClose={() => setSharingQuote(null)}
       />
+    )}
+    {showUnifyModal && (
+      <UnifiedProposalModal
+        quotes={selectedQuotes}
+        condicoes={condicoes}
+        tableInfo={tableInfo}
+        onClose={() => setShowUnifyModal(false)}
+      />
+    )}
+    {showCompareModal && (
+      <QuotesCompareModal quotes={selectedQuotes} onClose={() => setShowCompareModal(false)} />
     )}
     {revisingQuote && revisingSuccessData && createPortal(
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
@@ -2913,6 +2941,47 @@ function QuoteManagement({ onLoadQuote }) {
           </button>
         </div>
       </div>
+
+      {/* ── Unificar / comparar ── */}
+      {viewMode !== 'funil' && filtered.length > 0 && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 mb-3 rounded-xl border border-gray-100 bg-white shadow-sm flex-wrap">
+          {unifyMode ? (
+            <>
+              <span className="text-sm text-gray-600">
+                <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — 2 ou mais pra unificar (mesmo cliente), 2 ou 3 pra comparar
+                {mixedClients && <span className="block text-xs text-amber-600 font-semibold mt-0.5">Cotações de clientes diferentes: dá pra comparar, mas não unificar.</span>}
+              </span>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => setShowCompareModal(true)}
+                  disabled={unifySelected.size < 2 || unifySelected.size > 3}
+                  title={unifySelected.size > 3 ? 'Comparar funciona com 2 ou 3 cotações' : undefined}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue border border-weg-blue/30 bg-white hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <GitCompare size={13} /> Comparar lado a lado
+                </button>
+                <button
+                  onClick={() => setShowUnifyModal(true)}
+                  disabled={unifySelected.size < 2 || mixedClients}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-weg-blue hover:bg-weg-blue/90 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Layers size={13} /> Unificar selecionadas
+                </button>
+                <button onClick={exitUnifyMode} className="text-xs font-semibold text-gray-500 hover:bg-gray-100 px-3 py-1.5 rounded-lg">
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              onClick={() => setUnifyMode(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-weg-blue hover:bg-weg-blue/10 px-3 py-1.5 rounded-lg"
+            >
+              <Layers size={13} /> Unificar ou comparar cotações
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Cotações ── */}
       {filtered.length === 0 ? (
@@ -3058,6 +3127,7 @@ function QuoteManagement({ onLoadQuote }) {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-blue-50/40">
+                  {unifyMode && <th className="px-3 py-3 w-10" />}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cotação</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente / Empresa</th>
@@ -3074,7 +3144,14 @@ function QuoteManagement({ onLoadQuote }) {
                   return (
                     <tr key={q.id}
                       className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors cursor-pointer"
-                      onClick={() => setExpandedId(expandedId === q.id ? null : q.id)}>
+                      onClick={() => unifyMode ? toggleUnifySelected(q.id) : setExpandedId(expandedId === q.id ? null : q.id)}>
+                      {unifyMode && (
+                        <td className="px-3 py-3">
+                          <span className="text-weg-blue">
+                            {unifySelected.has(q.id) ? <CheckSquare size={18} /> : <Square size={18} className="text-gray-300" />}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="text-sm text-gray-600">{fmtDt(q.created_at).split(', ')[0]}</span>
                         <span className="block text-xs text-gray-400">{fmtDt(q.created_at).split(', ')[1]}</span>
@@ -3142,6 +3219,15 @@ function QuoteManagement({ onLoadQuote }) {
 
                   {/* Linha 1: número + rev + status + data */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
+                    {unifyMode && (
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleUnifySelected(q.id) }}
+                        className="text-weg-blue -ml-1"
+                        aria-label={unifySelected.has(q.id) ? 'Desmarcar cotação' : 'Selecionar cotação'}
+                      >
+                        {unifySelected.has(q.id) ? <CheckSquare size={20} /> : <Square size={20} className="text-gray-300" />}
+                      </button>
+                    )}
                     <span className="font-mono font-bold text-base text-weg-blue">
                       {kd.numero_orcamento || q.id.slice(0, 8).toUpperCase()}
                     </span>
@@ -3345,7 +3431,7 @@ function QuoteManagement({ onLoadQuote }) {
                         new Date(q.valid_until) < new Date() ? 'bg-amber-50 text-amber-800' : 'bg-gray-50/40 text-gray-500'
                       }`}>
                         <span>
-                          📅 Válida até <strong>{new Date(q.valid_until).toLocaleDateString('pt-BR')}</strong>
+                          📅 Válida até <strong>{fmtLocalDate(q.valid_until)}</strong>
                           {new Date(q.valid_until) < new Date() && ' — vencida'}
                           {q.price_locked && ' · preço travado'}
                         </span>
