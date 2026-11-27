@@ -5014,7 +5014,13 @@ function DatasheetsPanel({ products }) {
           <span><strong>{semLink.length}</strong> linha{semLink.length !== 1 ? 's' : ''} sem link: {semLink.join(', ')}</span>
         </div>
       )}
-      {msg && <p className="text-xs text-gray-500 mb-3">{msg}</p>}
+      {msg && (
+        <p className={`text-xs mb-3 rounded-lg px-3 py-2 ${msg.startsWith('Erro') ? 'bg-red-50 border border-red-200 text-red-700 font-semibold' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+          {msg}
+          {/bucket not found/i.test(msg) && <span className="block font-normal mt-0.5">O bucket "datasheets" não existe no Supabase — rode a migration 20261126150001_datasheets_storage_bucket.sql.</span>}
+          {/row-level security|violates|unauthorized|403/i.test(msg) && <span className="block font-normal mt-0.5">O Supabase recusou a gravação — confira se as políticas do bucket "datasheets" foram criadas (mesma migration) e se você está logado como admin.</span>}
+        </p>
+      )}
 
       <div className="space-y-2">
         {linhas.map(linha => (
