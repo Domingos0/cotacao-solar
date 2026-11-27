@@ -17,16 +17,16 @@ export function extractPrevisaoDate(text) {
   return `${y}-${mo}-${d}`
 }
 
-// Linha da tabela WEG:
-//   Disponível (ou Disponível (CD PE))  → Disponível
+// Linha do "Informe produtos Solar - Disponibilidade" (WEG):
+//   Pronta Entrega (formato novo) ou Disponível (antigo) → Disponível
+//     (* = estoque no CD PE — continua disponível)
 //   Indisponível + data DD/MM/YYYY      → Previsão (com a data)
-//   Indisponível + * (prazo fabricação) → Previsão (sem data)
+//   Indisponível + * / ** (prazo em avaliação) → Previsão (sem data)
 //   Indisponível + *** / sem previsão   → Esgotado
 export function classifyStockLine(rawLine) {
   // Sem acentos: o PDF traz "Disponível"/"Indisponível" (com í) — a regex
   // antiga procurava "disponiv" e nunca casava com o texto real.
   const line = String(rawLine || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
-  if (/disponiv/i.test(line) && !/indisponiv/i.test(line)) return { status: 'Disponível', previsao: null }
   if (/indisponiv/i.test(line)) {
     const previsao = extractPrevisaoDate(line)
     if (previsao) return { status: 'Previsão', previsao }
@@ -34,21 +34,28 @@ export function classifyStockLine(rawLine) {
     if (/\*/.test(line)) return { status: 'Previsão', previsao: null }
     return { status: 'Esgotado', previsao: null }
   }
+  if (/pronta\s*entrega/i.test(line) || /disponiv/i.test(line)) return { status: 'Disponível', previsao: null }
   return null
 }
 
-// Linhas do PDF → { sap: { status, previsao } } só pros SAPs conhecidos
+const SAP_INICIO = /^\s*(\d{8})\b/
+
+// Linhas do PDF → { sap: { status, previsao } } só pros SAPs conhecidos.
+// No PDF o status/data às vezes fica um pouco desalinhado e sai numa linha
+// própria logo abaixo do produto ("Pronta Entrega", "🟢 Pronta Entrega",
+// "📅 01/12/2026"). Junta esses pedaços soltos — só os que NÃO começam com
+// outro código, pra nunca pegar o status do produto de baixo.
 export function parseStockPdfLines(lines, knownSAPs) {
   const sapSet = new Set(knownSAPs)
   const results = {}
   lines.forEach((line, i) => {
-    const m = line.match(/^\s*(\d{8})\b/)
+    const m = line.match(SAP_INICIO)
     if (!m) return
     const sap = m[1]
     if (!sapSet.has(sap) || results[sap]) return
-    // Status inconclusivo na linha? A previsão às vezes vem na linha de baixo.
-    let r = classifyStockLine(line)
-    if (!r) r = classifyStockLine([line, lines[i + 1]].filter(Boolean).join(' '))
+    const pedacos = [line]
+    for (let j = i + 1; j < lines.length && j <= i + 2 && !SAP_INICIO.test(lines[j]); j++) pedacos.push(lines[j])
+    const r = classifyStockLine(pedacos.join(' '))
     if (r) results[sap] = r
   })
   return results

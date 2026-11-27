@@ -981,7 +981,10 @@ function DisponibilidadeCard() {
         const mudouData   = product && status === 'Previsão' && previsao && previsao !== (product.estoque_previsao || '')
         return { sap, status, previsao, product, changed: !!(mudouStatus || mudouData) }
       }).filter(r => r.product)
-      setImportResult({ updates, matched, fileName: file.name, total: Object.keys(updates).length })
+      // Códigos do informativo que não existem no catálogo (ficam de fora)
+      const sapsDoPdf = [...new Set(lines.map(l => (l.match(/^\s*(\d{8})/) || [])[1]).filter(Boolean))]
+      const naoNoCatalogo = sapsDoPdf.filter(s => !knownSAPs.includes(s))
+      setImportResult({ updates, matched, naoNoCatalogo, fileName: file.name, total: Object.keys(updates).length })
     } catch (err) {
       setImportError('Erro ao ler o PDF: ' + (err.message || 'verifique se o arquivo é um PDF com texto selecionável.'))
     }
@@ -1147,6 +1150,11 @@ function DisponibilidadeCard() {
               <p className="text-xs text-gray-500 mt-0.5">
                 {importResult.matched.length} produto{importResult.matched.length !== 1 ? 's' : ''} encontrado{importResult.matched.length !== 1 ? 's' : ''} ·{' '}
                 <strong className="text-weg-blue">{importResult.matched.filter(r => r.changed).length}</strong> com status diferente
+                {importResult.naoNoCatalogo?.length > 0 && (
+                  <span className="block text-gray-400" title={importResult.naoNoCatalogo.join(', ')}>
+                    {importResult.naoNoCatalogo.length} código{importResult.naoNoCatalogo.length !== 1 ? 's' : ''} do PDF não {importResult.naoNoCatalogo.length !== 1 ? 'estão' : 'está'} no catálogo (ignorado{importResult.naoNoCatalogo.length !== 1 ? 's' : ''})
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">

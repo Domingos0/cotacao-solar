@@ -34,16 +34,15 @@ function fakeDb() {
 const sleepMs = ms => new Promise(r => setTimeout(r, ms))
 
 describe('gravação do catálogo com edições rápidas seguidas', () => {
-  it('código ANTIGO (sem fila): reproduz "cannot edit a published catalog version"', async () => {
+  it('código ANTIGO: a 2ª gravação usa o rascunho que a 1ª acabou de publicar → erro', async () => {
+    // Sequência exata da corrida, passo a passo (sem depender de tempo):
     const db = fakeDb()
-    let draftId = null
-    const getDraftId = async () => draftId || (draftId = await db.getOrCreateDraft())
-    const save = async (p) => { const { error } = await db.replace(await getDraftId(), p); if (error) throw error }
-    const publish = async () => { await db.publish(await getDraftId()); draftId = null }
-    const update = async (p) => { await save(p); await publish() }
-    const digitando = [['2026-12'], ['2026-12-1'], ['2026-12-15']].map((v, i) => sleepMs(i * 8).then(() => update(v)))
-    const r = await Promise.allSettled(digitando)
-    expect(r.some(x => x.status === 'rejected' && /published/.test(x.reason.message))).toBe(true)
+    let draftId = await db.getOrCreateDraft()       // 1ª edição pega o rascunho
+    await db.replace(draftId, ['2026-12'])           // 1ª grava
+    const draftDa2a = draftId                        // 2ª edição lê o rascunho em cache…
+    await db.publish(draftId); draftId = null        // …enquanto a 1ª publica
+    const { error } = await db.replace(draftDa2a, ['2026-12-15']) // 2ª grava no publicado
+    expect(error.message).toMatch(/published/)
   })
 
   it('código NOVO (com fila): 3 edições rápidas sem erro, e vale a última', async () => {
