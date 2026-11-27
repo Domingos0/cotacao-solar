@@ -982,7 +982,7 @@ function DisponibilidadeCard() {
         return { sap, status, previsao, product, changed: !!(mudouStatus || mudouData) }
       }).filter(r => r.product)
       // Códigos do informativo que não existem no catálogo (ficam de fora)
-      const sapsDoPdf = [...new Set(lines.map(l => (l.match(/^\s*(\d{8})/) || [])[1]).filter(Boolean))]
+      const sapsDoPdf = [...new Set(lines.map(l => (l.match(/^\s*(\d{8})\b/) || [])[1]).filter(Boolean))]
       const naoNoCatalogo = sapsDoPdf.filter(s => !knownSAPs.includes(s))
       setImportResult({ updates, matched, naoNoCatalogo, fileName: file.name, total: Object.keys(updates).length })
     } catch (err) {
