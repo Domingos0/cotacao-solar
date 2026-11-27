@@ -1,5 +1,6 @@
 import { X, ArrowRight } from 'lucide-react'
 import { diffRevisions } from '../lib/revisionDiff'
+import ProductThumb from './ProductThumb'
 
 const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtDate = d => d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
@@ -66,10 +67,17 @@ export default function RevisionCompareModal({ revA, revB, onClose }) {
             ) : (
               <div className="space-y-2">
                 {itensRelevantes.map(({ key, status, a, b }) => (
-                  <div key={key} className={`rounded-xl p-3 text-sm ${STATUS_STYLE[status].row}`}>
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className="font-semibold text-gray-800">{(b || a)?.label || (b || a)?.produto}</p>
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{STATUS_STYLE[status].label}</span>
+                  <div key={key} className={`rounded-xl p-3 text-sm flex gap-3 ${STATUS_STYLE[status].row}`}>
+                    <ProductThumb label={(b || a)?.label} produto={(b || a)?.produto} size={44} />
+                    <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="font-semibold text-gray-800 min-w-0">
+                        {(b || a)?.label || (b || a)?.produto}
+                        {(b || a)?.produto && (b || a)?.produto !== (b || a)?.label && (
+                          <span className="block text-xs font-normal text-gray-500 truncate">{(b || a).produto}</span>
+                        )}
+                      </p>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 shrink-0">{STATUS_STYLE[status].label}</span>
                     </div>
                     {status === 'added' && (
                       <p className="text-xs text-green-700">+ {b.qty} {b.unit} × {fmt(b.preco_unit)} = {fmt(b.total)}</p>
@@ -84,6 +92,7 @@ export default function RevisionCompareModal({ revA, revB, onClose }) {
                         {b.qty} {b.unit} × {fmt(b.preco_unit)} = {fmt(b.total)}
                       </p>
                     )}
+                    </div>
                   </div>
                 ))}
               </div>
