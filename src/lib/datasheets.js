@@ -11,6 +11,22 @@ export function getDatasheetLinha(product) {
   return getInverterSpecs(product)?.linha || null
 }
 
+// Equipamentos da proposta ({nome, codigo}) → [{ nome, url }] com o datasheet
+// vigente: o produto do catálogo atual tem prioridade (o override por modelo
+// pode ter sido cadastrado depois da cotação); sem ele, usa o próprio item.
+export function datasheetsForEquipamentos(equipamentos, products, datasheetsByLinha) {
+  const out = []
+  const urls = new Set()
+  ;(equipamentos || []).forEach(eq => {
+    const doCatalogo = (products || []).find(p => (eq.codigo && p.codigo === eq.codigo) || p.nome === eq.nome)
+    const url = resolveDatasheetUrl(doCatalogo || eq, datasheetsByLinha)
+    if (!url) return
+    out.push({ nome: eq.nome, url, repetido: urls.has(url) })
+    urls.add(url)
+  })
+  return out
+}
+
 // `datasheetsByLinha` é o mapa {linha: url} já carregado (ver listDatasheets).
 export function resolveDatasheetUrl(product, datasheetsByLinha) {
   if (product?.datasheetUrl) return product.datasheetUrl

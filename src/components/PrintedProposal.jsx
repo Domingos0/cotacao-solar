@@ -55,7 +55,7 @@ function Rodape({ esquerda, pagina }) {
 const th = { padding: '7px 8px', fontSize: 9.5, letterSpacing: '0.1em', fontWeight: 700 }
 const linhaTot = { display: 'flex', justifyContent: 'space-between', padding: '3px 0' }
 
-export default function PrintedProposal({ proposal: p }) {
+export default function PrintedProposal({ proposal: p, datasheets = [] }) {
   const ref = p.numero ? `${p.numero} · Rev. ${p.revisao || 0}` : null
   const cliente = p.cliente || {}
   const local = [cliente.cidade, cliente.uf].filter(Boolean).join(' / ')
@@ -318,6 +318,21 @@ export default function PrintedProposal({ proposal: p }) {
                 </tbody>
               </table>
             </>
+          )}
+
+          {/* Datasheets (links clicáveis também no PDF — data-pdf-link) */}
+          {datasheets.filter(d => !d.repetido).length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <p style={{ ...p0, fontSize: 11.5, fontWeight: 700, color: '#334155', marginBottom: 4 }}>Datasheets dos equipamentos</p>
+              {datasheets.filter(d => !d.repetido).map(d => (
+                <p key={d.url} style={{ ...p0, fontSize: 11, padding: '3px 0' }}>
+                  📄 <a href={d.url} data-pdf-link={d.url} target="_blank" rel="noreferrer" style={{ color: MARCA, fontWeight: 700, textDecoration: 'underline' }}>
+                    {datasheets.filter(x => x.url === d.url).map(x => x.nome).join(' / ')}
+                  </a>
+                  <span style={{ color: '#64748B' }}> — clique para abrir a ficha técnica (PDF)</span>
+                </p>
+              ))}
+            </div>
           )}
 
           {(p.condicoes || p.obs) && (

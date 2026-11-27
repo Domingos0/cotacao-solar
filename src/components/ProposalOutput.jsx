@@ -9,7 +9,9 @@ import { createPortal } from 'react-dom'
 import { X, Download, Loader2, Share2 } from 'lucide-react'
 import PrintedProposal from './PrintedProposal'
 import { execPrint, waitImages } from '../lib/print'
-import { renderProposalPdf, canShareFile, downloadFile } from '../lib/sharePdf'
+import { renderProposalPdf, canShareFile, downloadFile, fetchDatasheetFiles } from '../lib/sharePdf'
+import { useProducts } from '../context/ProductsContext'
+import { datasheetsForEquipamentos } from '../lib/datasheets'
 import { proposalFileName } from '../lib/proposal'
 import { buildWaLink, buildShareMessage } from '../lib/whatsapp'
 
@@ -25,6 +27,11 @@ function WhatsIcon({ className = 'w-4 h-4' }) {
 // com o PDF (link só quando quem recebe é o dono da cotação).
 export default function ProposalOutput({ proposal, mode = 'print', phone = '', nome = '', link = '', onClose }) {
   const message = buildShareMessage(proposal, { nome, link })
+  const { products, datasheetsByLinha } = useProducts()
+  const datasheets = datasheetsForEquipamentos(proposal.equipamentos, products, datasheetsByLinha)
+  const qtdDatasheets = datasheets.filter(d => !d.repetido).length
+  const [comDatasheets, setComDatasheets] = useState(true)
+  const [enviando, setEnviando] = useState(false)
   const rootRef = useRef(null)
   const [state, setState] = useState(mode === 'share' ? 'gerando' : 'pronto') // gerando | pronto | erro
   const [pdf, setPdf] = useState(null) // { file, previews }
@@ -57,14 +64,25 @@ export default function ProposalOutput({ proposal, mode = 'print', phone = '', n
   // está pronto antes do botão aparecer.
   async function compartilhar() {
     try {
-      await navigator.share({ files: [pdf.file], text: message, title: fileName.replace(/\.pdf$/, '') })
+      setEnviando(true)
+      const extras = comDatasheets && qtdDatasheets ? await fetchDatasheetFiles(datasheets) : []
+      const files = [pdf.file, ...extras]
+      // Alguns aparelhos não aceitam vários arquivos — cai pra só a proposta
+      const lista = navigator.canShare?.({ files }) ? files : [pdf.file]
+      setEnviando(false)
+      await navigator.share({ files: lista, text: message, title: fileName.replace(/\.pdf$/, '') })
     } catch (e) {
+      setEnviando(false)
       if (e?.name !== 'AbortError') baixarEAbrirWhats()
     }
   }
 
-  function baixarEAbrirWhats() {
+  async function baixarEAbrirWhats() {
     downloadFile(pdf.file, fileName)
+    if (comDatasheets && qtdDatasheets) {
+      const extras = await fetchDatasheetFiles(datasheets)
+      extras.forEach(f => downloadFile(f, f.name))
+    }
     window.open(buildWaLink(phone, message), '_blank', 'noopener')
   }
 
@@ -72,7 +90,7 @@ export default function ProposalOutput({ proposal, mode = 'print', phone = '', n
     return createPortal(
       <div ref={rootRef} className="proposta-print fixed inset-0 z-[9999] overflow-auto bg-slate-200 py-6">
         <div className="space-y-6 flex flex-col items-center print:block print:space-y-0">
-          <PrintedProposal proposal={proposal} />
+          <PrintedProposal proposal={proposal} datasheets={datasheets} />
         </div>
       </div>,
       document.body
@@ -83,7 +101,7 @@ export default function ProposalOutput({ proposal, mode = 'print', phone = '', n
     <>
       {/* Render em tamanho real fora da tela — é daqui que sai o PDF */}
       <div aria-hidden="true" style={{ position: 'fixed', left: -10000, top: 0, width: 794, pointerEvents: 'none' }}>
-        <div ref={rootRef}><PrintedProposal proposal={proposal} /></div>
+        <div ref={rootRef}><PrintedProposal proposal={proposal} datasheets={datasheets} /></div>
       </div>
 
       <div className="fixed inset-0 z-[9999] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
@@ -119,9 +137,15 @@ export default function ProposalOutput({ proposal, mode = 'print', phone = '', n
 
           {state === 'pronto' && pdf && (
             <div className="p-4 border-t border-slate-200 space-y-2">
+              {qtdDatasheets > 0 && (
+                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input type="checkbox" checked={comDatasheets} onChange={e => setComDatasheets(e.target.checked)} className="w-4 h-4 accent-[#16307A]" />
+                  Enviar junto {qtdDatasheets === 1 ? 'o datasheet do inversor' : `os ${qtdDatasheets} datasheets dos inversores`}
+                </label>
+              )}
               {podeCompartilharArquivo ? (
-                <button onClick={compartilhar} className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebe5b] text-white font-bold py-3 rounded-xl">
-                  <Share2 className="w-4 h-4" /> Compartilhar PDF no WhatsApp
+                <button onClick={compartilhar} disabled={enviando} className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebe5b] text-white font-bold py-3 rounded-xl disabled:opacity-60">
+                  {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />} Compartilhar PDF no WhatsApp
                 </button>
               ) : (
                 <button onClick={baixarEAbrirWhats} className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebe5b] text-white font-bold py-3 rounded-xl">

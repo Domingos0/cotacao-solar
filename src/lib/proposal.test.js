@@ -125,3 +125,10 @@ describe('economia na proposta', () => {
     expect(buildProposal({ totalFinal: 100 }).economia).toBe(null)
   })
 })
+
+describe('equipamentos da proposta', () => {
+  it('lista os inversores do kit sem repetir', () => {
+    const p = buildProposal({ kitData: { inverters: [{ inverter: { nome: 'SIW200G M050 W1', codigo: '1' } }, { inverter: { nome: 'SIW200G M050 W1', codigo: '1' } }, { inverter: { nome: 'SIW300H M030', codigo: '2' } }] }, totalFinal: 1 })
+    expect(p.equipamentos.map(e => e.codigo)).toEqual(['1', '2'])
+  })
+})

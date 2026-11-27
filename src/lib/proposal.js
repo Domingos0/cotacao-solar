@@ -47,6 +47,20 @@ export function statsFromKitData(kitData = {}, kwpFallback = null) {
   return { kwp: round2(kwp), stats }
 }
 
+// Inversores do kit (os que têm datasheet) → [{ nome, codigo }] sem repetir
+export function equipamentosFromKitData(kitData = {}) {
+  const invs = Array.isArray(kitData.inverters) && kitData.inverters.length
+    ? kitData.inverters.map(i => i.inverter)
+    : kitData.inverter ? [kitData.inverter] : []
+  const vistos = new Set()
+  return invs.filter(Boolean).filter(inv => {
+    const k = inv.codigo || inv.nome
+    if (!k || vistos.has(k)) return false
+    vistos.add(k)
+    return true
+  }).map(inv => ({ nome: inv.nome, codigo: inv.codigo || null, datasheetUrl: inv.datasheetUrl || null }))
+}
+
 export function structureFromKitData(kitData = {}) {
   if (!kitData.wantsEstrutura) return null
   const kits = [
@@ -102,7 +116,7 @@ export function buildProposal({
   items = [], totalFinal = 0, formaPagamento = 'avista', parcelas = null,
   condicoes = '', obs = '', descontoPacote = null,
   estrutura = undefined, kitsUnificados = null, stats: statsOverride = null,
-  hsp = null, tarifa = null,
+  hsp = null, tarifa = null, equipamentos = null,
 } = {}) {
   const { kwp: kwpCalc, stats: statsKit } = statsFromKitData(kitData, kwp)
   const stats = statsOverride || statsKit
@@ -133,6 +147,7 @@ export function buildProposal({
     cartao, opcaoCartao,
     estrutura: estrutura !== undefined ? estrutura : structureFromKitData(kitData),
     kitsUnificados,
+    equipamentos: equipamentos || equipamentosFromKitData(kitData),
     economia: economiaDaProposta(kwpCalc, hsp ?? kitData.hsp, tarifa ?? kitData.tarifaEnergia, totalFinal),
     condicoes, obs,
   }
@@ -200,6 +215,7 @@ export function proposalFromUnified(quotes, unified, { ownerProfile, tableInfo, 
     estrutura: mergeStructures(qs.map(q => structureFromKitData(q.data || {}))),
     kitsUnificados,
     hsp: kd0.hsp, tarifa: kd0.tarifaEnergia,
+    equipamentos: [...new Map(qs.flatMap(q => equipamentosFromKitData(q.data || {})).map(e => [e.codigo || e.nome, e])).values()],
     condicoes,
   })
 }

@@ -17,6 +17,13 @@ export async function renderProposalPdf(root, { fileName = 'Proposta.pdf' } = {}
   let pdf = null
   const previews = []
   for (const page of pages) {
+    // Links (data-pdf-link): posição em px dentro da página → vira área
+    // clicável no PDF (a página em si é imagem, link de texto não funcionaria)
+    const pageRect = page.getBoundingClientRect()
+    const links = Array.from(page.querySelectorAll('[data-pdf-link]')).map(el => {
+      const r = el.getBoundingClientRect()
+      return { url: el.getAttribute('data-pdf-link'), x: r.left - pageRect.left, y: r.top - pageRect.top, w: r.width, h: r.height }
+    })
     const canvas = await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false })
     const img = canvas.toDataURL('image/jpeg', 0.88)
     previews.push(img)
@@ -26,11 +33,31 @@ export async function renderProposalPdf(root, { fileName = 'Proposta.pdf' } = {}
     if (!pdf) pdf = new jsPDF({ unit: 'mm', format: [A4_W, h], orientation: 'portrait', compress: true })
     else pdf.addPage([A4_W, h], 'portrait')
     pdf.addImage(img, 'JPEG', 0, 0, A4_W, (canvas.height * A4_W) / canvas.width)
+    const mmPorPx = A4_W / pageRect.width
+    links.forEach(l => pdf.link(l.x * mmPorPx, l.y * mmPorPx, l.w * mmPorPx, l.h * mmPorPx, { url: l.url }))
   }
   if (!pdf) throw new Error('Nenhuma página de proposta encontrada')
   const blob = pdf.output('blob')
   const file = new File([blob], fileName, { type: 'application/pdf' })
   return { blob, file, previews }
+}
+
+// Baixa os PDFs de datasheet pra mandar junto no compartilhamento.
+// Falha de um arquivo não impede os outros (nem a proposta).
+export async function fetchDatasheetFiles(datasheets) {
+  const unicos = (datasheets || []).filter(d => !d.repetido)
+  const files = await Promise.all(unicos.map(async d => {
+    try {
+      const r = await fetch(d.url)
+      if (!r.ok) return null
+      const blob = await r.blob()
+      const nome = `Datasheet ${d.nome}`.replace(/[\/:*?"<>|]/g, '-') + '.pdf'
+      return new File([blob], nome, { type: 'application/pdf' })
+    } catch {
+      return null
+    }
+  }))
+  return files.filter(Boolean)
 }
 
 export function canShareFile(file) {
