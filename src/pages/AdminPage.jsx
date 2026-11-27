@@ -914,6 +914,25 @@ async function extractPdfLines(file) {
   return allLines
 }
 
+// Data de previsão que só grava ao sair do campo (blur) ou Enter. Gravar a
+// cada onChange disparava várias gravações+publicações seguidas do catálogo
+// enquanto a data era digitada (dia, mês, ano).
+function DataPrevisaoInput({ value, onSave, className }) {
+  const [v, setV] = useState(value || '')
+  useEffect(() => { setV(value || '') }, [value])
+  const salvar = () => { if ((v || '') !== (value || '')) onSave(v) }
+  return (
+    <input
+      type="date"
+      value={v}
+      onChange={e => setV(e.target.value)}
+      onBlur={salvar}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+      className={className}
+    />
+  )
+}
+
 // Aviso embaixo dos campos de data de previsão: data que já passou (o
 // material chegou? corrija a data) ou previsão chegando (revise).
 function PrevisaoAviso({ value, compact = false }) {
@@ -1091,10 +1110,9 @@ function DisponibilidadeCard() {
                 </button>
                 <label className="flex items-center gap-1 text-gray-600">
                   Nova data
-                  <input
-                    type="date"
-                    value={p.estoque_previsao || ''}
-                    onChange={e => updateProduct(p.id, { estoque_previsao: e.target.value })}
+                  <DataPrevisaoInput
+                    value={p.estoque_previsao}
+                    onSave={v => updateProduct(p.id, { estoque_previsao: v })}
                     className="border border-amber-300 rounded px-1.5 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
                   />
                 </label>
@@ -1255,10 +1273,9 @@ function DisponibilidadeCard() {
                             ))}
                           </div>
                           {st === 'Previsão' && (
-                            <input
-                              type="date"
-                              value={p.estoque_previsao || ''}
-                              onChange={e => updateProduct(p.id, { estoque_previsao: e.target.value })}
+                            <DataPrevisaoInput
+                              value={p.estoque_previsao}
+                              onSave={v => updateProduct(p.id, { estoque_previsao: v })}
                               className="text-[10px] border border-yellow-300 rounded px-1.5 py-0.5 text-yellow-800 bg-yellow-50 focus:outline-none focus:ring-1 focus:ring-yellow-400 w-32"
                             />
                           )}

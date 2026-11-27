@@ -214,15 +214,36 @@ export function ProductsProvider({ children }) {
   // nada foi salvo, e podia seguir pra publicar um rascunho que não recebeu
   // a escrita. Agora essas funções REJEITAM a promise nesse caso, pra quem
   // encadeia ações (import → lista ativa → publicar) poder abortar a cadeia.
+  // Fila: gravar produtos e publicar rodam um de cada vez. Sem isso, duas
+  // edições seguidas (ex: digitar a data de previsão dispara onChange a cada
+  // número) corriam juntas — a 2ª gravava no rascunho que a 1ª acabou de
+  // PUBLICAR e o banco recusava: "cannot edit a published catalog version
+  // directly".
+  const saveQueueRef = useRef(Promise.resolve())
+  const runSerial = useCallback((fn) => {
+    const p = saveQueueRef.current.then(fn, fn)
+    saveQueueRef.current = p.catch(() => {})
+    return p
+  }, [])
+
+  const replaceProductsRemote = useCallback(async (newProducts) => {
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const draftId = await ensureDraftVersion()
+      if (!draftId) throw new DraftUnavailableError('rascunho indisponível')
+      const { error } = await supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts })
+      if (!error) return
+      // Rascunho guardado já foi publicado (outra aba/admin publicou): pega um novo e tenta 1x de novo
+      if (tentativa === 0 && /published/i.test(error.message || '')) { draftVersionIdRef.current = null; continue }
+      throw error
+    }
+  }, [ensureDraftVersion])
+
   const saveProducts = useCallback((newProducts) => {
     setProducts(newProducts)
     if (IS_DEV) return Promise.resolve()
-    return ensureDraftVersion().then(draftId => {
-      if (!draftId) throw new DraftUnavailableError('rascunho indisponível')
-      return supabase.rpc('replace_catalog_products', { p_version_id: draftId, p_products: newProducts })
-        .then(({ error }) => { if (error) throw error })
-    }).catch(e => { if (!(e instanceof DraftUnavailableError)) reportCatalogSaveError('produtos', e); throw e })
-  }, [ensureDraftVersion, reportCatalogSaveError])
+    return runSerial(() => replaceProductsRemote(newProducts))
+      .catch(e => { if (!(e instanceof DraftUnavailableError)) reportCatalogSaveError('produtos', e); throw e })
+  }, [runSerial, replaceProductsRemote, reportCatalogSaveError])
 
   const saveTableInfo = useCallback((info) => {
     setTableInfo(info)
@@ -270,7 +291,7 @@ export function ProductsProvider({ children }) {
 
   // Publica a versão de rascunho em edição, tornando-a a versão oficial
   // vista por todos os clientes (via current_catalog_version()).
-  const publishCatalog = useCallback(async () => {
+  const publishCatalog = useCallback(() => runSerial(async () => {
     if (IS_DEV) return { ok: false, error: 'Publicação indisponível em desenvolvimento.' }
     const draftId = draftVersionIdRef.current || await ensureDraftVersion()
     if (!draftId) return { ok: false, error: 'Não foi possível preparar a versão para publicação.' }
@@ -288,7 +309,7 @@ export function ProductsProvider({ children }) {
     } catch (e) {
       return { ok: false, error: e?.message || 'Erro ao publicar.' }
     }
-  }, [ensureDraftVersion])
+  }), [ensureDraftVersion, runSerial])
 
   // Edições individuais de produto (toggle de estoque, editar um campo,
   // excluir) só gravavam no rascunho e nunca publicavam — a tela do admin
