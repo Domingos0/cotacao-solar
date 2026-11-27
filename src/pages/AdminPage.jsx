@@ -14,7 +14,7 @@ import {
   listPromoKits, upsertPromoKit, deletePromoKit, listPromoRegioes, upsertPromoRegiao,
   uploadPromoFolder, getPromoStatus, PROMO_STATUS_LABELS, PROMO_REGIOES_KEYS,
 } from '../lib/promoKits'
-import { round2 } from '../lib/money'
+import { round2, computeTotalFinal } from '../lib/money'
 import { checkUnifyCnpj, groupQuotesByClient } from '../lib/unifyQuotes'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { parseStockPdfLines, produtosParaRevisar, diasAtePrevisao, textoAlertaPrevisao } from '../lib/stockForecast'
@@ -2673,8 +2673,58 @@ function QuoteManagement({ onLoadQuote }) {
     return next
   })
 
+  // Painel de aprovar/alterar desconto. O % digitado é o desconto TOTAL da
+  // cotação (substitui o atual — ex: cliente com desconto comercial de 25%
+  // já nasce com 25%; aprovar 25% não muda nada). Mostra o atual e o novo
+  // total ao vivo, com a mesma fórmula do servidor (compute_total_final).
+  const renderApprovePanel = (q) => {
+    const atualPct = Number(q.desconto_pct || 0)
+    const novoPct = parseFloat(String(approveDiscount).replace(',', '.'))
+    const valido = !isNaN(novoPct) && novoPct >= 0 && novoPct <= 100
+    const novoTotal = valido && q.subtotal ? computeTotalFinal(q.subtotal, novoPct, q.frete_pct || 1) : null
+    const diff = novoTotal != null ? round2(novoTotal - (q.total_final || 0)) : null
+    return (
+      <div className="space-y-2" onClick={e => e.stopPropagation()}>
+        <p className="text-xs text-gray-600">
+          Desconto atual: <strong>{atualPct.toLocaleString('pt-BR')}%</strong> → total <strong>{fmt(q.total_final)}</strong>.
+          <span className="block text-gray-500">O valor abaixo é o desconto <strong>total</strong> da cotação (substitui o atual, não soma).</span>
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-xs text-gray-700 whitespace-nowrap">Novo desconto (%):</label>
+          <input type="number" min="0" max="100" step="0.5"
+            value={approveDiscount} onChange={e => { setApproveDiscount(e.target.value); setApproveError('') }}
+            className={`w-24 border rounded-lg px-2 py-1 text-sm ${approveError ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-300'}`}
+            placeholder="ex: 30" autoFocus />
+          {novoTotal != null && (
+            <span className="text-xs text-gray-700">
+              novo total <strong className="text-gray-900">{fmt(novoTotal)}</strong>
+              {diff !== 0 && <span className={diff < 0 ? 'text-green-700' : 'text-red-600'}> ({diff < 0 ? '−' : '+'}{fmt(Math.abs(diff))})</span>}
+            </span>
+          )}
+        </div>
+        {valido && novoPct === atualPct && (
+          <p className="text-xs text-amber-700 font-semibold">Igual ao desconto atual — o valor da cotação não vai mudar.</p>
+        )}
+        {valido && novoPct < atualPct && (
+          <p className="text-xs text-red-600 font-semibold">Menor que o desconto atual — o valor da cotação vai SUBIR.</p>
+        )}
+        {approveError && <p className="text-xs text-red-600 font-medium">{approveError}</p>}
+        <textarea value={approveMsg} onChange={e => setApproveMsg(e.target.value)}
+          rows={2} placeholder="Mensagem para o cliente (opcional)"
+          className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 resize-none" />
+        <div className="flex gap-2">
+          <button onClick={() => handleApprove(q)}
+            className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
+            <Check size={12} /> {q.status === 'aguardando_desconto' ? 'Aprovar e enviar' : 'Salvar desconto e avisar cliente'}
+          </button>
+          <button onClick={() => { setApprovingId(null); setApproveError('') }} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+        </div>
+      </div>
+    )
+  }
+
   // Card de uma cotação — usado na visão Cards e dentro de cada cliente
-  const renderQuoteCard = q => {
+  const renderQuoteCard =q => {
             const kd = q.data || {}
             const isExpanded = expandedId === q.id
             const rev = kd.revisao || 0
@@ -2944,30 +2994,7 @@ function QuoteManagement({ onLoadQuote }) {
                         <p className="text-xs text-yellow-800">
                           <strong>Motivo do desconto:</strong> {q.desconto_motivo || '—'}
                         </p>
-                        {approvingId === q.id ? (
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs text-gray-700 whitespace-nowrap">Desconto (%):</label>
-                              <input type="number" min="0" max="100" step="0.5"
-                                value={approveDiscount} onChange={e => { setApproveDiscount(e.target.value); setApproveError('') }}
-                                className={`w-24 border rounded-lg px-2 py-1 text-sm ${approveError ? 'border-red-400 ring-1 ring-red-200' : 'border-gray-300'}`}
-                                placeholder="ex: 5" autoFocus />
-                            </div>
-                            {approveError && (
-                              <p className="text-xs text-red-600 font-medium">{approveError}</p>
-                            )}
-                            <textarea value={approveMsg} onChange={e => setApproveMsg(e.target.value)}
-                              rows={2} placeholder="Mensagem para o cliente (opcional)"
-                              className="w-full text-xs border border-gray-300 rounded-lg px-3 py-2 resize-none" />
-                            <div className="flex gap-2">
-                              <button onClick={() => handleApprove(q)}
-                                className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center gap-1">
-                                <Check size={12} /> Aprovar e enviar
-                              </button>
-                              <button onClick={() => { setApprovingId(null); setApproveError('') }} className="text-xs text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
-                            </div>
-                          </div>
-                        ) : rejectingId === q.id ? (
+                        {approvingId === q.id ? renderApprovePanel(q) : rejectingId === q.id ? (
                           <div className="space-y-2">
                             <textarea value={rejectMsg} onChange={e => setRejectMsg(e.target.value)}
                               rows={2} placeholder="Motivo da recusa (opcional)"
@@ -2983,7 +3010,7 @@ function QuoteManagement({ onLoadQuote }) {
                           </div>
                         ) : (
                           <div className="flex gap-2">
-                            <button onClick={() => { setApprovingId(q.id); setRejectingId(null); setApproveDiscount(''); setApproveMsg('') }}
+                            <button onClick={() => { setApprovingId(q.id); setRejectingId(null); setApproveDiscount(String(q.desconto_pct ?? '')); setApproveMsg('') }}
                               className="bg-green-100 hover:bg-green-200 text-green-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1">
                               <BadgePercent size={12} /> Aprovar desconto
                             </button>
@@ -2992,6 +3019,20 @@ function QuoteManagement({ onLoadQuote }) {
                               <X size={12} /> Recusar
                             </button>
                           </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Ajustar o desconto de cotação aberta (inclusive já aprovada) */}
+                    {!['aguardando_desconto', 'fechado', 'faturado', 'em_transporte', 'implantado', 'perdida'].includes(q.status) && (
+                      <div className="px-5 py-3 border-t border-gray-100">
+                        {approvingId === q.id ? renderApprovePanel(q) : (
+                          <button
+                            onClick={() => { setApprovingId(q.id); setRejectingId(null); setApproveDiscount(String(q.desconto_pct ?? '')); setApproveMsg('') }}
+                            className="text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 px-3 py-1.5 rounded-lg flex items-center gap-1"
+                          >
+                            <BadgePercent size={12} /> Alterar desconto (atual: {Number(q.desconto_pct || 0).toLocaleString('pt-BR')}%)
+                          </button>
                         )}
                       </div>
                     )}
