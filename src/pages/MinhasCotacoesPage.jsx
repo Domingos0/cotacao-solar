@@ -3118,7 +3118,17 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
                               <td className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600 whitespace-nowrap">
                                 {r.total_final != null ? fmt(r.total_final) : '—'}
                               </td>
-                              <td className="px-3 py-2.5 text-center">
+                              <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                                {/* Comparar com a revisão anterior (mesmo modal do admin) */}
+                                {ri > 0 && !r._synthetic && !displayRevisoes[ri - 1]._synthetic && (
+                                  <button
+                                    onClick={() => setCompareRevs({ a: displayRevisoes[ri - 1], b: r })}
+                                    title={`Comparar com a Rev. ${displayRevisoes[ri - 1].revisao}`}
+                                    className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                                  >
+                                    <GitCompare size={13} />
+                                  </button>
+                                )}
                                 {!r._synthetic && (
                                   <button
                                     onClick={() => handlePrintRevision(q, r)}
