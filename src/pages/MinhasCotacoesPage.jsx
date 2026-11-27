@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { flushSync } from 'react-dom'
 import kitCompositions from '../data/kitCompositions.json'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
@@ -8,7 +7,9 @@ import { notifyDescontoSolicitado, notifyPrecoTravado } from '../lib/notify'
 import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
-import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
+import { buildProposalMessage } from '../lib/whatsapp'
+import ProposalOutput from '../components/ProposalOutput'
+import { buildProposal, proposalFromQuote } from '../lib/proposal'
 import { buildUnifiedProposal } from '../lib/unifyQuotes'
 import { createTemplateFromQuote } from '../lib/kitTemplates'
 import { calcPainelIntegrador } from '../lib/integradorPainel'
@@ -59,52 +60,6 @@ function ItemThumb({ label, produto }) {
       <img src={src} alt={nome} className="w-full h-full object-contain p-1" onError={() => setErr(true)} />
     </div>
   )
-}
-
-// ─── Utilitário de impressão (mobile-safe) ────────────────────────────────────
-// Move #kit-print para filho direto do body, sobrescreve estilos inline que
-// causam problemas no mobile (fixed + overflow:auto = só viewport é impresso),
-// adiciona .is-printing e dispara window.print().
-function execPrint(cleanup) {
-  const el = document.getElementById('kit-print')
-  if (!el) { window.print(); return }
-  const parent     = el.parentNode
-  const next       = el.nextSibling
-  const savedStyle = el.style.cssText
-
-  // Inline styles sobrescrevem Tailwind na hora certa — mais confiável que
-  // @media print em mobile Safari/Chrome onde position:fixed e overflow:auto
-  // fazem o browser imprimir só o que cabe no viewport.
-  el.style.cssText = [
-    'position:static',
-    'inset:auto',
-    'top:auto', 'left:auto', 'right:auto', 'bottom:auto',
-    'width:100%',
-    'max-width:none',
-    'height:auto',
-    'max-height:none',
-    'overflow:visible',
-    'border-radius:0',
-    'box-shadow:none',
-    'z-index:auto',
-    'transform:none',
-    'background:white',
-  ].join(';')
-
-  document.body.appendChild(el)
-  document.body.classList.add('is-printing')
-  const restore = () => {
-    document.body.classList.remove('is-printing')
-    el.style.cssText = savedStyle
-    if (el.parentNode === document.body) parent.insertBefore(el, next)
-    cleanup?.()
-  }
-  window.addEventListener('afterprint', restore, { once: true })
-  // Fallback: mobile Safari não dispara afterprint de forma confiável
-  setTimeout(() => {
-    if (document.body.classList.contains('is-printing')) restore()
-  }, 30000)
-  setTimeout(() => window.print(), 80)
 }
 
 // ─── Shared constants (mirror of KitBuilder) ──────────────────────────────────
@@ -1189,8 +1144,7 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
   const [suggestedPanel, setSuggestedPanel] = useState(null)
   const [successData, setSuccessData]     = useState(null)
   const [countdown, setCountdown]         = useState(4)
-  const [isPrinting, setIsPrinting]       = useState(false)
-  const [printRevision, setPrintRevision] = useState(null)
+  const [proposalOut, setProposalOut]     = useState(null) // { mode: 'print'|'share', revision? }
 
   // Discount request (client-side)
   const [showDiscountModal, setShowDiscountModal] = useState(false)
@@ -1342,15 +1296,8 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
     setConfirmAction(null)
   }
 
-  const handlePrint = () => {
-    flushSync(() => setIsPrinting(true))
-    execPrint(() => setIsPrinting(false))
-  }
-
-  const handlePrintRevision = (r) => {
-    flushSync(() => setPrintRevision(r))
-    execPrint(() => setPrintRevision(null))
-  }
+  const handlePrint = () => setProposalOut({ mode: 'print' })
+  const handlePrintRevision = (r) => setProposalOut({ mode: 'print', revision: r })
 
   // ── Confirmation overlay ──
   if (confirmAction) {
@@ -1525,317 +1472,21 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
 
   return (
     <>
-    {/* Revision print overlay — layout unificado igual ao isPrinting */}
-    {printRevision && (
-      <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
-        <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
-          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
-            onError={e => { e.target.style.display = 'none' }} />
-          <div className="text-right">
-            <p className="text-white/70 text-xs">{fmtDate(printRevision.data)}</p>
-            <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
-          </div>
-        </div>
-        <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{background:'#f8f9fa'}}>
-          <div>
-            <p className="text-base font-extrabold text-[#003087]">{quote.nome_projeto}</p>
-            {kitData.numero_orcamento && (
-              <p className="text-xs font-bold text-[#1B3A8A] mt-0.5">
-                Ref: {kitData.numero_orcamento} · Rev. {printRevision.revisao}
-              </p>
-            )}
-            {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
-            {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
-              <p className="text-xs text-gray-500 mt-1">
-                Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
-                  {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
-                </strong>
-              </p>
-            )}
-            {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
-            <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
-          </div>
-        </div>
-        {/* Aviso de disponibilidade do módulo */}
-        {panelEstoqueAtual !== 'Disponível' && (() => {
-          const isEsgotado = panelEstoqueAtual === 'Esgotado' || panelEstoqueAtual === 'Sem estoque'
-          const prevFmt = panelPrevisaoAtual ? new Date(panelPrevisaoAtual + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
-          return (
-            <div className={`mx-8 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
-              <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
-              <div>
-                <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
-                  {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
-                </p>
-                <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
-                  {isEsgotado ? 'Confirme alternativas disponíveis antes de emitir o pedido.' : 'Prazo sujeito a alteração. Confirme com o fornecedor antes de finalizar.'}
-                </p>
-              </div>
-            </div>
-          )
-        })()}
-
-        <div className="px-8 pt-5 pb-3">
-          {printRevision.items?.length > 0 ? (
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b-2 border-gray-200">
-                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
-                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
-                  <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
-                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
-                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {printRevision.items.map((item, i) => (
-                  <tr key={i} className="border-b border-gray-100">
-                    <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
-                    <td className="py-2.5">
-                      <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
-                      <p className="text-xs text-gray-500">{item.produto}</p>
-                      {deprecationNote(item.produto) && (
-                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
-                      )}
-                      <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
-                    </td>
-                    <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                    <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt(item.preco_unit)}</td>
-                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                {isAdmin && printRevision.frete && (
-                  <tr className="border-t border-gray-200 bg-gray-50">
-                    <td colSpan="4" className="py-2.5 text-right text-sm text-gray-500 pr-4">{printRevision.frete}</td>
-                    <td className="py-2.5 text-right text-sm text-gray-600 whitespace-nowrap">Incluso</td>
-                  </tr>
-                )}
-                <tr style={{background:'#003087', color:'white'}}>
-                  <td colSpan="4" style={{padding:'14px 8px', textAlign:'right', fontWeight:800, fontSize:13, textTransform:'uppercase', letterSpacing:'0.08em'}}>Total do Kit</td>
-                  <td style={{padding:'14px 8px', textAlign:'right', fontSize:18, fontWeight:900, whiteSpace:'nowrap'}}>{fmt(printRevision.total_final)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          ) : (
-            <p className="text-sm text-gray-400 italic py-4">Itens desta revisão não disponíveis.</p>
-          )}
-        </div>
-        <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
-          <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
-          <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
-          {kitData.criadoPorAdmin && (
-            <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
-              Proposta elaborada por {kitData.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
-            </p>
-          )}
-        </div>
-        <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
-          <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome}</span>
-          <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>
-        </div>
-      </div>
+    {/* Proposta (layout de design/): imprimir, imprimir revisão ou PDF pro WhatsApp */}
+    {proposalOut && (
+      <ProposalOutput
+        proposal={proposalFromQuote(quote, { ownerProfile, tableInfo, condicoes, revision: proposalOut.revision })}
+        mode={proposalOut.mode}
+        phone={ownerProfile?.telefone}
+        message={buildProposalMessage({
+          clienteNome: ownerProfile?.nome,
+          kitNome: quote.nome_projeto || `Kit ${Number(quote.kwp || 0).toFixed(2)} kWp`,
+          totalFinal: proposalOut.revision ? proposalOut.revision.total_final : quote.total_final,
+          numeroOrcamento: kitData.numero_orcamento,
+        })}
+        onClose={() => setProposalOut(null)}
+      />
     )}
-
-    {/* ── Dedicated print overlay (same approach as printRevision) ── */}
-    {isPrinting && (() => {
-      const totalBase  = Math.round((quote.total_final / (quote.frete_pct || 1)) * 100) / 100
-      const freteAmt   = Math.round((quote.total_final - totalBase) * 100) / 100
-      const ajusteAmt  = Math.round((quote.subtotal - totalBase) * 100) / 100
-      const kwp        = kitData.panel ? ((kitData.panelQty || 1) * (kitData.panel.potencia || 1) / 1000).toFixed(2) : null
-      return (
-        <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
-          {/* Logo header */}
-          <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
-            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
-              onError={e => { e.target.style.display = 'none' }} />
-            <div className="text-right">
-              <p className="text-white/70 text-xs">{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
-              <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
-            </div>
-          </div>
-
-          {/* Kit info bar */}
-          <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{background:'#f8f9fa'}}>
-            <div>
-              <p className="text-base font-extrabold text-[#003087]">{quote.nome_projeto}</p>
-              {kitData.numero_orcamento && (
-                <p className="text-xs font-bold text-[#1B3A8A] mt-0.5">
-                  Ref: {kitData.numero_orcamento}{(kitData.revisao||0)>0?` · Rev. ${kitData.revisao}`:''}
-                </p>
-              )}
-              {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
-              {quote.frete_pct > 1 && <p className="text-xs text-gray-500 mt-0.5">{quote.frete_nome}</p>}
-              {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
-                    {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
-                  </strong>
-                </p>
-              )}
-              {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
-              <p className="text-xs text-gray-400 mt-1">Validade: 7 dias</p>
-            </div>
-            {kwp && (
-              <div className="text-right shrink-0">
-                <p className="text-3xl font-extrabold text-[#003087]">{kwp} kWp</p>
-                {kitData.panel && <p className="text-xs text-gray-500">{kitData.panelQty} painéis × {kitData.panel.potencia} Wp</p>}
-              </div>
-            )}
-          </div>
-
-          {/* Aviso de disponibilidade do módulo */}
-          {panelEstoqueAtual !== 'Disponível' && (() => {
-            const isEsgotado = panelEstoqueAtual === 'Esgotado' || panelEstoqueAtual === 'Sem estoque'
-            const prevFmt = panelPrevisaoAtual ? new Date(panelPrevisaoAtual + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
-            return (
-              <div className={`mx-8 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
-                <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
-                <div>
-                  <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
-                    {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
-                  </p>
-                  <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
-                    {isEsgotado ? 'Confirme alternativas disponíveis antes de emitir o pedido.' : 'Prazo sujeito a alteração. Confirme com o fornecedor antes de finalizar.'}
-                  </p>
-                </div>
-              </div>
-            )
-          })()}
-
-          {/* Items table */}
-          <div className="px-8 pt-5 pb-3">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b-2 border-gray-200">
-                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
-                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-14"></th>
-                  <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
-                  <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
-                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
-                  <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, i) => (
-                  <tr key={i} className="border-b border-gray-100">
-                    <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
-                    <td className="py-2.5">
-                      <ItemThumb label={item.label} produto={item.produto} />
-                    </td>
-                    <td className="py-2.5">
-                      <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
-                      <p className="text-xs text-gray-500">{item.produto}</p>
-                      {deprecationNote(item.produto) && (
-                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
-                      )}
-                      <p className="text-xs text-gray-400 font-mono">SAP:&nbsp;&nbsp;{item.codigo_sap}</p>
-                    </td>
-                    <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                    <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt((item.preco_unit || 0) * priceRatio)}</td>
-                    <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">
-                      {itemTotaisDistribuidos[i] != null ? fmt(itemTotaisDistribuidos[i]) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Financial summary — revisão interna do admin na tela; print:hidden
-              garante que nunca sai no PDF/impressão, mesmo sendo o admin quem gera. */}
-          {isAdmin && (
-            <div className="print:hidden px-8 py-3 space-y-1.5 border-t border-gray-200">
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Subtotal (preço de tabela)</span>
-                <span className="font-semibold">{fmt(quote.subtotal)}</span>
-              </div>
-              {ajusteAmt > 0 && (
-                <div className="flex justify-between text-sm text-green-600 font-medium">
-                  <span>Ajuste</span>
-                  <span>– {fmt(ajusteAmt)}</span>
-                </div>
-              )}
-              {freteAmt > 0 && (
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>{quote.frete_nome}</span>
-                  <span className="font-medium">+ {fmt(freteAmt)}</span>
-                </div>
-              )}
-            </div>
-          )}
-          <div className="bg-[#003087] mx-0 px-8 py-4 flex justify-between items-center gap-4">
-            <span className="text-white font-extrabold text-sm uppercase tracking-widest">
-              Total do Kit
-            </span>
-            <span className="text-white font-extrabold text-xl whitespace-nowrap">{fmt(quote.total_final)}</span>
-          </div>
-
-          {/* Forma de pagamento (item 33) */}
-          {(kitData.formaPagamento || kitData.parcelasCartao) && (
-            <div className="px-8 py-4 border-t border-gray-100">
-              <PaymentOptions
-                total={quote.total_final}
-                formaPagamento={kitData.formaPagamento}
-                parcelas={kitData.parcelasCartao}
-                readOnly
-              />
-            </div>
-          )}
-
-          {/* Composição da Estrutura — sempre em nova página */}
-          {structureComposition.length > 0 && (
-            <div className="px-8 py-4 border-t border-dashed border-gray-200 print-new-page">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Composição da Estrutura de Fixação</p>
-              {kitData.estruturaKit && (
-                <p className="text-xs text-gray-400 mb-3">
-                  {kitData.estruturaKit && <span className="mr-4">Kit 4 mod: {kitData.estruturaKit.nome}</span>}
-                  {kitData.estruturaKit3 && <span>Kit 3 mod: {kitData.estruturaKit3.nome}</span>}
-                </p>
-              )}
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-gray-200">
-                    <th className="py-2 text-left text-xs font-bold text-gray-500 uppercase w-8">#</th>
-                    <th className="py-2 text-left text-xs font-bold text-gray-500 uppercase">Componente</th>
-                    <th className="py-2 text-left text-xs font-mono font-bold text-gray-500 uppercase">SAP</th>
-                    <th className="py-2 text-center text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {structureComposition.map((comp, idx) => (
-                    <tr key={comp.sap} className={`border-b border-gray-100 ${idx % 2 === 0 ? '' : 'bg-gray-50'}`}>
-                      <td className="py-2.5 text-xs text-gray-400">{idx + 1}</td>
-                      <td className="py-2.5 text-sm font-semibold text-gray-800">{comp.descricao}</td>
-                      <td className="py-2.5 text-xs font-mono text-gray-400">{comp.sap}</td>
-                      <td className="py-2.5 text-center">
-                        <span className="bg-blue-50 text-blue-700 rounded px-3 py-0.5 text-sm font-bold">{comp.qty} un</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Rodapé informativo — conteúdo editável pelo admin */}
-          <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
-            <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
-            <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
-            {kitData.criadoPorAdmin && (
-              <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
-                Proposta elaborada por {kitData.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
-              </p>
-            )}
-          </div>
-          <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
-            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{tableInfo?.nome}</span>
-            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>
-          </div>
-        </div>
-      )
-    })()}
 
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto">
@@ -2138,18 +1789,10 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
               <Printer size={15} /> Imprimir / PDF
             </button>
 
-            {/* WhatsApp — abre o chat com a mensagem pronta; o PDF (botão acima) é anexado manualmente */}
+            {/* WhatsApp — gera o PDF da proposta e compartilha (celular: anexado; PC: baixa + abre a conversa) */}
             <button
-              onClick={() => {
-                const msg = buildProposalMessage({
-                  clienteNome: ownerProfile?.nome,
-                  kitNome: quote.nome_projeto || `Kit ${Number(quote.kwp || 0).toFixed(2)} kWp`,
-                  totalFinal: quote.total_final,
-                  numeroOrcamento: kitData.numero_orcamento,
-                })
-                window.open(buildWaLink(ownerProfile?.telefone, msg), '_blank')
-              }}
-              title="Abre o WhatsApp com a mensagem pronta — anexe o PDF (gerado pelo botão Imprimir/PDF) manualmente na conversa"
+              onClick={() => setProposalOut({ mode: 'share' })}
+              title="Gera o PDF da proposta e envia pelo WhatsApp"
               className="flex items-center gap-1.5 text-sm text-green-700 border border-green-300 hover:border-green-400 bg-green-50 px-4 py-2 rounded-xl font-semibold"
             >
               <MessageCircle size={15} /> Enviar por WhatsApp
@@ -2415,104 +2058,21 @@ function QuoteDetailModal({ quote, onClose, onLoadQuote, onStatusChange, onRefre
 // ─── Revision Detail Modal ─────────────────────────────────────────────────────
 function RevisionDetailModal({ quote, revision, onClose }) {
   const { profile, isAdmin } = useAuth()
-  const { tableInfo } = useProducts()
+  const { tableInfo, condicoes } = useProducts()
   const kitData = quote.data || {}
   const ownerProfile = quote.profiles || profile
   const [isPrinting, setIsPrinting] = useState(false)
 
-  const handlePrint = () => {
-    flushSync(() => setIsPrinting(true))
-    execPrint(() => setIsPrinting(false))
-  }
+  const handlePrint = () => setIsPrinting(true)
 
   return (
     <>
-      {/* Print overlay — mesmo layout do QuoteDetailModal */}
       {isPrinting && (
-        <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
-          {/* Logo header */}
-          <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
-            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
-              onError={e => { e.target.style.display = 'none' }} />
-            <div className="text-right">
-              <p className="text-white/70 text-xs">{fmtDate(revision.data)}</p>
-              <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
-            </div>
-          </div>
-
-          {/* Kit info bar */}
-          <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{background:'#f8f9fa'}}>
-            <div>
-              <p className="text-base font-extrabold text-[#003087]">{quote.nome_projeto}</p>
-              {kitData.numero_orcamento && (
-                <p className="text-xs font-bold text-[#1B3A8A] mt-0.5">
-                  Ref: {kitData.numero_orcamento} · Rev. {revision.revisao}
-                </p>
-              )}
-              {kitData.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{kitData.clienteNome}</strong></p>}
-              {revision.frete && <p className="text-xs text-gray-500 mt-0.5">{revision.frete}</p>}
-              {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
-                    {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
-                  </strong>
-                </p>
-              )}
-              {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
-            </div>
-          </div>
-
-          {/* Items table */}
-          <div className="px-8 pt-5 pb-3">
-            {(revision.items || []).length === 0 ? (
-              <p className="text-sm text-gray-400 italic py-4">Itens do kit não disponíveis para esta revisão.</p>
-            ) : (
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-gray-200">
-                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
-                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
-                    <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
-                    <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
-                    <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {revision.items.map((item, i) => (
-                    <tr key={i} className="border-b border-gray-100">
-                      <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
-                      <td className="py-2.5">
-                        <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
-                        <p className="text-xs text-gray-500">{item.produto}</p>
-                        {deprecationNote(item.produto) && (
-                          <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
-                        )}
-                      {deprecationNote(item.produto) && (
-                        <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
-                      )}
-                        <p className="text-xs text-gray-400 font-mono">SAP:&nbsp;&nbsp;{item.codigo_sap}</p>
-                      </td>
-                      <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                      <td className="py-2.5 text-right text-xs text-gray-500">{fmt(item.preco_unit)}</td>
-                      <td className="py-2.5 text-right text-sm font-bold text-gray-900">{fmt(item.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Total bar */}
-          <div className="bg-[#003087] px-8 py-4 flex justify-between items-center">
-            <span className="text-white font-extrabold text-sm uppercase tracking-widest">Total do Kit</span>
-            <span className="text-white font-extrabold text-xl">{fmt(revision.total_final)}</span>
-          </div>
-
-          {/* Footer */}
-          <p className="text-center text-xs text-gray-400 py-4">
-            Revisão {revision.revisao} — emitida em {fmtDate(revision.data)}. Válido conforme {tableInfo?.nome}. Sujeito a alteração sem aviso prévio.
-          </p>
-        </div>
+        <ProposalOutput
+          proposal={proposalFromQuote(quote, { ownerProfile, tableInfo, condicoes, revision })}
+          mode="print"
+          onClose={() => setIsPrinting(false)}
+        />
       )}
 
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -2626,92 +2186,25 @@ function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
   const [isPrinting, setIsPrinting] = useState(false)
   const unified = useMemo(() => buildUnifiedProposal(quotes, desconto), [quotes, desconto])
 
-  const handlePrint = () => {
-    flushSync(() => setIsPrinting(true))
-    execPrint(() => setIsPrinting(false))
-  }
+  const handlePrint = () => setIsPrinting(true)
 
   if (isPrinting) {
-    return (
-      <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
-        <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
-          <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
-            onError={e => { e.target.style.display = 'none' }} />
-          <div className="text-right">
-            <p className="text-white/70 text-xs">{new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
-            <p className="text-white/60 text-xs">{tableInfo?.nome}</p>
-          </div>
-        </div>
-        <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{ background: '#f8f9fa' }}>
-          <div>
-            <p className="text-base font-extrabold text-[#003087]">Proposta Unificada — {quotes.length} kits</p>
-            <p className="text-xs text-gray-500 mt-1">
-              {quotes.map(q => (q.data?.numero_orcamento || q.id.slice(0, 8).toUpperCase())).join(' · ')}
-            </p>
-            {unified.validadeMinima && (
-              <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">
-                Validade: {new Date(unified.validadeMinima).toLocaleDateString('pt-BR')}
-              </p>
-            )}
-          </div>
-          <div className="text-right shrink-0">
-            <p className="text-3xl font-extrabold text-[#003087]">{unified.totalKwp} kWp</p>
-          </div>
-        </div>
-        <div className="px-8 pt-5 pb-3">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b-2 border-gray-200">
-                <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
-                <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
-                <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
-                <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {unified.materiais.map((item, i) => (
-                <tr key={i} className="border-b border-gray-100">
-                  <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
-                  <td className="py-2.5">
-                    <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
-                    <p className="text-xs text-gray-500">{item.produto}</p>
-                    <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
-                  </td>
-                  <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                  <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{fmt(item.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              {unified.descontoPct > 0 && (
-                <>
-                  <tr className="border-t border-gray-200">
-                    <td colSpan="3" className="py-2 text-right text-sm text-gray-500 pr-4">Subtotal</td>
-                    <td className="py-2 text-right text-sm text-gray-500 whitespace-nowrap">{fmt(unified.totalBruto)}</td>
-                  </tr>
-                  <tr>
-                    <td colSpan="3" className="py-2 text-right text-sm text-green-600 pr-4">Desconto do pacote ({unified.descontoPct}%)</td>
-                    <td className="py-2 text-right text-sm text-green-600 whitespace-nowrap">−{fmt(unified.totalBruto - unified.totalComDesconto)}</td>
-                  </tr>
-                </>
-              )}
-              <tr style={{ background: '#003087', color: 'white' }}>
-                <td colSpan="3" style={{ padding: '14px 8px', textAlign: 'right', fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Geral</td>
-                <td style={{ padding: '14px 8px', textAlign: 'right', fontSize: 18, fontWeight: 900, whiteSpace: 'nowrap' }}>{fmt(unified.totalComDesconto)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
-          <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
-          <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
-        </div>
-        <div className="flex items-center justify-between px-8 py-2 mt-2" style={{ background: '#1B3A8A' }}>
-          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.7)' }}>{tableInfo?.nome}</span>
-          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.7)' }}>94 9209-0380 · vendas@ernaniff.com.br</span>
-        </div>
-      </div>
-    )
+    const dono = quotes[0]?.profiles || {}
+    const kd = quotes[0]?.data || {}
+    const fmtKwp = Number(unified.totalKwp || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+    const proposal = buildProposal({
+      titulo: `${quotes.length} kits · ${fmtKwp} kWp`,
+      validaAte: unified.validadeMinima,
+      listaNome: tableInfo?.nome || '',
+      cliente: { nome: dono.nome, empresa: dono.empresa, cnpj: dono.cnpj, cidade: kd.clienteCidade, uf: kd.clienteUF },
+      kwp: unified.totalKwp,
+      items: unified.materiais,
+      totalFinal: unified.totalComDesconto,
+      descontoPacote: unified.descontoPct > 0 ? { pct: unified.descontoPct, bruto: unified.totalBruto } : null,
+      condicoes,
+      obs: `Proposta que reúne as cotações ${quotes.map(q => q.data?.numero_orcamento || q.id.slice(0, 8).toUpperCase()).join(', ')}.`,
+    })
+    return <ProposalOutput proposal={proposal} mode="print" onClose={() => setIsPrinting(false)} />
   }
 
   return (
@@ -2861,10 +2354,7 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
   }
   const exitUnifyMode = () => { setUnifyMode(false); setUnifySelected(new Set()) }
 
-  const handlePrintRevision = (quote, r) => {
-    flushSync(() => setPrintRevisionData({ quote, r }))
-    execPrint(() => setPrintRevisionData(null))
-  }
+  const handlePrintRevision = (quote, r) => setPrintRevisionData({ quote, r })
 
   const activeQuotes = quotes.filter(q => !CLOSED_STATUSES.includes(q.status))
   const closedQuotes = quotes.filter(q => CLOSED_STATUSES.includes(q.status))
@@ -3028,142 +2518,17 @@ export default function MinhasCotacoesPage({ onLoadQuote, initialQuoteId, onQuot
       />
     )}
 
-    {/* Revision print overlay (table rows) — layout unificado */}
-    {printRevisionData && (() => {
-      const { quote: pq, r } = printRevisionData
-      const pkd = pq.data || {}
-      const ownerProfile = pq.profiles || profile
-      // Itens da revisão guardam preço de tabela bruto (preco_unit/total) — sem
-      // subtotal salvo por revisão, deriva o fator de desconto pela soma bruta
-      // dos itens vs. o total_final já ajustado dessa revisão.
-      const revSubtotal = (r.items || []).reduce((s, it) => s + (it.total || 0), 0)
-      const revPriceRatio = revSubtotal ? (r.total_final || 0) / revSubtotal : 1
-      const revItemTotais = distributeTotal(
-        (r.items || []).map(it => it.total ? it.total * revPriceRatio : null),
-        r.total_final || 0
-      )
-      return (
-        <div id="kit-print" className="fixed inset-0 bg-white z-[9999] overflow-auto">
-          <div className="bg-[#1B3A8A] text-white px-8 py-5 flex items-center justify-between print-header">
-            <img src="/logo-ernaniff-branco.png" alt="Ernaniff" className="h-10"
-              onError={e => { e.target.style.display = 'none' }} />
-            <div className="text-right">
-              <p className="text-white/70 text-xs">{fmtDate(r.data)}</p>
-              <p className="text-white/60 text-xs">{rootTableInfo?.nome}</p>
-            </div>
-          </div>
-          <div className="px-8 py-4 border-b border-gray-200 flex items-start justify-between gap-4" style={{background:'#f8f9fa'}}>
-            <div>
-              <p className="text-base font-extrabold text-[#003087]">{pq.nome_projeto}</p>
-              {pkd.numero_orcamento && (
-                <p className="text-xs font-bold text-[#1B3A8A] mt-0.5">
-                  Ref: {pkd.numero_orcamento} · Rev. {r.revisao}
-                </p>
-              )}
-              {pkd.clienteNome && <p className="text-xs text-gray-600 mt-1">Cliente: <strong>{pkd.clienteNome}</strong></p>}
-              {(ownerProfile?.numero_usuario || ownerProfile?.nome) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Usuário: <strong className={ownerProfile?.numero_usuario ? 'font-mono' : ''}>
-                    {ownerProfile?.numero_usuario ? `#${ownerProfile.numero_usuario}` : ownerProfile.nome}
-                  </strong>
-                </p>
-              )}
-              {ownerProfile?.cnpj && <p className="text-xs font-mono text-gray-400 mt-0.5">CNPJ: {ownerProfile.cnpj}</p>}
-              <p className="text-xs text-[#1B3A8A] mt-1 font-semibold">Validade: 7 dias</p>
-            </div>
-          </div>
-          {/* Aviso de disponibilidade do módulo */}
-          {(() => {
-            const cp = catalogProducts?.find(p => pkd.panel && (p.id === pkd.panel.id || (pkd.panel.codigo && p.codigo === pkd.panel.codigo)))
-            const est = cp ? effectiveEstoque(cp) : effectiveEstoque(pkd.panel)
-            if (est === 'Disponível') return null
-            const isEsgotado = est === 'Esgotado' || est === 'Sem estoque'
-            const prev = est === 'Previsão' ? (cp?.estoque_previsao || pkd.panel?.estoque_previsao || null) : null
-            const prevFmt = prev ? new Date(prev + 'T12:00:00').toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) : null
-            return (
-              <div className={`mx-8 my-3 rounded-xl border-2 px-4 py-3 flex items-start gap-2 ${isEsgotado ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
-                <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${isEsgotado ? 'text-red-500' : 'text-yellow-600'}`} />
-                <div>
-                  <p className={`text-xs font-bold ${isEsgotado ? 'text-red-800' : 'text-yellow-800'}`}>
-                    {isEsgotado ? 'Atenção: módulo esgotado' : `Atenção: previsão de entrega${prevFmt ? ` — ${prevFmt}` : ''}`}
-                  </p>
-                  <p className={`text-[10px] mt-0.5 ${isEsgotado ? 'text-red-600' : 'text-yellow-700'}`}>
-                    {isEsgotado ? 'Confirme alternativas disponíveis antes de emitir o pedido.' : 'Prazo sujeito a alteração. Confirme com o fornecedor antes de finalizar.'}
-                  </p>
-                </div>
-              </div>
-            )
-          })()}
-
-          <div className="px-8 pt-5 pb-3">
-            {r.items?.length > 0 ? (
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-gray-200">
-                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-10">Item</th>
-                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase w-14"></th>
-                    <th className="text-left py-2 text-xs font-bold text-gray-500 uppercase">Produto / Código SAP</th>
-                    <th className="text-center py-2 text-xs font-bold text-gray-500 uppercase w-20">Qtd</th>
-                    <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-28">Unit.</th>
-                    <th className="text-right py-2 text-xs font-bold text-gray-500 uppercase w-32">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.items.map((item, i) => (
-                    <tr key={i} className="border-b border-gray-100">
-                      <td className="py-2.5 text-xs text-gray-400 font-medium">{i + 1}</td>
-                      <td className="py-2.5">
-                        <ItemThumb label={item.label} produto={item.produto} />
-                      </td>
-                      <td className="py-2.5">
-                        <p className="font-semibold text-gray-900 text-sm">{item.label}</p>
-                        <p className="text-xs text-gray-500">{item.produto}</p>
-                        {deprecationNote(item.produto) && (
-                          <p className="text-[10px] font-semibold text-amber-600">⚠ {deprecationNote(item.produto)}</p>
-                        )}
-                        <p className="text-xs text-gray-400 font-mono">SAP: {item.codigo_sap}</p>
-                      </td>
-                      <td className="py-2.5 text-center text-sm font-bold text-gray-700">{item.qty} {item.unit}</td>
-                      <td className="py-2.5 text-right text-xs text-gray-500 whitespace-nowrap">{fmt((item.preco_unit || 0) * revPriceRatio)}</td>
-                      <td className="py-2.5 text-right text-sm font-bold text-gray-900 whitespace-nowrap">
-                        {revItemTotais[i] != null ? fmt(revItemTotais[i]) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  {isAdmin && r.frete && (
-                    <tr className="border-t border-gray-200 bg-gray-50">
-                      <td colSpan="5" className="py-2.5 text-right text-sm text-gray-500 pr-4">{r.frete}</td>
-                      <td className="py-2.5 text-right text-sm text-gray-600 whitespace-nowrap">Incluso</td>
-                    </tr>
-                  )}
-                  <tr style={{background:'#003087', color:'white'}}>
-                    <td colSpan="5" style={{padding:'14px 8px', textAlign:'right', fontWeight:800, fontSize:13, textTransform:'uppercase', letterSpacing:'0.08em'}}>Total do Kit</td>
-                    <td style={{padding:'14px 8px', textAlign:'right', fontSize:18, fontWeight:900, whiteSpace:'nowrap'}}>{fmt(r.total_final)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            ) : (
-              <p className="text-sm text-gray-400 italic py-4">Itens desta revisão não disponíveis.</p>
-            )}
-          </div>
-          <div className="mx-8 mt-4 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-5 py-3 space-y-1">
-            <p className="text-[11px] text-gray-600 font-medium">📋 Condições Comerciais</p>
-            <p className="text-[10px] text-gray-500 whitespace-pre-line">{condicoes}</p>
-            {pkd.criadoPorAdmin && (
-              <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-200 mt-1">
-                Proposta elaborada por {pkd.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.
-              </p>
-            )}
-          </div>
-          <div className="flex items-center justify-between px-8 py-2 mt-2" style={{background:'#1B3A8A'}}>
-            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>{rootTableInfo?.nome}</span>
-            <span style={{fontSize:9, color:'rgba(255,255,255,0.7)'}}>94 9209-0380 · vendas@ernaniff.com.br</span>
-          </div>
-        </div>
-      )
-    })()}
+    {/* Impressão de revisão direto da lista — mesma proposta (layout de design/) */}
+    {printRevisionData && (
+      <ProposalOutput
+        proposal={proposalFromQuote(printRevisionData.quote, {
+          ownerProfile: printRevisionData.quote.profiles || profile,
+          tableInfo: rootTableInfo, condicoes, revision: printRevisionData.r,
+        })}
+        mode="print"
+        onClose={() => setPrintRevisionData(null)}
+      />
+    )}
 
     <div className="max-w-6xl mx-auto px-4 py-8">
       {actionError && (

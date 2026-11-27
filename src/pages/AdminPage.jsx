@@ -22,7 +22,9 @@ import {
   notifyPrecoTravado, notifyFeedbackResolvido,
 } from '../lib/notify'
 import { listFeedbacks, resolveFeedback } from '../lib/feedback'
-import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
+import { buildProposalMessage } from '../lib/whatsapp'
+import ProposalOutput from '../components/ProposalOutput'
+import { proposalFromQuote } from '../lib/proposal'
 import RevisionCompareModal from '../components/RevisionCompareModal'
 import {
   LogOut, Plus, Trash2, Edit3, Check, X, RefreshCw,
@@ -2247,7 +2249,7 @@ const FUNIL_COLUMNS = [
 ]
 
 function QuoteManagement({ onLoadQuote }) {
-  const { tableInfo } = useProducts()
+  const { tableInfo, condicoes } = useProducts()
   const [quotes, setQuotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -2265,6 +2267,7 @@ function QuoteManagement({ onLoadQuote }) {
   const [rejectError, setRejectError] = useState('')
   const [rejectSending, setRejectSending] = useState(false)
   const [printingQuote, setPrintingQuote] = useState(null)
+  const [sharingQuote, setSharingQuote] = useState(null)
   const [revisingQuote, setRevisingQuote] = useState(null)
   const [compareRevs, setCompareRevs] = useState(null) // { a, b } — item 34
   const [revisingSaving, setRevisingSaving] = useState(false)
@@ -2281,11 +2284,6 @@ function QuoteManagement({ onLoadQuote }) {
     return () => clearTimeout(id)
   }, [revisingSuccessData, revisingCountdown])
 
-  useEffect(() => {
-    if (!printingQuote) return
-    const t = setTimeout(() => { window.print(); setPrintingQuote(null) }, 300)
-    return () => clearTimeout(t)
-  }, [printingQuote])
 
   const fetchQuotes = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -2765,219 +2763,27 @@ function QuoteManagement({ onLoadQuote }) {
 
   return (
     <>
-    {/* ── Overlay de impressão (portal no body para evitar páginas em branco) ── */}
-    {printingQuote && createPortal((() => {
-      const q  = printingQuote
-      const kd = q.data || {}
-      const items = q.quote_items || []
-      const totalBase = q.frete_pct > 1 ? r2(q.total_final / q.frete_pct) : q.total_final
-      const freteAmt  = r2(q.total_final - totalBase)
-      const ajusteAmt = r2((q.subtotal || 0) - totalBase)
-      // Fator único (ajustes + desconto + frete) pra refletir o preço final também por linha
-      const priceRatio = q.subtotal ? (q.total_final || 0) / q.subtotal : 1
-
-      // Composição da estrutura de fixação
-      const structComp = (() => {
-        if (!kd.wantsEstrutura) return []
-        const kitsToExpand = [
-          kd.estruturaKit  && (kd.estruturaQty  || 0) > 0 ? { kit: kd.estruturaKit,  qty: kd.estruturaQty  } : null,
-          kd.estruturaKit3 && (kd.estruturaQty3 || 0) > 0 ? { kit: kd.estruturaKit3, qty: kd.estruturaQty3 } : null,
-        ].filter(Boolean)
-        if (!kitsToExpand.length) return []
-        const merged = {}
-        kitsToExpand.forEach(({ kit, qty }) => {
-          const comps = kitCompositions[kit.codigo] || []
-          comps.forEach(c => {
-            const total = c.qty * qty
-            if (merged[c.sap]) merged[c.sap].qty += total
-            else merged[c.sap] = { sap: c.sap, descricao: c.descricao, qty: total }
-          })
-        })
-        return Object.values(merged)
-      })()
-      return (
-        /* Fundo escuro + papel A4 centralizado — na impressão vira bloco estático */
-        <div id="kit-print" style={{
-          position:'fixed', inset:0, zIndex:9999,
-          background:'rgba(17,24,39,0.82)', overflowY:'auto',
-          display:'flex', justifyContent:'center', alignItems:'flex-start', padding:'32px 16px',
-        }} onClick={e => { if (e.target === e.currentTarget) setPrintingQuote(null) }}>
-          {/* Papel A4 (794px ≈ 210mm @96dpi) */}
-          <div className="print-paper" style={{
-            background:'white', width:'100%', maxWidth:794,
-            boxShadow:'0 32px 64px rgba(0,0,0,0.45)', borderRadius:6,
-            overflow:'hidden', flexShrink:0,
-          }}>
-            {/* ── Cabeçalho azul ── */}
-            <div style={{background:'#1B3A8A', color:'white', padding:'14px 28px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-              <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{height:38, objectFit:'contain'}}
-                onError={e => { e.target.style.display='none' }} />
-              <div style={{textAlign:'right', lineHeight:1.5}}>
-                <p style={{margin:0, fontSize:10, opacity:0.75}}>{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
-                <p style={{margin:0, fontSize:9, opacity:0.55}}>{tableInfo?.nome}</p>
-              </div>
-            </div>
-
-            {/* ── Info do kit / cliente ── */}
-            <div style={{padding:'10px 28px 12px', background:'#f8fafc', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16}}>
-              <div style={{minWidth:0}}>
-                <p style={{margin:0, fontSize:14, fontWeight:800, color:'#1B3A8A', lineHeight:1.3}}>
-                  {kd.numero_orcamento ? `${kd.numero_orcamento} — ` : ''}{q.nome_projeto || `Kit ${q.kwp} kWp`}
-                  {(kd.revisao||0)>0 && <span style={{fontSize:10, color:'#d97706', marginLeft:8, fontWeight:600}}>Rev. {kd.revisao}</span>}
-                </p>
-                <div style={{display:'flex', flexWrap:'wrap', columnGap:16, rowGap:2, marginTop:5, fontSize:10, color:'#555', lineHeight:1.4}}>
-                  {q.profiles?.nome     && <span>Cliente: <strong style={{color:'#111'}}>{q.profiles.nome}</strong></span>}
-                  {q.profiles?.empresa  && <span style={{color:'#777'}}>{q.profiles.empresa}</span>}
-                  {q.profiles?.cnpj     && <span style={{fontFamily:'monospace', color:'#777'}}>CNPJ: {q.profiles.cnpj}</span>}
-                  {q.profiles?.telefone && <span style={{color:'#777'}}>Tel: {q.profiles.telefone}</span>}
-                </div>
-              </div>
-              <div style={{textAlign:'right', flexShrink:0}}>
-                <p style={{margin:0, fontSize:22, fontWeight:900, color:'#1B3A8A', whiteSpace:'nowrap'}}>{q.kwp} kWp</p>
-                {kd.panelQty && kd.panel && <p style={{margin:0, fontSize:9, color:'#888'}}>{kd.panelQty} painéis × {kd.panel.potencia} Wp</p>}
-                <p style={{margin:'4px 0 0', fontSize:9, color:'#1B3A8A', fontWeight:600}}>Validade: {kd.validade||7} dias</p>
-              </div>
-            </div>
-
-            {/* ── Tabela de itens ── */}
-            {items.length > 0 && (
-              <div style={{padding:'0 28px'}}>
-                <table style={{width:'100%', borderCollapse:'collapse', fontSize:11, tableLayout:'fixed'}}>
-                  <colgroup>
-                    <col style={{width:24}} />
-                    <col style={{width:34}} />
-                    <col />
-                    <col style={{width:64}} />
-                    <col style={{width:90}} />
-                    <col style={{width:96}} />
-                  </colgroup>
-                  <thead>
-                    <tr style={{borderBottom:'2px solid #e5e7eb'}}>
-                      <th style={{padding:'7px 4px 7px 0', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}>#</th>
-                      <th style={{padding:'7px 4px', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}></th>
-                      <th style={{padding:'7px 4px', textAlign:'left', color:'#9ca3af', fontSize:9, fontWeight:600}}>Produto / SAP</th>
-                      <th style={{padding:'7px 4px', textAlign:'center', color:'#9ca3af', fontSize:9, fontWeight:600}}>Qtd</th>
-                      <th style={{padding:'7px 4px', textAlign:'right', color:'#9ca3af', fontSize:9, fontWeight:600}}>Unitário</th>
-                      <th style={{padding:'7px 4px 7px 0', textAlign:'right', color:'#9ca3af', fontSize:9, fontWeight:600}}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((it, i) => {
-                      const thumbSrc = getProductImage({
-                        nome: `${it.label || ''} ${it.produto || ''}`.trim(),
-                        categoria: guessCategoria(it.label),
-                      })
-                      return (
-                      <tr key={i} style={{borderBottom:'1px solid #f3f4f6'}}>
-                        <td style={{padding:'5px 4px 5px 0', color:'#9ca3af', fontSize:10, verticalAlign:'middle'}}>{i+1}</td>
-                        <td style={{padding:'5px 4px', verticalAlign:'middle'}}>
-                          <div style={{width:28, height:28, borderRadius:6, background:'#f9fafb', border:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden'}}>
-                            {thumbSrc
-                              ? <img src={thumbSrc} alt={it.label} style={{width:'100%', height:'100%', objectFit:'contain', padding:2}} onError={e => { e.target.style.display='none' }} />
-                              : <span style={{fontSize:12}}>📦</span>}
-                          </div>
-                        </td>
-                        <td style={{padding:'5px 4px', verticalAlign:'middle'}}>
-                          <p style={{margin:0, fontWeight:600, color:'#111827', fontSize:11, lineHeight:1.3}}>{it.label}</p>
-                          <p style={{margin:0, color:'#9ca3af', fontSize:9, lineHeight:1.3}}>{it.produto}{it.codigo_sap ? ` — SAP ${it.codigo_sap}` : ''}</p>
-                        </td>
-                        <td style={{padding:'5px 4px', textAlign:'center', fontWeight:700, color:'#374151', fontSize:11, verticalAlign:'middle'}}>{it.qty} {it.unit}</td>
-                        <td style={{padding:'5px 4px', textAlign:'right', color:'#6b7280', fontSize:10, verticalAlign:'middle'}}>{fmt((it.preco_unit || 0) * priceRatio)}</td>
-                        <td style={{padding:'5px 4px 5px 0', textAlign:'right', fontWeight:700, color:'#111827', fontSize:11, verticalAlign:'middle'}}>{fmt((it.total || 0) * priceRatio)}</td>
-                      </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* ── Composição da Estrutura ── */}
-            {structComp.length > 0 && (
-              <div style={{borderTop:'2px dashed #e5e7eb'}}>
-                <div style={{padding:'7px 28px', background:'#f8fafc', borderBottom:'1px solid #e5e7eb'}}>
-                  <p style={{margin:0, fontSize:9, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.08em'}}>
-                    Composição da Estrutura de Fixação
-                  </p>
-                  <p style={{margin:'2px 0 0', fontSize:9, color:'#9ca3af'}}>
-                    {kd.estruturaKit && <span style={{marginRight:12}}>Kit 4 mod: {kd.estruturaKit.nome}</span>}
-                    {kd.estruturaKit3 && <span>Kit 3 mod: {kd.estruturaKit3.nome}</span>}
-                  </p>
-                </div>
-                <div style={{padding:'0 28px'}}>
-                  <table style={{width:'100%', borderCollapse:'collapse', fontSize:10, tableLayout:'fixed'}}>
-                    <colgroup>
-                      <col style={{width:24}} />
-                      <col />
-                      <col style={{width:80}} />
-                      <col style={{width:48}} />
-                    </colgroup>
-                    <thead>
-                      <tr style={{borderBottom:'1px solid #e5e7eb'}}>
-                        <th style={{padding:'5px 4px 5px 0', textAlign:'left', color:'#9ca3af', fontSize:8, fontWeight:600}}>#</th>
-                        <th style={{padding:'5px 4px', textAlign:'left', color:'#9ca3af', fontSize:8, fontWeight:600}}>Componente</th>
-                        <th style={{padding:'5px 4px', textAlign:'left', color:'#9ca3af', fontSize:8, fontWeight:600, fontFamily:'monospace'}}>SAP</th>
-                        <th style={{padding:'5px 4px 5px 0', textAlign:'center', color:'#9ca3af', fontSize:8, fontWeight:600}}>Qtd</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {structComp.map((c, i) => (
-                        <tr key={c.sap} style={{borderBottom:'1px solid #f3f4f6', background: i%2===0 ? 'white' : '#f9fafb'}}>
-                          <td style={{padding:'4px 4px 4px 0', color:'#9ca3af', fontSize:9, verticalAlign:'middle'}}>{i+1}</td>
-                          <td style={{padding:'4px 4px', color:'#374151', fontSize:10, fontWeight:500, verticalAlign:'middle'}}>{c.descricao}</td>
-                          <td style={{padding:'4px 4px', color:'#9ca3af', fontSize:9, fontFamily:'monospace', verticalAlign:'middle'}}>{c.sap}</td>
-                          <td style={{padding:'4px 4px 4px 0', textAlign:'center', fontWeight:700, color:'#1B3A8A', fontSize:10, verticalAlign:'middle'}}>{c.qty} un</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* ── Resumo financeiro — só na tela do admin; print:hidden garante
-                que a quebra de preço/ajuste nunca sai no PDF/impressão ── */}
-            <div className="print:hidden" style={{padding:'8px 28px 6px', borderTop:'2px solid #e5e7eb', background:'#f9fafb'}}>
-              {q.subtotal > 0 && (
-                <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', padding:'3px 0'}}>
-                  <span>Subtotal (preço de tabela)</span><span style={{fontWeight:600}}>{fmt(q.subtotal)}</span>
-                </div>
-              )}
-              {ajusteAmt > 0 && (
-                <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#16a34a', padding:'3px 0'}}>
-                  <span>Ajuste comercial</span><span style={{fontWeight:600}}>− {fmt(ajusteAmt)}</span>
-                </div>
-              )}
-              {freteAmt > 0 && (
-                <div style={{display:'flex', justifyContent:'space-between', fontSize:10, color:'#6b7280', padding:'3px 0'}}>
-                  <span>{q.frete_nome}</span><span style={{fontWeight:600}}>+ {fmt(freteAmt)}</span>
-                </div>
-              )}
-            </div>
-            <div style={{background:'#1B3A8A', color:'white', padding:'12px 28px', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-              <span style={{fontWeight:700, fontSize:11, letterSpacing:'0.07em', textTransform:'uppercase', opacity:0.85}}>Total do Kit</span>
-              <span style={{fontWeight:900, fontSize:22}}>{fmt(q.total_final)}</span>
-            </div>
-
-            {/* ── Rodapé ── */}
-            <div style={{padding:'10px 28px', textAlign:'center', fontSize:9, color:'#9ca3af', lineHeight:1.6}}>
-              <p style={{margin:0}}>Preços {q.frete_pct>1 ? q.frete_nome : 'FOB Itajaí-SC'}. Válidos conforme {tableInfo?.nome}. Sujeitos a alteração sem aviso prévio.</p>
-              <p style={{margin:0}}>Ernaniff Representações · 94 9209-0380 · vendas@ernaniff.com.br · Folha 22, Quadra 17 – Lote 38, Sala 05, 2º Andar, Nova Marabá – PA</p>
-              {kd.criadoPorAdmin && (
-                <p style={{margin:'3px 0 0'}}>Proposta elaborada por {kd.criadoPorAdminNome || 'equipe Ernaniff'}, Ernaniff Representações.</p>
-              )}
-            </div>
-          </div>{/* /print-paper */}
-        </div>
-      )
-    })(), document.body)}
-    {/* Botão fechar em portal próprio — fora do #kit-print, some na impressão via body > *:not(#kit-print) */}
-    {printingQuote && createPortal(
-      <button onClick={() => setPrintingQuote(null)}
-        style={{position:'fixed', top:16, right:16, background:'white', border:'1px solid #d1d5db', borderRadius:12, padding:'8px 18px', fontSize:13, fontWeight:600, color:'#374151', cursor:'pointer', boxShadow:'0 4px 12px rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:6, zIndex:10000}}>
-        <X size={14} /> Fechar
-      </button>,
-      document.body
+    {/* ── Proposta (layout de design/): imprimir ou PDF pro WhatsApp ── */}
+    {printingQuote && (
+      <ProposalOutput
+        proposal={proposalFromQuote(printingQuote, { tableInfo, condicoes })}
+        mode="print"
+        onClose={() => setPrintingQuote(null)}
+      />
+    )}
+    {sharingQuote && (
+      <ProposalOutput
+        proposal={proposalFromQuote(sharingQuote, { tableInfo, condicoes })}
+        mode="share"
+        phone={sharingQuote.profiles?.telefone}
+        message={buildProposalMessage({
+          clienteNome: sharingQuote.profiles?.nome || sharingQuote.data?.clienteNome,
+          kitNome: sharingQuote.nome_projeto || `Kit ${Number(sharingQuote.kwp || 0).toFixed(2)} kWp`,
+          totalFinal: sharingQuote.total_final,
+          numeroOrcamento: sharingQuote.data?.numero_orcamento,
+        })}
+        onClose={() => setSharingQuote(null)}
+      />
     )}
     {revisingQuote && revisingSuccessData && createPortal(
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
@@ -3456,13 +3262,7 @@ function QuoteManagement({ onLoadQuote }) {
                       <button
                         onClick={e => {
                           e.stopPropagation()
-                          const msg = buildProposalMessage({
-                            clienteNome: q.profiles?.nome || kd.clienteNome,
-                            kitNome: q.nome_projeto || `Kit ${Number(q.kwp || 0).toFixed(2)} kWp`,
-                            totalFinal: q.total_final,
-                            numeroOrcamento: kd.numero_orcamento,
-                          })
-                          window.open(buildWaLink(q.profiles?.telefone, msg), '_blank')
+                          setSharingQuote(q)
                         }}
                         className="text-green-700 hover:underline font-semibold flex items-center gap-1"
                       >

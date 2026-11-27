@@ -12,7 +12,10 @@ import InfoTip from '../components/InfoTip'
 import GuidedTour from '../components/GuidedTour'
 import RatingPrompt from '../components/RatingPrompt'
 import { canShowRatingPrompt } from '../lib/feedback'
-import { buildWaLink, buildProposalMessage } from '../lib/whatsapp'
+import { buildProposalMessage } from '../lib/whatsapp'
+import ProposalOutput from '../components/ProposalOutput'
+import { buildProposal } from '../lib/proposal'
+import { execPrint } from '../lib/print'
 import PaymentOptions from '../components/PaymentOptions'
 import EconomiaPayback from '../components/EconomiaPayback'
 import { resolveDatasheetUrl } from '../lib/datasheets'
@@ -5259,74 +5262,25 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   const [pendingPrint, setPendingPrint] = useState(false)
   const [isPrintingEstudo, setIsPrintingEstudo] = useState(false)
 
-  // Imprime após voltar para a tela do kit (quando success screen some)
-  // Dois requestAnimationFrame garantem que o browser pintou o #kit-print antes de imprimir
-  // Após o diálogo de impressão fechar (imprimiu ou cancelou) navega para Minhas Cotações
+  // Proposta impressa / PDF pro WhatsApp (layout de design/, componente único
+  // PrintedProposal). 'print' abre o diálogo de impressão; 'share' gera o PDF.
+  const [proposalOut, setProposalOut] = useState(null) // null | 'print' | 'share'
+
+  // "Imprimir cotação" na tela pós-salvar: volta pro resumo e imprime
   useEffect(() => {
     if (pendingPrint && !showPrintedScreen) {
       setPendingPrint(false)
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        window.addEventListener('afterprint', () => {
-          setShowPrintedScreen(true)
-        }, { once: true })
-        doPrint()
-      }))
+      setProposalOut('print')
     }
   }, [pendingPrint, showPrintedScreen])
 
-  // Move #kit-print para filho direto do body antes de imprimir e restaura depois.
-  // Sobrescreve estilos inline para evitar que overflow:hidden/auto e border-radius
-  // cortem conteúdo no mobile — mais confiável que depender só de @media print.
-  const doPrint = () => {
-    const el = document.getElementById('kit-print')
-    if (!el) { window.print(); return }
-    const parent     = el.parentNode
-    const next       = el.nextSibling
-    const savedStyle = el.style.cssText
-
-    el.style.cssText = [
-      'position:static',
-      'inset:auto',
-      'width:100%',
-      'max-width:none',
-      'height:auto',
-      'max-height:none',
-      'overflow:visible',
-      'border-radius:0',
-      'box-shadow:none',
-      'z-index:auto',
-      'background:white',
-    ].join(';')
-
-    document.body.appendChild(el)
-    document.body.classList.add('is-printing')
-    const restore = () => {
-      document.body.classList.remove('is-printing')
-      el.style.cssText = savedStyle
-      if (el.parentNode === document.body) parent.insertBefore(el, next)
-    }
-    window.addEventListener('afterprint', restore, { once: true })
-    setTimeout(() => window.print(), 80)
-  }
-
-  // ── PDF do Estudo — reaproveita o mesmo mecanismo de impressão do
-  // #kit-print (doPrint), só troca por um instante qual elemento tem esse
-  // id, já que os dois nunca precisam imprimir ao mesmo tempo ──
+  // ── PDF do Estudo — mesmo mecanismo de impressão, com o elemento do Estudo ──
   const handlePrintEstudo = () => {
     setIsPrintingEstudo(true)
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      const mainEl   = document.getElementById('kit-print')
       const estudoEl = document.getElementById('kit-print-estudo')
       if (!estudoEl) { setIsPrintingEstudo(false); return }
-      if (mainEl) mainEl.id = 'kit-print-principal-temp'
-      estudoEl.id = 'kit-print'
-      const restoreIds = () => {
-        estudoEl.id = 'kit-print-estudo'
-        if (mainEl) mainEl.id = 'kit-print'
-        setIsPrintingEstudo(false)
-      }
-      window.addEventListener('afterprint', restoreIds, { once: true })
-      doPrint()
+      execPrint(() => setIsPrintingEstudo(false), estudoEl)
     }))
   }
 
@@ -5337,9 +5291,41 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
       const qid = await saveQuote({ silent: false, statusOverride: savedId ? undefined : 'enviada' })
       if (!qid) return   // erro visível na UI, não avança para impressão
     }
-    doPrint()
-    setShowPrintedScreen(true)
+    setProposalOut('print')
   }
+
+  const closeProposalOut = () => {
+    const eraImpressao = proposalOut === 'print'
+    setProposalOut(null)
+    if (eraImpressao) setShowPrintedScreen(true)
+  }
+
+  const clienteCadastrado = !!data.targetClientId
+  const proposal = proposalOut ? buildProposal({
+    numero: data.numero_orcamento || null,
+    revisao: data.revisao || 0,
+    listaNome: tableInfo?.nome || '',
+    cliente: clienteCadastrado
+      ? { nome: data.clienteNome, empresa: data.clienteEmpresa || selectedCliente?.empresa, cnpj: selectedCliente?.cnpj, cidade: data.clienteCidade, uf: data.clienteUF }
+      : { nome: profile?.nome, empresa: profile?.empresa, cnpj: profile?.cnpj, cidade: data.clienteCidade, uf: data.clienteUF },
+    referenciaCliente: clienteCadastrado ? '' : (data.clienteNome || ''),
+    freteNome: freteOpcao.nome,
+    consultor: isAdmin ? (profile?.nome || '') : (data.criadoPorAdminNome || ''),
+    kitData: data, kwp: realKwp,
+    items: buildItems(),
+    totalFinal,
+    formaPagamento: data.formaPagamento, parcelas: data.parcelasCartao,
+    condicoes, obs: data.proposta?.obs || '',
+  }) : null
+  const proposalMsg = buildProposalMessage({
+    clienteNome: data.clienteNome,
+    kitNome: `Kit ${realKwp.toFixed(2)} kWp`,
+    totalFinal,
+    numeroOrcamento: data.numero_orcamento,
+  })
+  const proposalOutEl = proposal && (
+    <ProposalOutput proposal={proposal} mode={proposalOut} phone={selectedCliente?.telefone || ''} message={proposalMsg} onClose={closeProposalOut} />
+  )
 
   // ── Request discount (só disponível após a cotação já estar salva) ──
   const requestDiscount = async () => {
@@ -5395,6 +5381,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
   // ── Tela pós-impressão ──
   if (showPrintedScreen) return (
     <>
+    {proposalOutEl}
     {showRatingPrompt && (
       <RatingPrompt userId={session?.user?.id} page="kit" onClose={() => setShowRatingPrompt(false)} />
     )}
@@ -5423,16 +5410,8 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
           <Printer size={18} /> Imprimir cotação
         </button>
         <button
-          onClick={() => {
-            const msg = buildProposalMessage({
-              clienteNome: data.clienteNome,
-              kitNome: data.numero_orcamento ? `${data.numero_orcamento}` : `Kit ${realKwp.toFixed(2)} kWp`,
-              totalFinal: totalFinal,
-              numeroOrcamento: data.numero_orcamento,
-            })
-            window.open(buildWaLink(null, msg), '_blank')
-          }}
-          title="Abre o WhatsApp com a mensagem pronta — anexe o PDF (botão Imprimir cotação) manualmente na conversa"
+          onClick={() => setProposalOut('share')}
+          title="Gera o PDF da proposta e envia pelo WhatsApp"
           className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
         >
           <MessageCircle size={18} /> Enviar por WhatsApp
@@ -5450,6 +5429,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
 
   return (
     <div className="space-y-6">
+      {proposalOutEl}
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-1">Resumo do Kit Solar</h2>
         <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -5506,7 +5486,7 @@ function Step5({ data, onChange, products, tableInfo, realKwp, initialSavedId, o
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden max-w-3xl mx-auto print:shadow-none print:overflow-visible print:rounded-none print:border-0 print:max-w-none" id="kit-print">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden max-w-3xl mx-auto print:shadow-none print:overflow-visible print:rounded-none print:border-0 print:max-w-none" id="kit-resumo">
 
         {/* ── Print header: logo + date ── */}
         <div className="print-header hidden print:flex items-center justify-between px-6 py-4" style={{backgroundColor:'#1B3A8A'}}>

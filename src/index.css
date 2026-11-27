@@ -148,6 +148,28 @@
     color: white !important;
   }
 
+  /* ── Proposta comercial (PrintedProposal): 2 folhas A4 sem margem ── */
+  /* A página nomeada tira a margem só da proposta; o Estudo continua com a margem padrão. */
+  @page proposta {
+    size: A4;
+    margin: 0;
+  }
+  body.is-printing > #kit-print.proposta-print {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  #kit-print .proposta-pagina {
+    page: proposta;
+    width: 210mm !important;
+    min-height: 296mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+  #kit-print .proposta-pagina + .proposta-pagina {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
   /* Composição da estrutura sempre começa em nova página */
   #kit-print .print-new-page {
     page-break-before: always !important;

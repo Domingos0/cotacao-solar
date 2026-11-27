@@ -1,10 +1,8 @@
 // Item 29: enviar proposta por WhatsApp. O link de click-to-chat do
 // WhatsApp (wa.me) só aceita texto pré-preenchido — não existe jeito de
-// anexar um arquivo via URL (isso exigiria a API oficial do WhatsApp
-// Business, que esta integração não usa pro lado do cliente). Por isso o
-// fluxo é: o usuário gera o PDF normalmente (botão Imprimir/PDF, que já
-// existe) e anexa ele manualmente na conversa que abre aqui já com a
-// mensagem pronta.
+// anexar um arquivo via URL. O PDF vai pelo ProposalOutput: no celular pelo
+// menu nativo de compartilhar (arquivo + esta mensagem juntos); no computador
+// o PDF é baixado e a conversa abre aqui com a mensagem pronta.
 
 export function buildWaLink(phone, message) {
   const digits = (phone || '').replace(/\D/g, '')
@@ -17,5 +15,5 @@ export function buildProposalMessage({ clienteNome, kitNome, totalFinal, numeroO
   const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   const saudacao = clienteNome ? `Olá, ${clienteNome}!` : 'Olá!'
   const ref = numeroOrcamento ? ` *${numeroOrcamento}*` : ''
-  return `${saudacao} 👋\n\nSegue a proposta${ref} do kit *${kitNome}*, no valor de *${fmt(totalFinal)}*.\n\n📎 Anexando o PDF da proposta aqui.\n\nQualquer dúvida, é só chamar!`
+  return `${saudacao} 👋\n\nSegue a proposta${ref} do kit *${kitNome}*, no valor de *${fmt(totalFinal)}*.\n\n📎 O PDF com a proposta completa (itens, formas de pagamento e condições) segue em anexo.\n\nQualquer dúvida, é só chamar!`
 }
