@@ -72,7 +72,7 @@ export default function PrintedProposal({ proposal: p }) {
           <img src="/logo-ernaniff-branco.png" alt="Ernaniff" style={{ height: 52, objectFit: 'contain' }} />
           <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(255,255,255,0.3)' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ ...p0, fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', opacity: 0.85 }}>{p.descontoPacote ? 'PROPOSTA UNIFICADA' : 'PROPOSTA COMERCIAL'}</p>
+            <p style={{ ...p0, fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', opacity: 0.85 }}>{p.descontoPacote || p.kitsUnificados?.length ? 'PROPOSTA UNIFICADA' : 'PROPOSTA COMERCIAL'}</p>
             <p style={{ ...p0, fontSize: 22, fontWeight: 800, lineHeight: 1.25, margin: '2px 0' }}>{p.titulo}</p>
             {ref && <p style={{ ...p0, fontSize: 11.5, opacity: 0.85 }}>Ref. {ref}</p>}
           </div>
@@ -115,8 +115,33 @@ export default function PrintedProposal({ proposal: p }) {
             </div>
           )}
 
+          {/* Proposta unificada: quais cotações entraram */}
+          {p.kitsUnificados?.length > 0 && (
+            <>
+              <p style={{ ...p0, fontSize: 12, fontWeight: 800, color: MARCA, margin: '18px 0 6px', letterSpacing: '0.04em' }}>KITS INCLUÍDOS NESTA PROPOSTA</p>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <tbody>
+                  {p.kitsUnificados.map(k => (
+                    <tr key={k.numero} style={{ borderBottom: `1px solid ${BORDA}` }}>
+                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', fontWeight: 800, color: MARCA }}>
+                        {k.numero}{k.revisao ? ` · Rev. ${k.revisao}` : ''}
+                      </td>
+                      <td style={{ padding: '6px 8px', color: '#334155' }}>
+                        {k.resumo}
+                        {k.referencia && <span style={{ color: '#64748B' }}> · cliente final: {k.referencia}</span>}
+                      </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}>{fmt(k.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
           {/* Itens */}
-          <p style={{ ...p0, fontSize: 12, fontWeight: 800, color: MARCA, margin: '18px 0 6px', letterSpacing: '0.04em' }}>ITENS DO KIT</p>
+          <p style={{ ...p0, fontSize: 12, fontWeight: 800, color: MARCA, margin: '18px 0 6px', letterSpacing: '0.04em' }}>
+            {p.kitsUnificados?.length > 0 ? 'MATERIAIS CONSOLIDADOS (SOMADOS POR SAP)' : 'ITENS DO KIT'}
+          </p>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
               <tr style={{ background: MARCA, color: 'white' }}>

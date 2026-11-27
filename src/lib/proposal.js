@@ -99,8 +99,10 @@ export function buildProposal({
   kitData = {}, kwp = null, titulo = null,
   items = [], totalFinal = 0, formaPagamento = 'avista', parcelas = null,
   condicoes = '', obs = '', descontoPacote = null,
+  estrutura = undefined, kitsUnificados = null, stats: statsOverride = null,
 } = {}) {
-  const { kwp: kwpCalc, stats } = statsFromKitData(kitData, kwp)
+  const { kwp: kwpCalc, stats: statsKit } = statsFromKitData(kitData, kwp)
+  const stats = statsOverride || statsKit
   const emitida = new Date(emitidaEm || Date.now())
   const validade = validaAte ? parseLocalDate(validaAte) : addDays(emitida, VALIDADE_PADRAO_DIAS)
   const forma = formaPagamento === 'cartao' ? 'cartao' : 'avista'
@@ -126,9 +128,66 @@ export function buildProposal({
     descontoPacote,
     formaPagamento: forma,
     cartao, opcaoCartao,
-    estrutura: structureFromKitData(kitData),
+    estrutura: estrutura !== undefined ? estrutura : structureFromKitData(kitData),
+    kitsUnificados,
     condicoes, obs,
   }
+}
+
+// Soma a composição de estrutura de vários kits (mesmo SAP → qtd somada)
+export function mergeStructures(list) {
+  const validas = (list || []).filter(Boolean)
+  if (!validas.length) return null
+  const merged = {}
+  validas.forEach(e => e.componentes.forEach(c => {
+    if (merged[c.sap]) merged[c.sap].qty += c.qty
+    else merged[c.sap] = { ...c }
+  }))
+  const nomes = [...new Set(validas.flatMap(e => e.nome.split(' + ')))]
+  return { nome: nomes.join(' + '), componentes: Object.values(merged) }
+}
+
+// Proposta unificada (item 35): várias cotações do mesmo cliente viram uma
+// proposta só — materiais somados por SAP, estrutura somada, e a lista dos
+// kits que entraram (número, resumo, valor de cada um).
+export function proposalFromUnified(quotes, unified, { ownerProfile, tableInfo, condicoes } = {}) {
+  const qs = quotes || []
+  const dono = qs[0]?.profiles || ownerProfile || {}
+  const kd0 = qs[0]?.data || {}
+  const kitsUnificados = qs.map(q => {
+    const kd = q.data || {}
+    const { stats } = statsFromKitData(kd, q.kwp)
+    const resumo = stats.map(s => s.valor).join(' · ')
+    return {
+      numero: kd.numero_orcamento || String(q.id).slice(0, 8).toUpperCase(),
+      revisao: kd.revisao || 0,
+      resumo: resumo || `${fmtNum(q.kwp)} kWp`,
+      referencia: kd.clienteNome && kd.clienteNome !== dono.nome ? kd.clienteNome : '',
+      total: round2(q.total_final || 0),
+    }
+  })
+  const referencias = [...new Set(kitsUnificados.map(k => k.referencia).filter(Boolean))]
+  return buildProposal({
+    titulo: `${qs.length} kits · ${fmtNum(unified.totalKwp)} kWp`,
+    validaAte: unified.validadeMinima,
+    listaNome: tableInfo?.nome || '',
+    cliente: { nome: dono.nome, empresa: dono.empresa, cnpj: dono.cnpj, cidade: kd0.clienteCidade, uf: kd0.clienteUF },
+    referenciaCliente: referencias.join(', '),
+    freteNome: [...new Set(qs.map(q => q.frete_nome).filter(Boolean))].join(' / '),
+    consultor: kd0.criadoPorAdminNome || '',
+    kwp: unified.totalKwp,
+    stats: [
+      { label: 'Potência total', valor: `${fmtNum(unified.totalKwp)} kWp` },
+      { label: 'Kits unificados', valor: String(qs.length) },
+      { label: 'Itens', valor: String(unified.materiais.length) },
+    ],
+    items: unified.materiais,
+    totalFinal: unified.totalComDesconto,
+    descontoPacote: unified.descontoPct > 0 ? { pct: unified.descontoPct, bruto: unified.totalBruto } : null,
+    estrutura: mergeStructures(qs.map(q => structureFromKitData(q.data || {}))),
+    kitsUnificados,
+    condicoes,
+  })
 }
 
 // Cotação salva (ou uma revisão dela) → entrada do buildProposal. Usado por

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { adjustItems, buildProposal, statsFromKitData, proposalFromQuote, proposalFileName } from './proposal'
+import { adjustItems, buildProposal, statsFromKitData, proposalFromQuote, proposalFileName, proposalFromUnified } from './proposal'
 
 describe('adjustItems', () => {
   it('aplica o fator do total final em cada linha e a soma bate com o total', () => {
@@ -83,5 +83,34 @@ describe('proposalFromQuote — cliente final', () => {
     expect(proposalFromQuote(quote).referenciaCliente).toBe('')
     const q2 = { ...quote, data: { clienteNome: 'João' } }
     expect(proposalFromQuote(q2).referenciaCliente).toBe('João')
+  })
+})
+
+describe('proposalFromUnified', () => {
+  const kitEstrutura = { wantsEstrutura: true, estruturaKit: { codigo: '17930198', nome: 'Fibrometálico' }, estruturaQty: 2 }
+  const quotes = [
+    { id: 'a', kwp: 5.54, total_final: 20000, data: { numero_orcamento: 'EFF-1', clienteNome: 'Maria', panel: { potencia: 615 }, panelQty: 9, ...kitEstrutura } },
+    { id: 'b', kwp: 7.2, total_final: 30000, data: { numero_orcamento: 'EFF-2', revisao: 1, panel: { potencia: 720 }, panelQty: 10, ...kitEstrutura } },
+  ]
+  const unified = { totalKwp: 12.74, totalBruto: 50000, totalComDesconto: 50000, descontoPct: 0, materiais: [], validadeMinima: null }
+
+  it('usa o perfil de quem está logado quando a cotação não traz o dono', () => {
+    const p = proposalFromUnified(quotes, unified, { ownerProfile: { nome: 'Ana', cnpj: '12.345.678/0001-90' } })
+    expect(p.cliente).toMatchObject({ nome: 'Ana', cnpj: '12.345.678/0001-90' })
+    expect(p.referenciaCliente).toBe('Maria')
+  })
+
+  it('lista os kits unificados com número, resumo e valor', () => {
+    const p = proposalFromUnified(quotes, unified, {})
+    expect(p.kitsUnificados.map(k => k.numero)).toEqual(['EFF-1', 'EFF-2'])
+    expect(p.kitsUnificados[0].resumo).toContain('9 × 615 Wp')
+    expect(p.kitsUnificados[1]).toMatchObject({ revisao: 1, total: 30000 })
+  })
+
+  it('soma a composição de estrutura dos kits', () => {
+    const p = proposalFromUnified(quotes, unified, {})
+    const umKit = proposalFromQuote({ data: quotes[0].data, total_final: 1, quote_items: [] })
+    const c0 = umKit.estrutura.componentes[0]
+    expect(p.estrutura.componentes.find(c => c.sap === c0.sap).qty).toBe(c0.qty * 2)
   })
 })

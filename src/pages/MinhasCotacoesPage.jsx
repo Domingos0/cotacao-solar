@@ -8,7 +8,7 @@ import { KIT_ROLE, CATEGORIES, effectiveEstoque } from '../data/products'
 import { isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal, computeTotalFinal } from '../lib/money'
 import ProposalOutput from '../components/ProposalOutput'
-import { buildProposal, proposalFromQuote } from '../lib/proposal'
+import { proposalFromQuote, proposalFromUnified } from '../lib/proposal'
 import { buildUnifiedProposal } from '../lib/unifyQuotes'
 import { createTemplateFromQuote } from '../lib/kitTemplates'
 import { calcPainelIntegrador } from '../lib/integradorPainel'
@@ -2180,28 +2180,17 @@ function RevisionDetailModal({ quote, revision, onClose }) {
 // Exportado: o Admin usa o mesmo modal (item: unificar/comparar no Admin).
 // Desconto do pacote só aparece pro admin — cliente não se dá desconto.
 export function UnifiedProposalModal({ quotes, condicoes, tableInfo, onClose }) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, profile } = useAuth()
   const [desconto, setDesconto] = useState(0)
   const [output, setOutput] = useState(null) // null | 'print' | 'share'
   const unified = useMemo(() => buildUnifiedProposal(quotes, isAdmin ? desconto : 0), [quotes, desconto, isAdmin])
 
   let outputEl = null
   if (output) {
-    const dono = quotes[0]?.profiles || {}
-    const kd = quotes[0]?.data || {}
-    const fmtKwp = Number(unified.totalKwp || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
-    const proposal = buildProposal({
-      titulo: `${quotes.length} kits · ${fmtKwp} kWp`,
-      validaAte: unified.validadeMinima,
-      listaNome: tableInfo?.nome || '',
-      cliente: { nome: dono.nome, empresa: dono.empresa, cnpj: dono.cnpj, cidade: kd.clienteCidade, uf: kd.clienteUF },
-      kwp: unified.totalKwp,
-      items: unified.materiais,
-      totalFinal: unified.totalComDesconto,
-      descontoPacote: unified.descontoPct > 0 ? { pct: unified.descontoPct, bruto: unified.totalBruto } : null,
-      condicoes,
-      obs: `Proposta que reúne as cotações ${quotes.map(q => q.data?.numero_orcamento || q.id.slice(0, 8).toUpperCase()).join(', ')}.`,
-    })
+    // Cotações do próprio cliente vêm sem `profiles` (a lista dele não faz o
+    // join) — aí o dono é quem está logado. Admin vê sempre o dono da cotação.
+    const dono = quotes[0]?.profiles || (isAdmin ? {} : profile) || {}
+    const proposal = proposalFromUnified(quotes, unified, { ownerProfile: dono, tableInfo, condicoes })
     outputEl = (
       <ProposalOutput
         proposal={proposal}
