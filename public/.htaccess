@@ -1,3 +1,7 @@
+# .mjs (worker do leitor de PDF) precisa ir como JavaScript — sem isso o
+# navegador recusa carregar o worker e "Importar PDF" falha em produção.
+AddType application/javascript .mjs
+
 # Redireciona tudo para HTTPS
 RewriteEngine On
 RewriteCond %{HTTPS} off
