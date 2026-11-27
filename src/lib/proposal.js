@@ -6,9 +6,11 @@
 import { round2, distributeTotal } from './money'
 import { CARTAO_PARCELAS, totalComCartao, valorParcela } from './payment'
 import kitCompositions from '../data/kitCompositions.json'
+import { calcEconomia, TARIFA_PADRAO } from './economia'
 import { parseLocalDate } from './dates'
 
 const VALIDADE_PADRAO_DIAS = 7
+const HSP_PADRAO = 4.5 // h de sol pico/dia, média Brasil (mesmo SUN_HOURS do Monte seu Kit)
 
 // kWh por unidade de cada bateria (mesmos valores do passo Baterias do Monte seu Kit)
 const BAT_KWH = { CB050: 5.02, CB100: 10.07, 'SBW200 CB057': 5.76, 'SBW200 CB115': 11.52 }
@@ -100,6 +102,7 @@ export function buildProposal({
   items = [], totalFinal = 0, formaPagamento = 'avista', parcelas = null,
   condicoes = '', obs = '', descontoPacote = null,
   estrutura = undefined, kitsUnificados = null, stats: statsOverride = null,
+  hsp = null, tarifa = null,
 } = {}) {
   const { kwp: kwpCalc, stats: statsKit } = statsFromKitData(kitData, kwp)
   const stats = statsOverride || statsKit
@@ -130,8 +133,18 @@ export function buildProposal({
     cartao, opcaoCartao,
     estrutura: estrutura !== undefined ? estrutura : structureFromKitData(kitData),
     kitsUnificados,
+    economia: economiaDaProposta(kwpCalc, hsp ?? kitData.hsp, tarifa ?? kitData.tarifaEnergia, totalFinal),
     condicoes, obs,
   }
+}
+
+// Estimativa de economia/payback (item 38) pra faixa verde da proposta.
+// Sem kWp não mostra nada (ex: cotação só de acessórios).
+function economiaDaProposta(kwp, hsp, tarifa, totalFinal) {
+  if (!(kwp > 0)) return null
+  const h = Number(hsp) > 0 ? Number(hsp) : HSP_PADRAO
+  const t = Number(tarifa) > 0 ? Number(tarifa) : TARIFA_PADRAO
+  return { hsp: h, tarifa: t, ...calcEconomia(kwp, h, t, totalFinal) }
 }
 
 // Soma a composição de estrutura de vários kits (mesmo SAP → qtd somada)
@@ -186,6 +199,7 @@ export function proposalFromUnified(quotes, unified, { ownerProfile, tableInfo, 
     descontoPacote: unified.descontoPct > 0 ? { pct: unified.descontoPct, bruto: unified.totalBruto } : null,
     estrutura: mergeStructures(qs.map(q => structureFromKitData(q.data || {}))),
     kitsUnificados,
+    hsp: kd0.hsp, tarifa: kd0.tarifaEnergia,
     condicoes,
   })
 }

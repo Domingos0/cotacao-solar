@@ -114,3 +114,14 @@ describe('proposalFromUnified', () => {
     expect(p.estrutura.componentes.find(c => c.sap === c0.sap).qty).toBe(c0.qty * 2)
   })
 })
+
+describe('economia na proposta', () => {
+  it('usa a tarifa e as horas de sol do kit', () => {
+    const p = buildProposal({ kitData: { panel: { potencia: 600 }, panelQty: 10, hsp: 5, tarifaEnergia: 1 }, totalFinal: 18000 })
+    expect(p.economia).toMatchObject({ hsp: 5, tarifa: 1, geracaoMensalKwh: 900, economiaMensal: 900 })
+    expect(p.economia.paybackAnos).toBeCloseTo(1.67, 2)
+  })
+  it('sem kWp não mostra economia', () => {
+    expect(buildProposal({ totalFinal: 100 }).economia).toBe(null)
+  })
+})
