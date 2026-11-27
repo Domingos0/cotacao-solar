@@ -340,9 +340,9 @@ async function handleDescontoAprovado(req: Request, payload: { quoteId?: string 
   const waKey = authUser?.user?.user_metadata?.whatsapp_apikey || ""
   const kitNome = q.nome_projeto || `Kit ${Number(q.kwp || 0).toFixed(2)} kWp`
   const clienteNome = profile?.nome || "Cliente"
-  const totalOriginal = (q.data as Record<string, unknown> | null)?.total_antes_desconto as number | undefined
-
-  const msg = `🎉 *Proposta revisada — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto foi respondida.\n\nKit: ${kitNome}\nDesconto aprovado: ${q.desconto_pct}%\nValor original: ${fmt(totalOriginal)}\nValor com desconto: ${fmt(q.total_final)}\n\nMensagem: ${q.desconto_resposta || ""}\n\nAcesse o sistema para ver a proposta atualizada. 🌞`
+  // Pro cliente: só a aprovação e o valor atualizado — sem o % e sem o valor
+  // original (que juntos revelam o %). O admin continua recebendo o %.
+  const msg = `🎉 *Desconto aprovado — Ernaniff*\n\nOlá, ${clienteNome}!\n\nSua solicitação de desconto foi aprovada.\n\nKit: ${kitNome}\nValor atualizado: ${fmt(q.total_final)}${q.desconto_resposta ? `\n\nMensagem: ${q.desconto_resposta}` : ""}\n\nAcesse o sistema para ver a proposta atualizada. 🌞`
   const adminMsg = `✅ *Desconto aprovado — Ernaniff*\n\nCliente: ${clienteNome}\nKit: ${kitNome}\nDesconto: ${q.desconto_pct}%\nValor final: ${fmt(q.total_final)}`
   await dispatch({
     event: "descontoAprovado", userId: q.user_id, quoteId: payload.quoteId, clienteNome,
