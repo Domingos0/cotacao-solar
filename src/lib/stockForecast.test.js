@@ -104,3 +104,35 @@ describe('informativo de estoque WEG — linhas reais dos PDFs', () => {
     expect(r['19192683']).toEqual({ status: 'Previsão', previsao: '2026-05-27' })
   })
 })
+
+describe('sinônimos de status (listas antigas ou de outro formato)', () => {
+  const st = l => classifyStockLine(l)
+  it('disponível', () => {
+    for (const t of ['Pronta Entrega', 'Disponível', 'DISPONIVEL', 'Em estoque', 'Estoque disponível', 'Entrega imediata', 'Pronto para envio']) {
+      expect(st(`12345678 PRODUTO ${t}`)).toEqual({ status: 'Disponível', previsao: null })
+    }
+  })
+  it('falta: com data vira previsão, sem data vira esgotado', () => {
+    for (const t of ['Indisponível', 'Sem estoque', 'Em falta', 'Não disponível']) {
+      expect(st(`12345678 PRODUTO ${t} 10/02/2027`)).toEqual({ status: 'Previsão', previsao: '2027-02-10' })
+      expect(st(`12345678 PRODUTO ${t}`)).toEqual({ status: 'Esgotado', previsao: null })
+    }
+  })
+  it('"sem estoque" não é lido como "estoque" disponível', () => {
+    expect(st('12345678 PRODUTO SEM ESTOQUE').status).toBe('Esgotado')
+  })
+  it('previsão sem data (sob encomenda, aguardando, em produção, em trânsito)', () => {
+    for (const t of ['Sob encomenda', 'Aguardando', 'Em produção', 'Em fabricação', 'Em trânsito', 'A caminho']) {
+      expect(st(`12345678 PRODUTO ${t}`)).toEqual({ status: 'Previsão', previsao: null })
+    }
+    expect(st('12345678 PRODUTO Em trânsito 05/12/2026')).toEqual({ status: 'Previsão', previsao: '2026-12-05' })
+  })
+  it('esgotado / descontinuado / fora de linha', () => {
+    for (const t of ['Esgotado', 'Descontinuado', 'Fora de linha']) {
+      expect(st(`12345678 PRODUTO ${t}`)).toEqual({ status: 'Esgotado', previsao: null })
+    }
+  })
+  it('linha sem nenhuma palavra de status → não classifica', () => {
+    expect(st('12345678 PRODUTO 610W')).toBe(null)
+  })
+})

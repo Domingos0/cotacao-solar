@@ -23,18 +23,35 @@ export function extractPrevisaoDate(text) {
 //   Indisponível + data DD/MM/YYYY      → Previsão (com a data)
 //   Indisponível + * / ** (prazo em avaliação) → Previsão (sem data)
 //   Indisponível + *** / sem previsão   → Esgotado
+// Sinônimos (texto já sem acento, comparado sem diferenciar maiúsculas) —
+// pra informativos antigos ou de outro formato com outras palavras.
+// A ordem de checagem importa: "sem estoque" precisa cair em FALTA antes de
+// "estoque" ser lido como disponível.
+export const SINONIMOS_ESTOQUE = {
+  esgotado: [/esgotad/, /descontinuad/, /fora\s+de\s+linha/],
+  falta: [/indisponiv/, /sem\s+estoque/, /em\s+falta/, /\bfalta\b/, /nao\s+disponiv/],
+  previsao: [/sob\s+encomenda/, /aguardando/, /em\s+producao/, /em\s+fabricacao/, /em\s+transito/, /a\s+caminho/, /previsao/],
+  disponivel: [/pronta\s*entrega/, /\bdisponiv/, /em\s+estoque/, /estoque\s+disponiv/, /entrega\s+imediata/, /pronto\s+(para\s+)?envio/],
+}
+const temAlgum = (line, lista) => lista.some(re => re.test(line))
+
 export function classifyStockLine(rawLine) {
   // Sem acentos: o PDF traz "Disponível"/"Indisponível" (com í) — a regex
   // antiga procurava "disponiv" e nunca casava com o texto real.
-  const line = String(rawLine || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
-  if (/indisponiv/i.test(line)) {
-    const previsao = extractPrevisaoDate(line)
+  const line = String(rawLine || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const previsao = extractPrevisaoDate(line)
+
+  if (temAlgum(line, SINONIMOS_ESTOQUE.esgotado)) {
+    return previsao ? { status: 'Previsão', previsao } : { status: 'Esgotado', previsao: null }
+  }
+  if (temAlgum(line, SINONIMOS_ESTOQUE.falta)) {
     if (previsao) return { status: 'Previsão', previsao }
     if (/\*{3}/.test(line)) return { status: 'Esgotado', previsao: null }
-    if (/\*/.test(line)) return { status: 'Previsão', previsao: null }
+    if (/\*/.test(line) || temAlgum(line, SINONIMOS_ESTOQUE.previsao)) return { status: 'Previsão', previsao: null }
     return { status: 'Esgotado', previsao: null }
   }
-  if (/pronta\s*entrega/i.test(line) || /disponiv/i.test(line)) return { status: 'Disponível', previsao: null }
+  if (temAlgum(line, SINONIMOS_ESTOQUE.previsao)) return { status: 'Previsão', previsao }
+  if (temAlgum(line, SINONIMOS_ESTOQUE.disponivel)) return { status: 'Disponível', previsao: null }
   return null
 }
 
