@@ -7,7 +7,7 @@ import { notifyDescontoSolicitado } from '../lib/notify'
 import { normalizeSearch } from '../lib/text'
 import { regiaoFromUF, detectUF, isNordestePanel, fretePermitidoNordeste } from '../lib/regiao'
 import { round2, distributeTotal } from '../lib/money'
-import { markOnboardingStep, KIT_STEP_TOURS, getKitTourId, isTourSeen, markTourSeen } from '../lib/tour'
+import { markOnboardingStep, KIT_STEP_TOURS, getKitTourId, markTourSeen, shouldAutoShowTour, disableToursEverywhere } from '../lib/tour'
 import InfoTip from '../components/InfoTip'
 import GuidedTour from '../components/GuidedTour'
 import RatingPrompt from '../components/RatingPrompt'
@@ -6372,8 +6372,11 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
   const kitTourId = getKitTourId(step, data, isHybrid)
   useEffect(() => {
     if (!kitTourId || !KIT_STEP_TOURS[kitTourId]) return
-    if (isTourSeen(sessionTop?.user?.id, kitTourId)) return
-    const t = setTimeout(() => setLocalTour(KIT_STEP_TOURS[kitTourId]), 400)
+    if (!shouldAutoShowTour(sessionTop?.user?.id, sessionTop?.user, kitTourId)) return
+    const t = setTimeout(() => {
+      markTourSeen(sessionTop?.user?.id, kitTourId) // visto já ao aparecer
+      setLocalTour(KIT_STEP_TOURS[kitTourId])
+    }, 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
@@ -6384,6 +6387,10 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
   }, [tourTrigger])
   const finishLocalTour = () => {
     if (kitTourId) markTourSeen(sessionTop?.user?.id, kitTourId)
+    setLocalTour(null)
+  }
+  const disableAllTours = () => {
+    disableToursEverywhere(sessionTop?.user?.id)
     setLocalTour(null)
   }
 
@@ -6497,7 +6504,7 @@ export default function KitBuilder({ initialData, initialSavedId, onGoToQuotes, 
         )}
       </div>
 
-      {localTour && <GuidedTour steps={localTour} onFinish={finishLocalTour} />}
+      {localTour && <GuidedTour steps={localTour} onFinish={finishLocalTour} onDisable={disableAllTours} />}
     </div>
   )
 }

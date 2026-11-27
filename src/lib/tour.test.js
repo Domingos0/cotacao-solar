@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getKitTourId, KIT_STEP_TOURS } from './tour'
+import { getKitTourId, KIT_STEP_TOURS, markTourSeen, disableTours, areToursDisabled, shouldAutoShowTour } from './tour'
 
 describe('getKitTourId', () => {
   it('mapeia os steps não-híbridos (sem bombeamento)', () => {
@@ -33,5 +33,28 @@ describe('getKitTourId', () => {
       getKitTourId(6, {}, true), getKitTourId(7, {}, true),
     ]
     ids.forEach(id => expect(KIT_STEP_TOURS[id]).toBeTruthy())
+  })
+})
+
+// localStorage simples pro ambiente de teste (node não tem)
+if (!globalThis.localStorage) {
+  const mem = {}
+  globalThis.localStorage = { getItem: k => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v) }, removeItem: k => { delete mem[k] } }
+}
+
+describe('não mostrar mais / mostrar só uma vez', () => {
+  it('desligar tutoriais bloqueia qualquer tour automático', () => {
+    expect(shouldAutoShowTour('u-off', null, 'catalog')).toBe(true)
+    disableTours('u-off')
+    expect(shouldAutoShowTour('u-off', null, 'catalog')).toBe(false)
+    expect(shouldAutoShowTour('u-off', null, 'kit-step-1')).toBe(false)
+  })
+  it('vale também pela conta (user_metadata), em outro aparelho', () => {
+    expect(areToursDisabled('u-novo', { user_metadata: { tutorial_off: true } })).toBe(true)
+    expect(shouldAutoShowTour('u-novo', { user_metadata: {} }, 'catalog')).toBe(true)
+  })
+  it('tour já visto não aparece de novo sozinho', () => {
+    markTourSeen('u-visto', 'catalog')
+    expect(shouldAutoShowTour('u-visto', null, 'catalog')).toBe(false)
   })
 })

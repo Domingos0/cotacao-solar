@@ -6,7 +6,9 @@ import { X } from 'lucide-react'
 // overlay escuro) + balão de texto por cima da tela, navegando com
 // Próximo/Voltar/Pular. Se o alvo de um step não estiver na tela (ex:
 // usuário já saiu daquela área), o step é pulado sozinho, em vez de travar.
-export default function GuidedTour({ steps, onFinish }) {
+// onDisable (opcional): botão "Não mostrar mais" — desliga os tutoriais
+// automáticos do usuário (quem chama grava a escolha).
+export default function GuidedTour({ steps, onFinish, onDisable }) {
   const [stepIdx, setStepIdx] = useState(0)
   const [rect, setRect] = useState(null)
   const tooltipRef = useRef(null)
@@ -108,8 +110,15 @@ export default function GuidedTour({ steps, onFinish }) {
           </button>
         </div>
         <p className="text-sm text-gray-600 mb-4">{step.body}</p>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-400">{stepIdx + 1} / {steps.length}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col">
+            <span className="text-xs text-gray-400">{stepIdx + 1} / {steps.length}</span>
+            {onDisable && (
+              <button onClick={onDisable} className="text-[11px] text-gray-400 hover:text-gray-600 underline text-left">
+                Não mostrar mais
+              </button>
+            )}
+          </div>
           <div className="flex gap-2">
             {stepIdx > 0 && (
               <button

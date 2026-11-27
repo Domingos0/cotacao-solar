@@ -5,7 +5,7 @@ import Header from './components/Header'
 import GuidedTour from './components/GuidedTour'
 import FeedbackButton from './components/FeedbackButton'
 import OnboardingChecklist from './components/OnboardingChecklist'
-import { TOURS, isTourSeen, markTourSeen } from './lib/tour'
+import { TOURS, markTourSeen, shouldAutoShowTour, disableToursEverywhere } from './lib/tour'
 import Footer from './components/Footer'
 import HeroBanner from './components/HeroBanner'
 import FilterSidebar from './components/FilterSidebar'
@@ -272,14 +272,24 @@ function AuthenticatedApp() {
     if (activeTour) markTourSeen(session?.user?.id, activeTour)
     setActiveTour(null)
   }
+  // "Não mostrar mais" — desliga todos os tutoriais automáticos (o "?" continua)
+  const disableAllTours = () => {
+    disableToursEverywhere(session?.user?.id)
+    setActiveTour(null)
+  }
 
   // Tour guiado automático no primeiro login (item 26) — um pra cliente
   // (Catálogo) e um pra admin (Painel), cada um marcado como visto só
   // depois de concluído ou fechado, pra não reaparecer sozinho depois.
   useEffect(() => {
     const firstTourId = isAdmin ? 'admin' : 'catalog'
-    if (!isTourSeen(session?.user?.id, firstTourId)) {
-      const t = setTimeout(() => setActiveTour(firstTourId), 600)
+    if (shouldAutoShowTour(session?.user?.id, session?.user, firstTourId)) {
+      const t = setTimeout(() => {
+        // Marca como visto JÁ ao aparecer: se o usuário sair/atualizar a
+        // página sem fechar, não reaparece no próximo acesso.
+        markTourSeen(session?.user?.id, firstTourId)
+        setActiveTour(firstTourId)
+      }, 600)
       return () => clearTimeout(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -423,7 +433,7 @@ function AuthenticatedApp() {
       <FeedbackButton page={page} />
 
       {activeTour && TOURS[activeTour] && (
-        <GuidedTour steps={TOURS[activeTour]} onFinish={finishTour} />
+        <GuidedTour steps={TOURS[activeTour]} onFinish={finishTour} onDisable={disableAllTours} />
       )}
     </div>
   )

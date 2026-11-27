@@ -33,6 +33,34 @@ export function markTourSeen(userId, tourId) {
   writeState(userId, { ...state, tours: { ...state.tours, [tourId]: true } })
 }
 
+// "Não mostrar mais": desliga TODOS os tutoriais automáticos desse usuário.
+// Fica no navegador (localStorage) e na conta (user_metadata.tutorial_off,
+// gravado por quem chama via supabase.auth.updateUser) — assim vale em
+// qualquer aparelho. O botão "?" continua abrindo o tutorial manualmente.
+export function areToursDisabled(userId, user) {
+  if (user?.user_metadata?.tutorial_off) return true
+  return !!readState(userId).toursOff
+}
+
+export function disableTours(userId) {
+  const state = readState(userId)
+  writeState(userId, { ...state, toursOff: true })
+}
+
+// Desliga neste navegador e grava na conta (vale em outros aparelhos).
+// Falha ao gravar na conta não impede: o localStorage já desligou aqui.
+export function disableToursEverywhere(userId) {
+  disableTours(userId)
+  import('./supabase')
+    .then(({ supabase }) => supabase.auth.updateUser({ data: { tutorial_off: true } }))
+    .catch(() => {})
+}
+
+// Tour automático só aparece se não foi desligado nem visto antes
+export function shouldAutoShowTour(userId, user, tourId) {
+  return !areToursDisabled(userId, user) && !isTourSeen(userId, tourId)
+}
+
 // Checklist "Primeiros passos": montar kit → salvar cotação → pedir desconto
 export const ONBOARDING_STEPS = [
   { key: 'kit_montado',     label: 'Montar um kit solar' },
