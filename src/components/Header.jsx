@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil, Calculator, Sun, HelpCircle, Flame } from 'lucide-react'
+import { Search, Menu, X, Phone, Mail, Zap, LayoutGrid, Settings, LogOut, User, FileText, Hash, Check, Pencil, Calculator, Sun, HelpCircle, Flame, ChevronDown, Wrench } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import { TOURS } from '../lib/tour'
@@ -7,6 +7,8 @@ import { TOURS } from '../lib/tour'
 export default function Header({ onSearch, searchQuery, page, onPageChange, onStartTour }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showMore, setShowMore] = useState(false)
+  const moreRef = useRef(null)
   const [editingNum, setEditingNum] = useState(false)
   const [numValue, setNumValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -22,6 +24,15 @@ export default function Header({ onSearch, searchQuery, page, onPageChange, onSt
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [showUserMenu])
+
+  useEffect(() => {
+    if (!showMore) return
+    const handle = (e) => { if (moreRef.current && !moreRef.current.contains(e.target)) setShowMore(false) }
+    const esc = (e) => { if (e.key === 'Escape') setShowMore(false) }
+    document.addEventListener('mousedown', handle)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', handle); document.removeEventListener('keydown', esc) }
+  }, [showMore])
 
   const openUserMenu = () => {
     setNumValue(profile?.numero_usuario || '')
@@ -41,15 +52,20 @@ export default function Header({ onSearch, searchQuery, page, onPageChange, onSt
     }
   }
 
+  // Principais ficam à vista; o resto vai pro menu "Ferramentas".
   const NAV_ITEMS = [
     { id: 'catalog',   label: 'Catálogo',         icon: LayoutGrid, show: true },
     { id: 'kit',       label: 'Monte seu Kit',     icon: Zap,        show: true },
     { id: 'promocoes', label: 'Kits da Promoção',  icon: Flame,      show: !!session },
-    { id: 'dimensionamento', label: 'Dimensionar Bateria', icon: Calculator, show: isAdmin },
-    { id: 'simulacao-solar', label: 'Simulação Solar', icon: Sun, show: isAdmin },
     { id: 'cotacoes',  label: 'Minhas Cotações',   icon: FileText,   show: !!session && !isAdmin },
     { id: 'admin',     label: 'Admin',             icon: Settings,   show: isAdmin },
   ].filter(i => i.show)
+
+  const MORE_ITEMS = [
+    { id: 'dimensionamento', label: 'Dimensionar Bateria', desc: 'Calcula o banco de baterias pela carga', icon: Calculator, show: isAdmin },
+    { id: 'simulacao-solar', label: 'Simulação Solar',     desc: 'Geração e economia estimadas', icon: Sun, show: isAdmin },
+  ].filter(i => i.show)
+  const moreActive = MORE_ITEMS.some(i => i.id === page)
 
   const navBtn = (item) => {
     const Icon = item.icon
@@ -59,7 +75,7 @@ export default function Header({ onSearch, searchQuery, page, onPageChange, onSt
         key={item.id}
         data-tour={`nav-${item.id}`}
         onClick={() => { onPageChange(item.id); setMenuOpen(false) }}
-        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
           active
             ? item.id === 'kit' ? 'bg-weg-orange text-white' : 'bg-white/20 text-white'
             : 'text-white/75 hover:text-white hover:bg-white/10'
@@ -113,6 +129,49 @@ export default function Header({ onSearch, searchQuery, page, onPageChange, onSt
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1 ml-auto">
             {NAV_ITEMS.map(navBtn)}
+
+            {/* Outras funcionalidades num dropdown, pra barra não quebrar linha */}
+            {MORE_ITEMS.length > 0 && (
+              <div className="relative" ref={moreRef}>
+                <button
+                  data-tour="nav-mais"
+                  onClick={() => setShowMore(v => !v)}
+                  aria-expanded={showMore}
+                  aria-haspopup="menu"
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                    moreActive || showMore ? 'bg-white/20 text-white' : 'text-white/75 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Wrench size={15} /> Ferramentas
+                  <ChevronDown size={14} className={`transition-transform ${showMore ? 'rotate-180' : ''}`} />
+                </button>
+                {showMore && (
+                  <div role="menu" className="absolute top-full right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 text-gray-800">
+                    {MORE_ITEMS.map(item => {
+                      const Icon = item.icon
+                      const active = page === item.id
+                      return (
+                        <button
+                          key={item.id}
+                          role="menuitem"
+                          data-tour={`nav-${item.id}`}
+                          onClick={() => { onPageChange(item.id); setShowMore(false) }}
+                          className={`w-full flex items-start gap-3 px-4 py-2.5 text-left transition-colors ${active ? 'bg-weg-blue/10' : 'hover:bg-gray-50'}`}
+                        >
+                          <span className={`mt-0.5 w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${active ? 'bg-weg-blue text-white' : 'bg-gray-100 text-weg-blue'}`}>
+                            <Icon size={16} />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-gray-900">{item.label}</span>
+                            <span className="block text-xs text-gray-500">{item.desc}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Botão de ajuda — repete o tour guiado desta tela */}
             {currentTourId && onStartTour && (
@@ -220,16 +279,21 @@ export default function Header({ onSearch, searchQuery, page, onPageChange, onSt
                 />
               </div>
             )}
-            {NAV_ITEMS.map(item => {
+            {[...NAV_ITEMS, ...MORE_ITEMS].map((item, idx) => {
               const Icon = item.icon
               return (
-                <button key={item.id}
+                <div key={item.id}>
+                {idx === NAV_ITEMS.length && (
+                  <p className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-white/45">Ferramentas</p>
+                )}
+                <button
                   onClick={() => { onPageChange(item.id); setMenuOpen(false) }}
                   className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium ${
                     page === item.id ? 'bg-white/20 text-white' : 'text-white/75 hover:text-white hover:bg-white/10'
                   }`}>
                   <Icon size={16} /> {item.label}
                 </button>
+                </div>
               )
             })}
             {currentTourId && onStartTour && (
