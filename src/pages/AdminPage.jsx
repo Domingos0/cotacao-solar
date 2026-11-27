@@ -14,6 +14,7 @@ import {
   uploadPromoFolder, getPromoStatus, PROMO_STATUS_LABELS, PROMO_REGIOES_KEYS,
 } from '../lib/promoKits'
 import { round2 } from '../lib/money'
+import { checkUnifyCnpj } from '../lib/unifyQuotes'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { parseStockPdfLines, produtosParaRevisar, diasAtePrevisao, textoAlertaPrevisao } from '../lib/stockForecast'
 import kitCompositions from '../data/kitCompositions.json'
@@ -2652,12 +2653,10 @@ function QuoteManagement({ onLoadQuote }) {
   const fmt = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
   const selectedQuotes = quotes.filter(q => unifySelected.has(q.id))
-  // Unificar só faz sentido pro MESMO cliente. Cotação interna pra cliente
-  // sem cadastro fica no user do admin — aí o cliente é o nome digitado.
-  const clienteKey = q => q.data?.clienteCadastrado === false
-    ? `sem-cadastro:${(q.data?.clienteNome || '').trim().toLowerCase()}`
-    : q.user_id
-  const mixedClients = new Set(selectedQuotes.map(clienteKey)).size > 1
+  // Unificar só cotações do MESMO CNPJ (evita juntar clientes diferentes
+  // numa proposta/faturamento só). Comparar continua livre.
+  const unifyCheck = checkUnifyCnpj(selectedQuotes)
+  const bloqueiaUnificar = selectedQuotes.length >= 2 && !unifyCheck.ok
 
   // ── Card de kit aguardando implantação ──
   const ImplantCard = ({ q }) => {
@@ -2998,8 +2997,14 @@ function QuoteManagement({ onLoadQuote }) {
           {unifyMode ? (
             <>
               <span className="text-sm text-gray-600">
-                <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — 2 ou mais pra unificar (mesmo cliente), 2 ou 3 pra comparar
-                {mixedClients && <span className="block text-xs text-amber-600 font-semibold mt-0.5">Cotações de clientes diferentes: dá pra comparar, mas não unificar.</span>}
+                <strong>{unifySelected.size}</strong> selecionada{unifySelected.size !== 1 ? 's' : ''} — 2 ou mais pra unificar (mesmo CNPJ), 2 ou 3 pra comparar
+                {bloqueiaUnificar && (
+                  <span className="block text-xs text-amber-600 font-semibold mt-0.5">
+                    {unifyCheck.motivo === 'cnpj_diferente'
+                      ? 'CNPJs diferentes: só dá pra unificar cotações do mesmo CNPJ (comparar continua liberado).'
+                      : `Sem CNPJ do cliente: ${unifyCheck.refs.join(', ')} — só dá pra unificar cotações do mesmo CNPJ (comparar continua liberado).`}
+                  </span>
+                )}
               </span>
               <div className="flex gap-2 flex-wrap">
                 <button
@@ -3012,7 +3017,8 @@ function QuoteManagement({ onLoadQuote }) {
                 </button>
                 <button
                   onClick={() => setShowUnifyModal(true)}
-                  disabled={unifySelected.size < 2 || mixedClients}
+                  disabled={unifySelected.size < 2 || bloqueiaUnificar}
+                  title={bloqueiaUnificar ? 'Só cotações do mesmo CNPJ podem ser unificadas' : undefined}
                   className="flex items-center gap-1.5 text-xs font-semibold text-white bg-weg-blue hover:bg-weg-blue/90 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Layers size={13} /> Unificar selecionadas

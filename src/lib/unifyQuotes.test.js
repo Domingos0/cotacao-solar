@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sumMaterialsBySap, buildUnifiedProposal } from './unifyQuotes'
+import { sumMaterialsBySap, buildUnifiedProposal, checkUnifyCnpj } from './unifyQuotes'
 
 describe('sumMaterialsBySap', () => {
   it('soma a quantidade e o total do mesmo SAP em kits diferentes', () => {
@@ -61,5 +61,22 @@ describe('buildUnifiedProposal', () => {
   it('sem cotações, retorna zeros e validade nula', () => {
     const p = buildUnifiedProposal([])
     expect(p).toEqual({ totalBruto: 0, totalComDesconto: 0, totalKwp: 0, materiais: [], validadeMinima: null, descontoPct: 0 })
+  })
+})
+
+describe('checkUnifyCnpj', () => {
+  const q = (id, cnpj) => ({ id, profiles: { cnpj }, data: { numero_orcamento: `EFF-${id}` } })
+  it('mesmo CNPJ (com ou sem pontuação) pode unificar', () => {
+    expect(checkUnifyCnpj([q('1', '12.345.678/0001-90'), q('2', '12345678000190')]).ok).toBe(true)
+  })
+  it('CNPJs diferentes não unificam', () => {
+    expect(checkUnifyCnpj([q('1', '12.345.678/0001-90'), q('2', '98.765.432/0001-10')])).toMatchObject({ ok: false, motivo: 'cnpj_diferente' })
+  })
+  it('cotação interna pra cliente sem cadastro conta como sem CNPJ (o perfil é do admin)', () => {
+    const interna = { id: '3', profiles: { cnpj: '12.345.678/0001-90' }, data: { numero_orcamento: 'EFF-3', clienteCadastrado: false } }
+    expect(checkUnifyCnpj([q('1', '12.345.678/0001-90'), interna])).toMatchObject({ ok: false, motivo: 'sem_cnpj', refs: ['EFF-3'] })
+  })
+  it('cotação sem CNPJ não unifica e diz qual é', () => {
+    expect(checkUnifyCnpj([q('1', '12.345.678/0001-90'), q('2', '')])).toEqual({ ok: false, motivo: 'sem_cnpj', refs: ['EFF-2'] })
   })
 })

@@ -32,3 +32,19 @@ export function buildUnifiedProposal(quotes, descontoPct = 0) {
   const validadeMinima = validades[0] || null
   return { totalBruto, totalComDesconto, totalKwp, materiais, validadeMinima, descontoPct: pct }
 }
+
+// Admin: só unifica cotações do MESMO CNPJ (proposta única = um faturamento
+// só). Cotação sem CNPJ (ex: interna pra cliente sem cadastro) não entra,
+// porque não dá pra garantir que é o mesmo cliente.
+export function checkUnifyCnpj(quotes) {
+  // Cotação interna pra cliente sem cadastro fica no perfil do admin — o
+  // CNPJ ali seria o da Ernaniff, não o do cliente: conta como sem CNPJ.
+  const digits = q => q?.data?.clienteCadastrado === false ? '' : String(q?.profiles?.cnpj || '').replace(/\D/g, '')
+  const semCnpj = (quotes || []).filter(q => !digits(q))
+  if (semCnpj.length) {
+    return { ok: false, motivo: 'sem_cnpj', refs: semCnpj.map(q => q.data?.numero_orcamento || String(q.id).slice(0, 8).toUpperCase()) }
+  }
+  const cnpjs = new Set((quotes || []).map(digits))
+  if (cnpjs.size > 1) return { ok: false, motivo: 'cnpj_diferente', refs: [] }
+  return { ok: true, motivo: null, refs: [] }
+}
